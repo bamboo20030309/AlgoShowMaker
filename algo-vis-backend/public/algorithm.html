@@ -9,13 +9,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css?v=sample-pairs-1" />
+  <link rel="stylesheet" href="style.css?v=side-tabs-3" />
   <link rel="stylesheet" href="brand.css?v=site-header-2" />
-  <link rel="stylesheet" href="slides-embed.css?v=canvas-toolbar-4" />
-  <link rel="stylesheet" href="trace.css?v=trace-40" />
+  <link rel="stylesheet" href="slides-embed.css?v=side-tabs-1" />
+  <link rel="stylesheet" href="trace.css?v=trace-41" />
   <link rel="stylesheet" href="trace-directive-assist.css?v=directive-5" />
-  <link rel="stylesheet" href="trace-studio.css?v=trace-66" />
-  <link rel="stylesheet" href="mobile-ui.css?v=my-codes-1" />
+  <link rel="stylesheet" href="trace-studio.css?v=trace-67" />
+  <link rel="stylesheet" href="mobile-ui.css?v=side-tabs-2" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <!-- 頂部列登入狀態：在 head 同步載入，頂部列之後以內嵌呼叫套用，第一次繪製就正確。 -->
@@ -63,12 +63,6 @@
         <div class="dropdown-item" onclick="aceEditor.setFontSize(20)">字體大小: 大</div>
       </div>
     </div>
-    <button id="editAnimationBtn" class="top-action-button" type="button" title="開啟動畫編輯器" disabled>
-      編輯動畫
-    </button>
-    <button id="eventSettingsBtn" class="top-action-button" type="button" title="設定事件顯示與動畫預設" disabled>
-      事件設定
-    </button>
     <a class="top-github-link site-github-link" href="https://github.com/bamboo20030309/AlgoShowMaker" target="_blank"
       rel="noopener noreferrer" title="前往 AlgoShowMaker GitHub" aria-label="前往 AlgoShowMaker GitHub（另開新視窗）">
       <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -86,20 +80,37 @@
 <!-- -----------------------------------------------------------------------
   左右工作區
   codePanel 保存來源與游標，vizPanel 呈現衍生結果；divider 僅調整兩側比例。
+  左側三個標籤：原始碼（Ace）、程式碼框與事件動畫（trace-studio.js 掛入，設定寫回 @asm-view）。
   ------------------------------------------------------------------------ -->
   <div id="main">
     <div id="codePanel">
       <header>
-        <span class="header-title">C++</span>
+        <nav class="side-tabs" role="tablist" aria-label="左側面板">
+          <button type="button" class="side-tab is-active" role="tab" id="sideTabSource" data-side-tab="source"
+            aria-selected="true" aria-controls="codeBody">原始碼</button>
+          <button type="button" class="side-tab" role="tab" id="sideTabCodeFrame" data-side-tab="code-frame"
+            aria-selected="false" aria-controls="codeFramePanel" tabindex="-1">程式碼框</button>
+          <button type="button" class="side-tab" role="tab" id="sideTabEvents" data-side-tab="events"
+            aria-selected="false" aria-controls="eventAnimationPanel" tabindex="-1">事件動畫</button>
+        </nav>
 
         <div class="header-buttons">
+          <span class="header-title">C++</span>
           <button id="runBtn" class="btn-run" title="編譯執行（Ctrl＋Enter）">▶ RUN</button>
 
           <button id="panelToggleBtn" title="摺疊程式碼面板">◀</button>
         </div>
       </header>
-      <div id="codeBody">
+      <div id="codeBody" role="tabpanel" aria-labelledby="sideTabSource" data-side-panel="source">
         <div id="editor"></div>
+      </div>
+      <div id="codeFramePanel" class="side-panel" role="tabpanel" aria-labelledby="sideTabCodeFrame"
+        data-side-panel="code-frame" hidden>
+        <p class="side-panel-empty">按 RUN 產生動畫後，可在這裡調整畫布上程式碼框顯示的程式碼。</p>
+      </div>
+      <div id="eventAnimationPanel" class="side-panel" role="tabpanel" aria-labelledby="sideTabEvents"
+        data-side-panel="events" hidden>
+        <p class="side-panel-empty">按 RUN 產生動畫後，可在這裡設定哪些事件要播放動畫。</p>
       </div>
     </div>
 
@@ -382,7 +393,7 @@
   <script src="trace-color-picker.js?v=trace-7"></script>
   <!-- 底層繪圖與互動腳本 -->
   <script src="local-camera.js?v=2"></script>
-  <script src="canva.js?v=trace-23"></script>
+  <script src="canva.js?v=trace-24"></script>
   <script src="interaction.js?v=trace-42"></script>
   <script src="trace-selection.js?v=1"></script>
   <script src="trace-view-source.js?v=trace-19"></script>
@@ -398,9 +409,9 @@
   <script src="trace-camera.js?v=trace-11"></script>
   <script src="trace-code-presenter.js?v=code-39"></script>
   <script src="trace-renderer.js?v=trace-292"></script>
-  <script src="trace-player.js?v=trace-33"></script>
+  <script src="trace-player.js?v=trace-34"></script>
   <script src="trace-viewport-culling.js?v=2"></script>
-  <script src="trace-debug-recorder.js?v=debug-9"></script>
+  <script src="trace-debug-recorder.js?v=debug-10"></script>
   <script src="trace-provenance.js?v=generation-2"></script>
   <script src="trace-version-check.js?v=1"></script>
   <script src="algorithm-animation.js?v=executable-only-1"></script>
@@ -408,10 +419,10 @@
   <script src="asmdeck.js?v=executable-only-1"></script>
   <script src="trace-bundle.js?v=executable-only-1"></script>
   <script src="compile-session.js?v=2"></script>
-  <script src="trace-editor.js?v=trace-43"></script>
+  <script src="trace-editor.js?v=trace-44"></script>
   <script src="trace-freshness.js?v=trace-6"></script>
   <script src="syntax-tree.js?v=syntax-4"></script>
-  <script src="compile.js?v=syntax-13"></script>
+  <script src="compile.js?v=syntax-14"></script>
   <script src="tts.js?v=10"></script>
   <script src="playback-time.js?v=1"></script>
   <script src="resolve_pos.js"></script>
@@ -441,9 +452,9 @@
   <!-- GUI 編輯器 -->
   <link rel="stylesheet" href="gui_editor.css?v=trace-2" />
   <script src="gui_editor.js?v=trace-9"></script>
-  <script src="trace-studio.js?v=trace-143"></script>
+  <script src="trace-studio.js?v=trace-144"></script>
   <script src="slides-embed.js?v=trace-17"></script>
-  <script src="mobile-ui.js?v=mobile-6"></script>
+  <script src="mobile-ui.js?v=mobile-7"></script>
   <script src="top-account.js?v=2"></script>
 </body>
 

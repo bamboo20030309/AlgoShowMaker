@@ -244,7 +244,7 @@ button.auto-stepping:hover {
 }
 
 /* --- [修改] Header 背景改成跟程式碼一樣 --- */
-#codePanel header {
+#codePanel > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -256,7 +256,7 @@ button.auto-stepping:hover {
   /* 固定高度 */
 }
 
-#codePanel header .header-title {
+#codePanel > header .header-title {
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-main);
@@ -280,6 +280,84 @@ button.auto-stepping:hover {
   width: 100%;
   height: 100%;
   border: none;
+}
+
+/* 左側三個標籤（原始碼／程式碼框／事件動畫）：與右側分頁同樣的圓角與藍色底線，配色跟著深色程式碼面板。 */
+#codePanel > header {
+  gap: 8px;
+}
+
+.side-tabs {
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  margin: -8px 0 -1px -6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.side-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.side-tab {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 7px 11px 9px;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: #9ca3af;
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.side-tab::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px;
+  background-color: var(--primary-blue);
+  opacity: 0;
+  transform: scaleX(0.4);
+  transform-origin: center;
+  transition: all 0.2s ease;
+}
+
+.side-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
+}
+
+.side-tab.is-active {
+  background: #252b2f;
+  color: var(--text-bright);
+}
+
+.side-tab.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.side-tab:focus-visible {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: -2px;
+}
+
+#codePanel .header-buttons .header-title {
+  margin-right: 2px;
+}
+
+#codeBody[hidden] {
+  display: none;
 }
 
 /* 移除邊框讓它無縫接軌 */
@@ -1047,7 +1125,7 @@ button.auto-stepping:hover {
    ========================================= */
 
 /* 1. 修改 C++ 標題顏色為全白 */
-#codePanel header .header-title {
+#codePanel > header .header-title {
   color: #ffffff !important;
   /* 強制改為白色 */
 }
@@ -1069,25 +1147,27 @@ button.auto-stepping:hover {
 }
 
 /* 摺疊時：隱藏 Header 裡大部分元素，只留切換按鈕 */
-#codePanel.collapsed header .header-title,
-#codePanel.collapsed header .header-buttons button:not(#panelToggleBtn) {
+#codePanel.collapsed > header .header-title,
+#codePanel.collapsed > header .header-buttons button:not(#panelToggleBtn) {
   display: none !important;
 }
 
-/* 摺疊時：隱藏編輯器本體 */
-#codePanel.collapsed #codeBody {
+/* 摺疊時：隱藏編輯器本體與三個標籤 */
+#codePanel.collapsed #codeBody,
+#codePanel.collapsed .side-tabs,
+#codePanel.collapsed .side-panel {
   display: none !important;
 }
 
 /* 摺疊時：調整 Header 排版，讓箭頭置中 */
-#codePanel.collapsed header {
+#codePanel.collapsed > header {
   padding: 10px 0;
   justify-content: center;
   height: 100%;
   /* 讓它填滿高度，雖然 header 高度是固定的 */
 }
 
-#codePanel.collapsed header .header-buttons {
+#codePanel.collapsed > header .header-buttons {
   width: 100%;
   justify-content: center;
 }

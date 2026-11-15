@@ -16,11 +16,10 @@
   let presentationCamera = { panXRatio: 0, panYRatio: 0, zoomFactor: 1 };
   let presentationCameraEnabled = true;
   let cameraSurface = 'algorithm';
-  let cameraStudio = false;
   let wheelZoomSelected = false;
   window.isCanvasWheelZoomSelected = () => wheelZoomSelected;
   window.resetCanvasWheelSelection = () => { wheelZoomSelected = false; };
-  const cameraScope = () => cameraSurface + (cameraStudio ? ':studio' : ':playback');
+  const cameraScope = () => cameraSurface + ':playback';
   let manualCameraSaveTimer = null;
   const GRID_SPACING  = 50;      // 格線間距
   const GRID_EXTENT   = 10000;   // 世界座標覆蓋範圍半徑
@@ -101,7 +100,7 @@
     let startX = 0, startY = 0, originX = 0, originY = 0, moved = false;
     window.isCanvasGestureDragged = () => moved;
     const shortcutsEnabled = () => document.documentElement.classList.contains('asm-slide-laser-frame')
-      && !window.isDrawingMode && !document.body.classList.contains('asm-trace-studio-open');
+      && !window.isDrawingMode;
     const shortcut = e => {
       if (!shortcutsEnabled()) return;
       const button = { 0: 'prevBtn', 1: 'playToggleBtn', 2: 'nextBtn' }[e.button];
@@ -125,11 +124,6 @@
 
     svg.addEventListener('mousedown', e => {
       if (e.button !== 0 || window.isDrawingMode) return;
-      if (!document.body.classList.contains('asm-embed-runtime')
-        && document.body.classList.contains('asm-trace-studio-open')
-        && e.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor], [data-trace-camera-frame], .asm-trace-selectable, .draggable-object')) {
-        return;
-      }
       beginDrag(e);
     });
 
@@ -704,12 +698,6 @@
     if (manualCameraSaveTimer) window.ASMLocalCamera?.write(cameraScope(), capturePresentationCamera());
     window.resetCanvasWheelSelection();
     cameraSurface = String(surface);
-    restoreLocalCamera();
-  };
-  window.setLocalCameraStudio = function (enabled) {
-    if (cameraStudio === (enabled === true)) return;
-    if (manualCameraSaveTimer) window.ASMLocalCamera?.write(cameraScope(), capturePresentationCamera());
-    cameraStudio = enabled === true;
     restoreLocalCamera();
   };
   presentationCamera = normalizedPresentationCamera(window.ASMLocalCamera?.read(cameraScope()));

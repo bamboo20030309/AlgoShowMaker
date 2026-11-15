@@ -73,7 +73,7 @@ int main() {
           reason: event.autoAnimationUnavailableReason
         }))
       }));
-      const buttons = [...window.document.querySelectorAll('.trace-studio-event-code-button')]
+      const buttons = [...window.document.querySelectorAll('#eventAnimationPanel .trace-studio-event-code-button')]
         .map(button => ({
           text: button.textContent.trim(),
           classes: [...button.classList],
@@ -112,11 +112,11 @@ int main() {
       assert.match(button.title, /目標未顯示/);
     }
     const enabledMissingAppearance = await page.evaluate(async () => {
-      const button = [...document.querySelectorAll('.trace-studio-event-code-button')]
+      const button = [...document.querySelectorAll('#eventAnimationPanel .trace-studio-event-code-button')]
         .find(candidate => candidate.textContent.includes('int left'));
       button?.click();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const updated = [...document.querySelectorAll('.trace-studio-event-code-button')]
+      const updated = [...document.querySelectorAll('#eventAnimationPanel .trace-studio-event-code-button')]
         .find(candidate => candidate.textContent.includes('int left'));
       return {
         classes: [...(updated?.classList || [])],
@@ -148,11 +148,11 @@ int main() {
       'a non-current available instruction keeps the same green background');
     assert.equal(bound.toggleBadgeCount, 0, 'event buttons do not render 開／關 text badges');
     const disabledAppearance = await page.evaluate(async () => {
-      const button = [...document.querySelectorAll('.trace-studio-event-code-button')]
+      const button = [...document.querySelectorAll('#eventAnimationPanel .trace-studio-event-code-button')]
         .find(candidate => candidate.textContent.includes('index = 1'));
       button?.click();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const updated = [...document.querySelectorAll('.trace-studio-event-code-button')]
+      const updated = [...document.querySelectorAll('#eventAnimationPanel .trace-studio-event-code-button')]
         .find(candidate => candidate.textContent.includes('index = 1'));
       return {
         classes: [...(updated?.classList || [])],

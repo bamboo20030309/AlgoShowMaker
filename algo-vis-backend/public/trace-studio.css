@@ -1,106 +1,130 @@
 /*
- * 模組：Trace Studio 版面與編輯狀態
+ * 模組：程式碼頁左側「程式碼框」「事件動畫」標籤（原 Trace Studio 樣式）
  *
- * 責任：定義時間線、frame 卡片、事件樹、Inspector、綁定、樣式與鏡頭編輯器的完整版面。
- * 資料流：Studio JavaScript 透過 is-selected、is-current、is-disabled 等狀態 class 切換視覺；版面以 timeline 與 inspector 兩大區域組成。
- * 重要不變條件：選取與目前播放 frame 是不同狀態；hidden/disabled 必須保留可存取性語意，縮圖樣式不可洩漏到主畫布。
- * 相容性：響應式區段沿用既有 DOM 順序，舊設定缺少新面板時其餘 Inspector 仍可操作。
+ * 責任：定義左側設定標籤的版面，以及事件程式碼樹、自動固定、程式碼片段、程式碼框外觀等控制項。
+ * 資料流：trace-studio.js 透過 is-enabled、is-current、is-playing、is-disabled 等狀態 class 切換視覺。
+ * 重要不變條件：hidden/disabled 必須保留可存取性語意；縮圖樣式不可洩漏到主畫布。
+ * 相容性：沒有動畫時只顯示提示文字，按 RUN 後才出現設定內容。
  */
-.trace-studio-rail,
-.trace-studio-inspector,
+
 /* --------------------------------------------------------------------------
- * 區段：時間線總體版面
+ * 區段：左側設定標籤版面
  * -------------------------------------------------------------------------- */
 
-.trace-studio-timeline {
-  display: none;
-  box-sizing: border-box;
-  font-family: Arial, sans-serif;
-}
-
-body.asm-trace-studio-open #main {
-  display: grid;
-  grid-template-columns: 250px minmax(420px, 1fr) 6px var(--trace-studio-inspector-width, 420px);
-  min-width: 0;
-}
-
-body.asm-trace-studio-open #codePanel,
-body.asm-trace-studio-open #divider {
-  display: none !important;
-}
-
-body.asm-trace-studio-open #vizPanel {
-  position: relative;
-  width: auto !important;
-  min-width: 0;
-  border-left: 1px solid #465158;
-  border-right: 1px solid #465158;
-}
-
-body.asm-trace-studio-open #subTabs,
-body.asm-trace-studio-open #vizPanel > .subContent:not(#tab-canvas) {
-  display: none !important;
-}
-
-body.asm-trace-studio-open #tab-canvas {
-  display: flex !important;
-}
-
-body.asm-trace-studio-open .trace-studio-rail,
-body.asm-trace-studio-open .trace-studio-inspector,
-body.asm-trace-studio-open .trace-studio-timeline,
-body.asm-trace-studio-open .trace-studio-inspector-resizer {
+.side-panel {
+  flex: 1;
+  min-height: 0;
   display: flex;
-}
-
-.trace-studio-inspector-resizer {
-  position: relative;
-  display: none;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-  touch-action: none;
-  background: #1c2226;
-}
-
-.trace-studio-inspector-resizer::after {
-  content: "";
-  position: absolute;
-  inset: 0 2px;
-  background: #465158;
-  transition: background-color 120ms ease;
-}
-
-.trace-studio-inspector-resizer:hover::after,
-.trace-studio-inspector-resizer:focus-visible::after,
-body.asm-trace-inspector-resizing .trace-studio-inspector-resizer::after {
-  background: #73d0c4;
-}
-
-body.asm-trace-inspector-resizing {
-  cursor: col-resize !important;
-  user-select: none;
-}
-
-.trace-studio-rail,
-.trace-studio-inspector {
-  min-width: 0;
-  height: 100%;
   flex-direction: column;
   overflow: hidden;
   background: #252b2f;
   color: #edf1f2;
+  font-family: Arial, sans-serif;
 }
 
-.trace-studio-rail-head,
-.trace-studio-inspector-head {
-  min-height: 48px;
+.side-panel[hidden] {
+  display: none;
+}
+
+.side-panel button {
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+}
+
+.side-panel-empty {
+  margin: 0;
+  padding: 18px 16px;
+  color: #9facb2;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+#codePanel.has-trace-settings .side-panel-empty,
+#codePanel:not(.has-trace-settings) .side-panel-toolbar,
+#codePanel:not(.has-trace-settings) .side-panel-content {
+  display: none;
+}
+
+.side-panel-toolbar {
+  flex: 0 0 auto;
+  min-height: 42px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid #465158;
+  padding: 6px 10px;
+  border-bottom: 1px solid #3a4348;
+  background: #252b2f;
+}
+
+.side-panel-frame {
+  min-width: 0;
+  overflow: hidden;
+  color: #dfe5e7;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-panel-content {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-color: #59676e #252b2f;
+}
+
+.side-panel-group {
+  margin: 0;
+  padding: 12px 10px 2px;
+  border-top: 1px solid #465158;
+  color: #73d0c4;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.side-panel-group:first-child {
+  border-top: 0;
+}
+
+.side-panel-group + .trace-studio-section {
+  border-top: 0;
+}
+
+/* 整份動畫的事件清單與程式碼片段跟著整個標籤捲動，不再各自捲動。 */
+.side-panel-content .trace-studio-frame-events {
+  flex: none;
+  overflow-y: visible;
+}
+
+/* 片段清單跟著內容長高，垂直滾輪必須交給整個標籤捲動；只有過長的行需要左右捲動。 */
+.side-panel-content .trace-studio-code-snippet-list {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+}
+
+/* 程式碼行按鈕左右貼齊外框；行比外框長時才以最長的行為準。 */
+.side-panel-content .trace-studio-snippet-lines {
+  min-width: 100%;
+}
+
+/* 原本的事件設定浮窗，改為「事件動畫」標籤中「整份動畫」的內容。 */
+.trace-event-settings-panel.is-docked {
+  position: static;
+  z-index: auto;
+  width: auto;
+  margin: 6px 10px 12px;
+  box-shadow: none;
+}
+
+.trace-event-settings-panel.is-docked[hidden] {
+  display: none;
+}
+
+.trace-event-settings-panel.is-docked .trace-event-settings-list {
+  max-height: none;
 }
 
 .trace-studio-history {
@@ -111,8 +135,18 @@ body.asm-trace-inspector-resizing {
 
 .trace-studio-history button {
   width: 28px;
+  min-height: 28px;
   padding: 0;
+  border: 1px solid #59676e;
+  border-radius: 4px;
+  background: #30393e;
+  color: #e7edef;
   font-size: 18px;
+}
+
+.trace-studio-history button:hover:not(:disabled) {
+  border-color: #58b6aa;
+  color: #73d0c4;
 }
 
 .trace-studio-history button:disabled {
@@ -120,79 +154,9 @@ body.asm-trace-inspector-resizing {
   opacity: 0.4;
 }
 
-.trace-studio-rail button,
-.trace-studio-inspector button {
-  font-family: Arial, sans-serif;
-  cursor: pointer;
-}
-
-.trace-studio-rail-head button {
-  min-height: 28px;
-  border: 1px solid #59676e;
-  border-radius: 4px;
-  background: #30393e;
-  color: #e7edef;
-}
-
 /* --------------------------------------------------------------------------
  * 區段：Frame 清單與縮圖
  * -------------------------------------------------------------------------- */
-
-.trace-studio-rail-spacer { pointer-events: none; overflow-anchor: none; }
-
-.trace-studio-frame-list {
-  overflow-anchor: none;
-  min-height: 0;
-  flex: 1;
-  overflow: auto;
-  padding: 6px;
-}
-
-.trace-studio-frame {
-  width: 100%;
-  min-height: 154px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin: 0 0 5px;
-  padding: 7px;
-  border: 1px solid #465158;
-  border-radius: 4px;
-  background: #2d3438;
-  color: #edf1f2;
-  text-align: left;
-}
-
-.trace-studio-frame:hover {
-  border-color: #6d7d85;
-}
-
-.trace-studio-frame.is-selected {
-  border-color: #58b6aa;
-  box-shadow: inset 3px 0 #1d8f83;
-}
-
-.trace-studio-frame.is-current {
-  background: #354247;
-}
-
-.trace-studio-frame-head,
-.trace-studio-event-dots {
-  display: flex;
-  align-items: center;
-}
-
-.trace-studio-frame-head {
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.trace-studio-frame small {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #aeb9be;
-}
 
 .trace-studio-frame-preview {
   width: 100%;
@@ -212,27 +176,6 @@ body.asm-trace-inspector-resizing {
 /* --------------------------------------------------------------------------
  * 區段：物件狀態與轉場
  * -------------------------------------------------------------------------- */
-
-.trace-studio-transition-badge {
-  color: #73d0c4;
-  font: 700 15px Arial, sans-serif;
-  font-style: normal;
-}
-
-.trace-studio-event-dots {
-  flex-wrap: wrap;
-  gap: 3px;
-}
-
-.trace-studio-event-dot {
-  width: 9px;
-  height: 4px;
-  border-radius: 1px;
-}
-
-.trace-studio-event-dot.is-disabled {
-  opacity: 0.28;
-}
 
 .trace-studio-frame-events {
   min-height: 0;
@@ -387,15 +330,9 @@ body.asm-trace-inspector-resizing {
   box-shadow: inset 4px 0 #60a5fa, 0 0 0 2px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.9);
 }
 
-.trace-studio-code-panel,
-.trace-studio-code-snippet-section {
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
 .trace-studio-code-snippet-section {
   display: flex;
+  min-height: 0;
 }
 
 .trace-studio-snippet-head {
@@ -424,8 +361,7 @@ body.asm-trace-inspector-resizing {
   color: #ffd95a;
 }
 
-.trace-studio-snippet-reset,
-.trace-studio-snippet-focus {
+.trace-studio-snippet-reset{
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -433,9 +369,21 @@ body.asm-trace-inspector-resizing {
   width: 28px;
   min-height: 28px;
   padding: 4px !important;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
+  color: #b9c3c7;
+}
+
+.trace-studio-snippet-reset:hover:not(:disabled) {
+  color: #73d0c4;
+}
+
+.trace-studio-snippet-reset:disabled {
+  color: #657178;
+  cursor: default;
 }
 
 .trace-studio-snippet-actions button svg {
@@ -536,28 +484,6 @@ body.asm-trace-inspector-resizing {
   word-break: normal;
 }
 
-body.asm-trace-snippet-focus #main {
-  grid-template-columns: 250px minmax(420px, 1fr) 0 0;
-}
-
-body.asm-trace-snippet-focus .trace-studio-inspector-resizer {
-  display: none;
-}
-
-body.asm-trace-snippet-focus .trace-studio-inspector {
-  position: fixed;
-  z-index: 10030;
-  top: 24px;
-  bottom: 24px;
-  left: 50%;
-  width: min(1120px, calc(100vw - 48px));
-  height: auto;
-  transform: translateX(-50%);
-  border: 1px solid #59676e;
-  border-radius: 8px;
-  box-shadow: 0 18px 64px rgba(0, 0, 0, 0.62);
-}
-
 .trace-studio-snippet-event-source {
   border-radius: 2px;
   background: #fff45c;
@@ -576,35 +502,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
 /* --------------------------------------------------------------------------
  * 區段：事件卡片與開關
  * -------------------------------------------------------------------------- */
-
-.trace-studio-frame-event {
-  min-width: 0;
-  min-height: 42px;
-  display: grid;
-  grid-template-columns: 18px 4px minmax(0, 1fr) 32px;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid #465158;
-  border-radius: 4px;
-  background: #1f2529;
-}
-
-.trace-studio-frame-event.is-disabled {
-  opacity: 0.58;
-}
-
-.trace-studio-frame-event.is-unavailable {
-  border-style: dashed;
-}
-
-.trace-studio-frame-event.is-missing-target .trace-studio-frame-event-copy strong {
-  color: #f4c95d;
-}
-
-.trace-studio-frame-event.is-unrenderable .trace-studio-frame-event-copy strong {
-  color: #ff6b6b;
-}
 
 .trace-studio-frame-event-copy {
   min-width: 0;
@@ -716,121 +613,9 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   outline-offset: 2px;
 }
 
-.trace-studio-inspector {
-  overflow: hidden;
-}
-
 /* --------------------------------------------------------------------------
  * 區段：Inspector 面板切換
  * -------------------------------------------------------------------------- */
-
-.trace-studio-inspector-panel {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-}
-
-.trace-studio-events-panel {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.trace-studio-events-panel .trace-studio-section {
-  min-height: 0;
-}
-
-.trace-studio-events-panel .trace-studio-frame-events-section {
-  flex: 1;
-  overflow: hidden;
-}
-
-.trace-studio-events-panel .trace-studio-fixed-section {
-  flex: 0 0 auto;
-  max-height: 42%;
-  overflow-y: auto;
-}
-
-.trace-studio-inspector-head {
-  position: sticky;
-  z-index: 2;
-  top: 0;
-  background: #252b2f;
-}
-
-.trace-studio-inspector-head span {
-  color: #9facb2;
-  font-size: 12px;
-}
-
-.trace-studio-inspector-toolbar {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 7px 8px;
-  border-bottom: 1px solid #3a4348;
-  background: #252b2f;
-}
-
-.trace-studio-inspector-toolbar.has-object {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.trace-studio-inspector-tool {
-  position: relative;
-  min-width: 0;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 7px;
-  border: 1px solid #465158;
-  border-radius: 4px;
-  background: #30383d;
-  color: #b9c3c7;
-  font: 12px Arial, sans-serif;
-}
-
-.trace-studio-inspector-tool:hover:not(:disabled),
-.trace-studio-inspector-tool.is-active {
-  border-color: #58b6aa;
-  background: #354447;
-  color: #73d0c4;
-}
-
-.trace-studio-inspector-tool:disabled {
-  color: #657178;
-  opacity: 0.55;
-  cursor: default;
-}
-
-.trace-studio-inspector-tool[hidden] {
-  display: none !important;
-}
-
-.trace-studio-inspector-tool-icon {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.trace-studio-inspector-tool-count {
-  min-width: 15px;
-  height: 15px;
-  display: grid;
-  place-items: center;
-  padding: 0 3px;
-  border-radius: 8px;
-  background: #1d8f83;
-  color: #ffffff;
-  font: 700 9px/1 Arial, sans-serif;
-  font-style: normal;
-}
-
-.trace-studio-inspector-tool-count[hidden],
-.trace-studio-inspector-panel[hidden] {
-  display: none;
-}
 
 .trace-studio-section {
   display: flex;
@@ -875,21 +660,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   padding: 0;
 }
 
-.trace-studio-event-gap-control {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px;
-  align-items: center;
-  gap: 7px;
-}
-
-.trace-studio-event-gap-value {
-  color: #b9c4c8;
-  font: 11px Arial, sans-serif;
-  text-align: right;
-  white-space: nowrap;
-}
-
 .asm-trace-text-character-selection {
   fill: rgba(91, 174, 255, 0.44);
   stroke: none;
@@ -905,34 +675,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   border-radius: 3px;
   background: #1f2529;
   color: #eef2f3;
-}
-
-.trace-studio-field input.trace-studio-event-gap-range {
-  width: 100%;
-  height: 18px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  accent-color: #1d8f83;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.trace-studio-event-gap-range::-webkit-slider-runnable-track {
-  height: 7px;
-  border-radius: 0;
-  background: #111719;
-}
-
-.trace-studio-event-gap-range::-webkit-slider-thumb {
-  width: 10px;
-  height: 18px;
-  margin-top: -5px;
-  border: 1px solid #84cfc5;
-  border-radius: 1px;
-  background: #1d8f83;
-  -webkit-appearance: none;
 }
 
 .trace-color-control {
@@ -1016,82 +758,7 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   font-size: 12px;
 }
 
-.trace-studio-timeline {
-  min-height: 92px;
-  max-height: 116px;
-  flex-direction: column;
-  border-top: 1px solid #465158;
-  background: #252b2f;
-  color: #edf1f2;
-}
-
-.trace-studio-timeline-head {
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 10px;
-}
-
-.trace-studio-timeline-head small {
-  color: #9facb2;
-}
-
-.trace-studio-timeline-track {
-  min-height: 0;
-  display: flex;
-  flex: 1;
-  gap: 3px;
-  overflow-x: auto;
-  padding: 4px 8px 8px;
-}
-
-.trace-studio-time-frame {
-  min-width: 42px;
-  width: 42px;
-  flex: 0 0 42px;
-  box-sizing: border-box;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  border: 1px solid #465158;
-  border-radius: 3px;
-  background: #30383d;
-  color: #d9e0e3;
-  cursor: pointer;
-}
-
-.trace-studio-time-frame.is-selected {
-  border-color: #58b6aa;
-  background: #344b4d;
-}
-
-.trace-studio-time-frame.is-current {
-  box-shadow: inset 0 -3px #facc15;
-}
-
-.trace-studio-time-frame.has-custom-transition {
-  border-top-color: #73d0c4;
-}
-
-.trace-studio-time-number {
-  font-size: 11px;
-}
-
-body.asm-trace-studio-open .trace-event-panel {
-  display: none !important;
-}
-
 /* --------------------------------------------------------------------------
  * 區段：響應式版面
  * -------------------------------------------------------------------------- */
 
-@media (max-width: 1100px) {
-  body.asm-trace-studio-open #main {
-    grid-template-columns: 210px minmax(360px, 1fr) 6px var(--trace-studio-inspector-width, 300px);
-  }
-}

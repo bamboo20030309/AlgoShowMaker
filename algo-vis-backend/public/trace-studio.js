@@ -1,46 +1,32 @@
 /**
- * 模組：Trace Studio 編輯器
+ * 模組：程式碼頁左側「程式碼框」「事件動畫」標籤（原 Trace Studio）
  *
- * 責任：提供 frame 時間線、事件開關、物件樣式與位置、綁定、轉場、鏡頭及復原歷史的整合介面。
- * 資料流：所有編輯先寫入 trace.studio 的可序列化資料，經共用 renderer 即時預覽；history 保存設定快照，儲存時由 view-source 編碼回來源區塊。
- * 重要不變條件：選取 key、frame scope 與 runtime identity 必須可跨重繪解析；預覽操作不可直接永久改寫 DOM 幾何而略過設定模型。
- * 相容性：載入舊文件時缺少集合視為空集合，明確隱藏、關閉或自訂值必須在復原與儲存往返後保留。
+ * 責任：在左側面板提供三個標籤（原始碼／程式碼框／事件動畫）的切換，並在後兩個標籤中提供
+ *       程式碼框片段、程式碼框外觀、事件程式碼、自動固定與整份動畫的事件設定。
+ * 資料流：所有調整先寫入 trace.studio 的可序列化資料，立即以穩定渲染重畫播放器目前幀；
+ *         每次調整都記入復原歷史並經 view-source 寫回程式碼的 @asm-view 區塊。
+ * 重要不變條件：沒有獨立的編輯模式，畫布永遠是一般播放器；「這一幀」永遠跟著播放器目前幀。
+ * 相容性：載入舊文件時缺少集合視為空集合，明確關閉或自訂值必須在復原與儲存往返後保留。
+ *         window.ASMTraceStudio 名稱沿用，open/close 保留為相容 API。
  */
 (function () {
   const DEFAULT_EVENT_COLORS = window.ASMTraceEvents?.colors || {};
   const EVENT_LABELS = window.ASMTraceEvents?.labels || {};
-  const INSPECTOR_WIDTH_STORAGE_KEY = 'asm_trace_studio_inspector_width_v1';
-  const DEFAULT_INSPECTOR_WIDTH = 420;
+  const SIDE_TAB_STORAGE_KEY = 'asm_algorithm_side_tab_v1';
+  const SIDE_TABS = ['source', 'code-frame', 'events'];
 
   let trace = null;
-  let selectedFrames = new Set();
-  let selectionAnchor = 0;
   let currentIndex = 0;
+  let sideTab = 'source';
+  let settingsDirty = true;
   let availabilityRefreshFrame = 0;
   const pendingAvailabilityFrames = new Set();
-  let thumbnailRenderFrame = 0;
-  let thumbnailRenderMode = '';
-  let thumbnailCullFrame = 0;
-  let pendingThumbnails = [];
-  const THUMBNAIL_CACHE_LIMIT = 24;
-  const thumbnailCache = new Map();
-  const RAIL_ROW_HEIGHT = 174;
-  const RAIL_ROW_PITCH = RAIL_ROW_HEIGHT + 5;
-  let rail;
-  let timeline;
-  let inspector;
-  let inspectorResizer;
-  let eventGapRange;
-  let eventGapValue;
-  let inspectorMode = 'events';
-  let inspectorToolbar;
-  let inspectorEventButton;
-  let inspectorEventCount;
-  let inspectorCodeButton;
-  let inspectorEventsPanel;
-  let inspectorCodePanel;
-  let codePanelSelectionActive = false;
-  let codePanelSettingsSection;
+  let panelsBuilt = false;
+  let codeFramePanel;
+  let eventAnimationPanel;
+  let frameLabels = [];
+  let undoButtons = [];
+  let redoButtons = [];
   let frameEventsEditor;
   let frameEventsList;
   let frameFixedEditor;
@@ -49,14 +35,11 @@
   let frameCodeSnippetList;
   let frameCodeSnippetMeta;
   let resetCodeSnippetButton;
-  let snippetFocusButton;
   let activeEventCodeGroupId = '';
+  let codePanelSettingsSection;
   let codePanelFontSize;
   let codePanelFontSizeValue;
   const codePanelRanges = new Map();
-  let cameraTimer = null;
-  let undoButton;
-  let redoButton;
   let history = [];
   let historyIndex = -1;
   let historyTrace = null;
@@ -64,88 +47,20 @@
   let studioRenderDepth = 0;
 
   // ---------------------------------------------------------------------------
-  // 區段：DOM 建立與 render 邊界
+  // 區段：保留的事件與程式碼框邏輯（自 Trace Studio 原樣搬入）
   // ---------------------------------------------------------------------------
+  function snippetActionIcon() {
+    const icon = traceSvg('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+      'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' });
+    icon.append(traceSvg('path', { d: 'M20 7v5h-5 M19.2 12a7.2 7.2 0 1 0-1.7 4.7' }));
+    return icon;
+  }
+
   function el(name, className, text) {
     const node = document.createElement(name);
     if (className) node.className = className;
     if (text != null) node.textContent = text;
     return node;
-  }
-
-  function option(value, label) {
-    const node = document.createElement('option');
-    node.value = value;
-    node.textContent = label;
-    return node;
-  }
-
-  function inspectorWidthBounds() {
-    return {
-      min: 300,
-      max: Math.max(300, Math.min(760, window.innerWidth - 250 - 420 - 12))
-    };
-  }
-
-  function setInspectorWidth(value, persist = false) {
-    const bounds = inspectorWidthBounds();
-    const width = Math.round(Math.min(
-      bounds.max,
-      Math.max(bounds.min, Number(value) || DEFAULT_INSPECTOR_WIDTH)
-    ));
-    document.getElementById('main')?.style.setProperty('--trace-studio-inspector-width', `${width}px`);
-    inspectorResizer?.setAttribute('aria-valuenow', String(width));
-    if (persist) {
-      try { localStorage.setItem(INSPECTOR_WIDTH_STORAGE_KEY, String(width)); } catch {}
-    }
-    scheduleThumbnailCulling();
-    return width;
-  }
-
-  function restoreInspectorWidth() {
-    let saved = DEFAULT_INSPECTOR_WIDTH;
-    try { saved = Number(localStorage.getItem(INSPECTOR_WIDTH_STORAGE_KEY)) || saved; } catch {}
-    setInspectorWidth(saved);
-  }
-
-  function beginInspectorResize(event) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const move = pointerEvent => setInspectorWidth(window.innerWidth - pointerEvent.clientX);
-    const finish = pointerEvent => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', finish);
-      window.removeEventListener('pointercancel', finish);
-      setInspectorWidth(window.innerWidth - pointerEvent.clientX, true);
-      document.body.classList.remove('asm-trace-inspector-resizing');
-    };
-    document.body.classList.add('asm-trace-inspector-resizing');
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', finish);
-    window.addEventListener('pointercancel', finish);
-  }
-
-  function snippetActionIcon(kind) {
-    const icon = traceSvg('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
-      'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' });
-    if (kind === 'reset') {
-      icon.append(traceSvg('path', { d: 'M20 7v5h-5 M19.2 12a7.2 7.2 0 1 0-1.7 4.7' }));
-    } else {
-      icon.append(traceSvg('circle', { cx: 10, cy: 10, r: 6.5 }),
-        traceSvg('path', { d: 'm15 15 5 5 M7 10h6' }));
-      if (kind === 'zoom-in') icon.append(traceSvg('path', { d: 'M10 7v6' }));
-    }
-    return icon;
-  }
-
-  function setSnippetFocus(active) {
-    document.body.classList.toggle('asm-trace-snippet-focus', Boolean(active));
-    if (!snippetFocusButton) return;
-    snippetFocusButton.setAttribute('aria-pressed', String(Boolean(active)));
-    const label = active ? '縮小' : '放大';
-    snippetFocusButton.replaceChildren(snippetActionIcon(active ? 'zoom-out' : 'zoom-in'));
-    snippetFocusButton.setAttribute('aria-label', label);
-    snippetFocusButton.title = label;
   }
 
   function runStudioRender(callback) {
@@ -161,9 +76,6 @@
     return runStudioRender(() => window.ASMTracePlayer.render(index, options));
   }
 
-  // ---------------------------------------------------------------------------
-  // 區段：Studio 模型正規化
-  // ---------------------------------------------------------------------------
   function ensureStudioData() {
     trace.studio ||= {};
     // 動畫完全由指令驅動：手動調整欄位與跨幀規則一律移除，事件與程式碼片段設定保留。
@@ -203,16 +115,8 @@
     window.ASMTraceEvents?.applyEnabledStates?.(trace);
   }
 
-  // ---------------------------------------------------------------------------
-  // 區段：復原／重做歷史
-  // ---------------------------------------------------------------------------
   function editableSnapshot() {
     return JSON.stringify({ studio: trace?.studio || {} });
-  }
-
-  function updateHistoryButtons() {
-    if (undoButton) undoButton.disabled = historyIndex <= 0;
-    if (redoButton) redoButton.disabled = historyIndex < 0 || historyIndex >= history.length - 1;
   }
 
   function resetHistory() {
@@ -220,80 +124,6 @@
     historyIndex = 0;
     historyTrace = trace;
     updateHistoryButtons();
-  }
-
-  function recordHistory() {
-    if (restoringHistory || !trace) return;
-    const snapshot = editableSnapshot();
-    if (history[historyIndex] !== snapshot) {
-      history.splice(historyIndex + 1);
-      history.push(snapshot);
-      if (history.length > 100) history.shift();
-      historyIndex = history.length - 1;
-      updateHistoryButtons();
-    }
-    writeSourceSettings();
-  }
-
-  function restoreHistory(nextIndex) {
-    if (!trace || nextIndex < 0 || nextIndex >= history.length || nextIndex === historyIndex) return;
-    restoringHistory = true;
-    historyIndex = nextIndex;
-    const snapshot = JSON.parse(history[historyIndex]);
-    trace.studio = snapshot.studio || {};
-    ensureStudioData();
-    window.ASMTraceCodePresenter?.applyPresentationSettings?.(trace);
-    renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
-    renderRail();
-    revealCurrentFrameInRail();
-    renderTimeline();
-    renderSelection();
-    applyCameraForFrame(currentIndex, true);
-    restoringHistory = false;
-    updateHistoryButtons();
-    writeSourceSettings();
-  }
-
-  function undo() { restoreHistory(historyIndex - 1); }
-  function redo() { restoreHistory(historyIndex + 1); }
-
-  function variables() {
-    return Object.entries(trace?.variables || {});
-  }
-
-  // ---------------------------------------------------------------------------
-  // 區段：frame scope 與語意 key
-  // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // 區段：文字綁定
-  // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // 區段：畫布元素與拖曳幾何
-  // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // 區段：文字區段選取
-  // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // 區段：物件轉場編輯
-  // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // 區段：物件與文字樣式
-  // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // 區段：值與位置綁定
-  // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // 區段：綁定與指標同步
-  // ---------------------------------------------------------------------------
-  function applyCameraForFrame(index, animate = false, delay = 0, previousFrame = null) {
-    clearTimeout(cameraTimer);
-    const frame = trace?.frames?.[index];
-    if (!frame) return;
-    cameraTimer = setTimeout(() => {
-      if (trace?.frames?.[currentIndex]?.id !== frame.id) return;
-      // 鏡頭只依指令（@camera、defaults）或自動捕捉決定。
-      window.ASMTraceCamera.apply(trace, frame, previousFrame, animate);
-    }, delay);
   }
 
   function eventColorFor(event) {
@@ -310,32 +140,6 @@
       : event?.type === 'sequence-operation'
         ? String(event.operation || '陣列操作')
       : (EVENT_LABELS[event?.type] || event?.type || '事件');
-  }
-
-  function eventDots(frame) {
-    const dots = el('span', 'trace-studio-event-dots');
-    const ordered = window.ASMTraceEvents?.ordered?.(frame.events || []) || frame.events || [];
-    const visible = ordered.filter(event => window.ASMTraceEvents?.showTimelineEvent
-      ? window.ASMTraceEvents.showTimelineEvent(event, trace)
-      : event.enabled !== false
-        && event.autoAnimationDisabled !== true
-        && window.ASMTraceEvents?.showTag(event.type, trace) !== false);
-    const uniqueEvents = new Map();
-    visible.forEach(event => {
-      const key = event.signature || event.type;
-      const existing = uniqueEvents.get(key);
-      if (!existing) uniqueEvents.set(key, event);
-    });
-    const events = [...uniqueEvents.values()];
-    events.forEach(event => {
-      const dot = el('i', 'trace-studio-event-dot');
-      dot.style.background = eventColorFor(event);
-      const label = eventLabel(event);
-      const summary = eventSummary(event);
-      dot.title = summary ? `${label}：${summary}` : label;
-      dots.append(dot);
-    });
-    return dots;
   }
 
   function eventSummary(event) {
@@ -531,8 +335,6 @@
       recordHistory();
       renderFrameEventsEditor();
       renderCodeSnippetEditor();
-      renderRail();
-      renderTimeline();
       renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
       window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', {
         detail: { document: trace }
@@ -553,8 +355,6 @@
     recordHistory();
     renderFrameEventsEditor();
     renderCodeSnippetEditor();
-    renderRail();
-    renderTimeline();
     renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
   }
 
@@ -569,25 +369,7 @@
     recordHistory();
     renderFrameEventsEditor();
     renderCodeSnippetEditor();
-    renderRail();
-    renderTimeline();
     renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
-  }
-
-  function setEventGap(value, save = true) {
-    if (!trace) return;
-    ensureStudioData();
-    const gapMs = Math.max(0, Math.min(2000, Number(value) || 0));
-    trace.studio.eventSettings.gapMs = gapMs;
-    if (eventGapRange) {
-      eventGapRange.value = String(gapMs);
-      eventGapRange.title = `事件間隔時間 ${gapMs} ms`;
-    }
-    if (eventGapValue) eventGapValue.textContent = `${gapMs} ms`;
-    if (!save) return;
-    window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', {
-      detail: { document: trace }
-    }));
   }
 
   function renderFrameEventsEditor() {
@@ -621,7 +403,6 @@
       row.append(icon, copy, toggle);
       frameFixedList.append(row);
     });
-    renderInspectorNavigation();
   }
 
   function snippetOverrideForFrame(frameId, create = false) {
@@ -826,423 +607,10 @@
     return inspectorEventsForFrame(frame).length > 0 || fixedEventsForFrame(frame).length > 0;
   }
 
-  function setInspectorMode(mode) {
-    inspectorMode = mode === 'code' ? 'code' : 'events';
-    renderInspectorNavigation();
-  }
-
-  function renderInspectorNavigation() {
-    if (!inspectorToolbar) return;
-    const eventCount = inspectorEventsForFrame().length;
-    inspectorEventCount.textContent = String(eventCount);
-    inspectorEventCount.hidden = !eventCount;
-    [
-      [inspectorEventButton, 'events'],
-      [inspectorCodeButton, 'code']
-    ].forEach(([button, mode]) => {
-      const active = inspectorMode === mode;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-pressed', String(active));
-    });
-    inspectorEventsPanel.hidden = inspectorMode !== 'events';
-    inspectorCodePanel.hidden = inspectorMode !== 'code';
-  }
-
-  function selectFrame(index, event = {}) {
-    const next = Math.max(0, Math.min(trace.frames.length - 1, Number(index) || 0));
-    if (event.shiftKey) {
-      selectedFrames.clear();
-      const start = Math.min(selectionAnchor, next);
-      const end = Math.max(selectionAnchor, next);
-      for (let cursor = start; cursor <= end; cursor += 1) selectedFrames.add(trace.frames[cursor].id);
-    } else if (event.ctrlKey || event.metaKey) {
-      const id = trace.frames[next].id;
-      if (selectedFrames.has(id) && selectedFrames.size > 1) selectedFrames.delete(id);
-      else selectedFrames.add(id);
-      selectionAnchor = next;
-    } else {
-      selectedFrames = new Set([trace.frames[next].id]);
-      selectionAnchor = next;
-    }
-    currentIndex = next;
-    renderPlayerFrame(next);
-    renderSelection();
-  }
-
-  function cancelThumbnailRendering() {
-    if (thumbnailRenderFrame) {
-      if (thumbnailRenderMode === 'idle' && typeof window.cancelIdleCallback === 'function') {
-        window.cancelIdleCallback(thumbnailRenderFrame);
-      } else {
-        cancelAnimationFrame(thumbnailRenderFrame);
-      }
-    }
-    thumbnailRenderFrame = 0;
-    thumbnailRenderMode = '';
-    pendingThumbnails = [];
-  }
-
-  function cancelThumbnailCulling() {
-    if (thumbnailCullFrame) cancelAnimationFrame(thumbnailCullFrame);
-    thumbnailCullFrame = 0;
-  }
-
-  function thumbnailWithinViewport(itemTop, itemBottom, viewportTop, viewportBottom, overscan = 0) {
-    return itemBottom >= viewportTop - overscan && itemTop <= viewportBottom + overscan;
-  }
-
-  function thumbnailPriority(itemTop, itemBottom, viewportTop, viewportBottom, overscan, isCurrent = false) {
-    if (thumbnailWithinViewport(itemTop, itemBottom, viewportTop, viewportBottom, 0)) {
-      return isCurrent ? 'current' : 'visible';
-    }
-    if (thumbnailWithinViewport(itemTop, itemBottom, viewportTop, viewportBottom, overscan)) {
-      return isCurrent ? 'current' : 'buffer';
-    }
-    return '';
-  }
-
-  function clearThumbnailCache() {
-    thumbnailCache.clear();
-  }
-
-  function cacheThumbnail(frameId, preview) {
-    if (!frameId || !preview) return;
-    thumbnailCache.delete(frameId);
-    thumbnailCache.set(frameId, preview);
-    while (thumbnailCache.size > THUMBNAIL_CACHE_LIMIT) {
-      thumbnailCache.delete(thumbnailCache.keys().next().value);
-    }
-  }
-
-  function takeCachedThumbnail(frameId) {
-    const preview = thumbnailCache.get(frameId) || null;
-    if (preview) thumbnailCache.delete(frameId);
-    return preview;
-  }
-
-  function thumbnailPlaceholder() {
-    const preview = el('span', 'trace-studio-frame-preview');
-    preview.setAttribute('aria-label', '縮圖載入中');
-    preview.setAttribute('aria-busy', 'true');
-    return preview;
-  }
-
-  function shouldRenderThumbnail(button, list) {
-    const itemRect = button.getBoundingClientRect();
-    const viewportRect = list.getBoundingClientRect();
-    const overscan = Math.min(180, Math.max(0, button.offsetHeight || 160));
-    return Boolean(thumbnailPriority(
-      itemRect.top,
-      itemRect.bottom,
-      viewportRect.top,
-      viewportRect.bottom,
-      overscan,
-      Number(button.dataset.frameIndex) === currentIndex
-    ));
-  }
-
-  function installThumbnail(preview, placeholder, frame, fromCache = false) {
-    preview.dataset.thumbnailRendered = 'true';
-    if (fromCache) preview.dataset.thumbnailCacheHit = 'true';
-    else delete preview.dataset.thumbnailCacheHit;
-    placeholder.replaceWith(preview);
-    window.ASMTraceRenderers?.refreshThumbnailCamera?.(preview, trace, frame);
-  }
-
-  function renderThumbnailJob(job) {
-    const { frame, index, placeholder, button } = job || {};
-    const list = typeof rail?.querySelector === 'function'
-      ? rail.querySelector('.trace-studio-frame-list')
-      : null;
-    if (!frame || !placeholder?.isConnected || (button && list && !shouldRenderThumbnail(button, list))) {
-      return false;
-    }
-    const preview = window.ASMTraceRenderers.createThumbnail(trace, frame, trace.frames[index - 1] || null);
-    installThumbnail(preview, placeholder, frame, false);
-    return true;
-  }
-
-  function refreshThumbnailCulling() {
-    thumbnailCullFrame = 0;
-    if (!rail || !trace || !document.body.classList.contains('asm-trace-studio-open')) return;
-    const list = rail.querySelector('.trace-studio-frame-list');
-    if (!list) return;
-    cancelThumbnailRendering();
-    mountVisibleRailCards(list);
-    const viewportRect = list.getBoundingClientRect();
-    const viewportCenter = (viewportRect.top + viewportRect.bottom) / 2;
-    const jobs = [];
-    list.querySelectorAll('.trace-studio-frame').forEach((button, index) => {
-      const preview = button.querySelector('.trace-studio-frame-preview');
-      if (!preview) return;
-      const itemRect = button.getBoundingClientRect();
-      const overscan = Math.min(180, Math.max(0, button.offsetHeight || 160));
-      const frameIndex = Number(button.dataset.frameIndex);
-      const frame = trace.frames[frameIndex];
-      const priority = thumbnailPriority(
-        itemRect.top,
-        itemRect.bottom,
-        viewportRect.top,
-        viewportRect.bottom,
-        overscan,
-        frameIndex === currentIndex
-      );
-      if (!priority) {
-        if (preview.dataset.thumbnailRendered === 'true') {
-          cacheThumbnail(button.dataset.frameId, preview);
-          preview.replaceWith(thumbnailPlaceholder());
-        }
-        return;
-      }
-      if (preview.dataset.thumbnailRendered === 'true') return;
-      if (!frame) return;
-      const cached = takeCachedThumbnail(frame.id);
-      if (cached) {
-        installThumbnail(cached, preview, frame, true);
-        return;
-      }
-      jobs.push({
-        frame,
-        index: frameIndex,
-        placeholder: preview,
-        button,
-        priority,
-        distance: Math.abs(((itemRect.top + itemRect.bottom) / 2) - viewportCenter)
-      });
-    });
-    const priorityRank = { current: 0, visible: 1, buffer: 2 };
-    jobs.sort((left, right) => priorityRank[left.priority] - priorityRank[right.priority]
-      || left.distance - right.distance || left.index - right.index);
-    if (jobs[0]?.priority === 'current') renderThumbnailJob(jobs.shift());
-    pendingThumbnails = jobs;
-    scheduleThumbnailRendering();
-  }
-
-  function scheduleThumbnailCulling() {
-    if (thumbnailCullFrame) return;
-    thumbnailCullFrame = requestAnimationFrame(refreshThumbnailCulling);
-  }
-
-  function scheduleThumbnailRendering() {
-    if (thumbnailRenderFrame || !pendingThumbnails.length) return;
-    const priority = pendingThumbnails[0]?.priority || 'visible';
-    if (priority === 'buffer' && typeof window.requestIdleCallback === 'function') {
-      thumbnailRenderMode = 'idle';
-      thumbnailRenderFrame = window.requestIdleCallback(renderThumbnailBatch, { timeout: 500 });
-      return;
-    }
-    thumbnailRenderMode = 'frame';
-    thumbnailRenderFrame = requestAnimationFrame(() => renderThumbnailBatch(null));
-  }
-
-  function renderThumbnailBatch(deadline = null) {
-    thumbnailRenderFrame = 0;
-    thumbnailRenderMode = '';
-    if (!trace || !document.body.classList.contains('asm-trace-studio-open')) {
-      pendingThumbnails = [];
-      return;
-    }
-    // Heap thumbnails perform synchronous SVG layout and getBBox calls. Doing
-    // several in one animation frame made the freshly opened Studio stutter.
-    if (deadline && !deadline.didTimeout && deadline.timeRemaining() < 6) {
-      scheduleThumbnailRendering();
-      return;
-    }
-    renderThumbnailJob(pendingThumbnails.shift());
-    scheduleThumbnailRendering();
-  }
-
-  function createRailCard(frame, index) {
-      const button = el('button', 'trace-studio-frame');
-      button.type = 'button';
-      button.dataset.frameId = frame.id;
-      button.dataset.frameIndex = index;
-      const header = el('span', 'trace-studio-frame-head');
-      header.append(el('strong', '', `幀 ${index + 1}`));
-      header.append(eventDots(frame));
-      if (window.ASMTraceTransitions?.hasCustomTransition?.(trace, frame.id)) {
-        const badge = el('i', 'trace-studio-transition-badge', '↝');
-        badge.title = '此幀包含自訂幀間動畫';
-        header.append(badge);
-      }
-      const directiveName = window.ASMTraceViewSource?.directiveName?.(frame) || '';
-      const source = el(
-        'small',
-        '',
-        `${directiveName ? `${directiveName} · ` : ''}${frame.source?.function || 'global'}:${frame.source?.line || '-'}`
-      );
-      const preview = thumbnailPlaceholder();
-      button.append(header, source, preview);
-      button.addEventListener('click', event => selectFrame(index, event));
-      button.style.height = `${RAIL_ROW_HEIGHT}px`;
-      button.style.boxSizing = 'border-box';
-      button.classList.toggle('is-selected', selectedFrames.has(frame.id));
-      button.classList.toggle('is-current', index === currentIndex);
-      return button;
-  }
-
-  function mountVisibleRailCards(list) {
-    const top = list.querySelector('[data-spacer="top"]');
-    const bottom = list.querySelector('[data-spacer="bottom"]');
-    if (!top || !bottom || list.clientHeight <= 0) return;
-    const start = Math.max(0, Math.floor(Math.max(0, list.scrollTop - 6) / RAIL_ROW_PITCH) - 1);
-    const end = Math.min(trace.frames.length,
-      Math.ceil((list.scrollTop + list.clientHeight - 6) / RAIL_ROW_PITCH) + 1);
-    const mounted = new Map();
-    list.querySelectorAll('.trace-studio-frame').forEach(button => {
-      const index = Number(button.dataset.frameIndex);
-      if (index < start || index >= end) {
-        const preview = button.querySelector('[data-thumbnail-rendered="true"]');
-        if (preview) cacheThumbnail(button.dataset.frameId, preview);
-        button.remove();
-      } else mounted.set(index, button);
-    });
-    top.style.height = `${start * RAIL_ROW_PITCH}px`;
-    bottom.style.height = `${(trace.frames.length - end) * RAIL_ROW_PITCH}px`;
-    for (let index = start; index < end; index += 1) {
-      if (mounted.has(index)) continue;
-      const button = createRailCard(trace.frames[index], index);
-      const following = [...list.querySelectorAll('.trace-studio-frame')]
-        .find(item => Number(item.dataset.frameIndex) > index);
-      list.insertBefore(button, following || bottom);
-    }
-  }
-
-  function renderRail() {
-    cancelThumbnailCulling();
-    cancelThumbnailRendering();
-    clearThumbnailCache();
-    const list = rail.querySelector('.trace-studio-frame-list');
-    const scrollTop = list.scrollTop;
-    list.replaceChildren();
-    const top = el('div', 'trace-studio-rail-spacer');
-    top.dataset.spacer = 'top';
-    const bottom = el('div', 'trace-studio-rail-spacer');
-    bottom.dataset.spacer = 'bottom';
-    bottom.style.height = `${trace.frames.length * RAIL_ROW_PITCH}px`;
-    list.append(top, bottom);
-    list.scrollTop = scrollTop;
-    mountVisibleRailCards(list);
-    scheduleThumbnailCulling();
-  }
-
-  function revealCurrentFrameInRail() {
-    if (!rail || !trace) return;
-    const list = rail.querySelector('.trace-studio-frame-list');
-    if (!list) return;
-    const top = 6 + currentIndex * RAIL_ROW_PITCH;
-    const bottom = top + RAIL_ROW_HEIGHT;
-    if (top < list.scrollTop) list.scrollTop = top;
-    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
-    mountVisibleRailCards(list);
-    scheduleThumbnailCulling();
-  }
-
-  const TIMELINE_PITCH = 45;
-  let timelineWindow = '';
-  let timelineScrollFrame = 0;
-
-  function mountTimelineFrames() {
-    const track = timeline?.querySelector('.trace-studio-timeline-track');
-    if (!track || !trace) return;
-    const count = trace.frames.length;
-    const start = Math.max(0, Math.floor((track.scrollLeft - 8) / TIMELINE_PITCH) - 1);
-    const end = Math.min(count, Math.ceil((track.scrollLeft + track.clientWidth - 8) / TIMELINE_PITCH) + 1);
-    const key = `${start}:${end}`;
-    if (key === timelineWindow) return;
-    timelineWindow = key;
-    const fragment = document.createDocumentFragment();
-    const spacer = width => {
-      const node = el('div', 'trace-studio-time-spacer');
-      node.style.flex = `0 0 ${Math.max(0, width)}px`;
-      node.setAttribute('aria-hidden', 'true');
-      return node;
-    };
-    if (start) fragment.append(spacer(start * TIMELINE_PITCH - 3));
-    for (let index = start; index < end; index += 1) {
-      const frame = trace.frames[index];
-      const marker = el('button', 'trace-studio-time-frame');
-      marker.type = 'button';
-      marker.dataset.frameId = frame.id;
-      marker.dataset.frameIndex = index;
-      marker.classList.toggle('is-selected', selectedFrames.has(frame.id));
-      marker.classList.toggle('is-current', index === currentIndex);
-      marker.classList.toggle('has-custom-transition', Boolean(
-        window.ASMTraceTransitions?.hasCustomTransition?.(trace, frame.id)
-      ));
-      marker.title = `幀 ${index + 1} · 程式第 ${frame.source?.line || '-'} 行`;
-      marker.append(el('span', 'trace-studio-time-number', String(index + 1)), eventDots(frame));
-      marker.addEventListener('click', event => selectFrame(index, event));
-      fragment.append(marker);
-    }
-    if (end < count) fragment.append(spacer((count - end) * TIMELINE_PITCH - 3));
-    track.replaceChildren(fragment);
-  }
-
-  function renderTimeline() {
-    timelineWindow = '';
-    mountTimelineFrames();
-  }
-
-  function revealTimelineFrame() {
-    const track = timeline?.querySelector('.trace-studio-timeline-track');
-    if (!track) return;
-    const left = 8 + currentIndex * TIMELINE_PITCH;
-    if (left < track.scrollLeft) track.scrollLeft = left;
-    else if (left + 42 > track.scrollLeft + track.clientWidth) {
-      track.scrollLeft = left + 42 - track.clientWidth;
-    }
-    mountTimelineFrames();
-  }
-
   function cancelEventAvailabilityRefresh() {
     if (availabilityRefreshFrame) cancelAnimationFrame(availabilityRefreshFrame);
     availabilityRefreshFrame = 0;
     pendingAvailabilityFrames.clear();
-  }
-
-  function refreshEventAvailability() {
-    availabilityRefreshFrame = 0;
-    const frameIds = new Set(pendingAvailabilityFrames);
-    pendingAvailabilityFrames.clear();
-    if (!trace || !document.body.classList.contains('asm-trace-studio-open')) return;
-    const frames = new Map(trace.frames.filter(frame => frameIds.has(frame.id))
-      .map(frame => [frame.id, frame]));
-    // Rendering a thumbnail evaluates event availability. Never redraw scenes in
-    // response to that notification: doing so rebuilds every SVG for every frame.
-    [rail, timeline].forEach(container => {
-      container?.querySelectorAll('[data-frame-id]').forEach(item => {
-        const frame = frames.get(item.dataset.frameId);
-        if (!frame) return;
-        item.querySelector('.trace-studio-event-dots')?.replaceWith(eventDots(frame));
-      });
-    });
-    if (frameIds.has(trace.frames[currentIndex]?.id)) renderFrameEventsEditor();
-  }
-
-  function renderSelection() {
-    if (!trace) return;
-    revealTimelineFrame();
-    rail.querySelectorAll('[data-frame-id]').forEach(item => {
-      item.classList.toggle('is-selected', selectedFrames.has(item.dataset.frameId));
-      item.classList.toggle('is-current', Number(item.dataset.frameIndex) === currentIndex);
-    });
-    timeline.querySelectorAll('[data-frame-id]').forEach(item => {
-      item.classList.toggle('is-selected', selectedFrames.has(item.dataset.frameId));
-      item.classList.toggle('is-current', Number(item.dataset.frameIndex) === currentIndex);
-    });
-    if (codePanelFontSize && codePanelFontSizeValue) {
-      const size = window.ASMTraceCodePresenter?.normalizeFontSize?.(trace?.studio?.codePanelFontSize) || 20;
-      codePanelFontSize.value = String(size);
-      codePanelFontSizeValue.textContent = `${size}px`;
-    }
-    codePanelRanges.forEach(({input,output,normalize,suffix}, key) => {
-      const value = normalize(trace?.studio?.[key]);
-      input.value = String(value);
-      output.textContent = `${value}${suffix}`;
-    });
-    renderFrameEventsEditor();
-    renderCodeSnippetEditor();
   }
 
   function writeSourceSettings() {
@@ -1280,65 +648,138 @@
     return wrapper;
   }
 
-  function buildInspector() {
-    inspector = el('aside', 'trace-studio-inspector');
-    const header = el('header', 'trace-studio-inspector-head');
-    header.append(el('strong', '', '事件與程式碼'));
-    inspector.append(header);
+  // ---------------------------------------------------------------------------
+  // 區段：復原／重做歷史
+  // 程式碼框與事件動畫的每次調整都會改動 @asm-view，因此都記入歷史並寫回程式碼。
+  // ---------------------------------------------------------------------------
+  function recordHistory(options = {}) {
+    if (restoringHistory || !trace) return;
+    const snapshot = editableSnapshot();
+    if (history[historyIndex] !== snapshot) {
+      history.splice(historyIndex + 1);
+      history.push(snapshot);
+      if (history.length > 100) history.shift();
+      historyIndex = history.length - 1;
+      updateHistoryButtons();
+    }
+    if (options.write !== false) writeSourceSettings();
+  }
 
-    inspectorToolbar = el('nav', 'trace-studio-inspector-toolbar');
-    inspectorToolbar.setAttribute('aria-label', '右欄功能');
-    const toolbarButton = (mode, icon, label, title) => {
-      const button = el('button', 'trace-studio-inspector-tool');
-      button.type = 'button';
-      button.title = title;
-      button.setAttribute('aria-label', label);
-      button.append(el('span', 'trace-studio-inspector-tool-icon', icon), el('span', '', label));
-      button.addEventListener('click', () => setInspectorMode(mode));
-      return button;
-    };
-    inspectorEventButton = toolbarButton('events', '●', '事件', '事件程式碼');
-    inspectorEventCount = el('i', 'trace-studio-inspector-tool-count', '0');
-    inspectorEventButton.append(inspectorEventCount);
-    inspectorCodeButton = toolbarButton('code', '</>', '程式碼', '編輯目前行為的程式碼片段');
-    inspectorToolbar.append(inspectorEventButton, inspectorCodeButton);
-    inspector.append(inspectorToolbar);
+  function restoreHistory(nextIndex) {
+    if (!trace || nextIndex < 0 || nextIndex >= history.length || nextIndex === historyIndex) return;
+    restoringHistory = true;
+    historyIndex = nextIndex;
+    const snapshot = JSON.parse(history[historyIndex]);
+    trace.studio = snapshot.studio || {};
+    ensureStudioData();
+    window.ASMTraceCodePresenter?.applyPresentationSettings?.(trace);
+    renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+    // 整份動畫的事件設定（左側「事件動畫」下方）也要同步顯示還原後的值。
+    window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', {
+      detail: { document: trace, fromHistory: true }
+    }));
+    renderSettings();
+    restoringHistory = false;
+    updateHistoryButtons();
+    writeSourceSettings();
+  }
 
-    eventGapRange = document.createElement('input');
-    eventGapRange.type = 'range';
-    eventGapRange.className = 'trace-studio-event-gap-range';
-    eventGapRange.min = '0';
-    eventGapRange.max = '2000';
-    eventGapRange.step = '10';
-    eventGapRange.value = String(trace?.studio?.eventSettings?.gapMs ?? 500);
-    eventGapRange.title = `事件間隔時間 ${eventGapRange.value} ms`;
-    eventGapValue = el('output', 'trace-studio-event-gap-value', `${eventGapRange.value} ms`);
-    const eventGapControl = el('div', 'trace-studio-event-gap-control');
-    eventGapControl.append(eventGapRange, eventGapValue);
-    eventGapRange.addEventListener('input', () => {
-      setEventGap(eventGapRange.value, false);
-      window.dispatchEvent(new CustomEvent('asm:trace-event-gap-input', {
-        detail: { document: trace, gapMs: Number(eventGapRange.value) || 0 }
-      }));
+  function undo() { restoreHistory(historyIndex - 1); }
+  function redo() { restoreHistory(historyIndex + 1); }
+
+  // ---------------------------------------------------------------------------
+  // 區段：左側標籤
+  // ---------------------------------------------------------------------------
+  function tabButtons() {
+    return [...document.querySelectorAll('#codePanel .side-tab[data-side-tab]')];
+  }
+
+  function settingsTabVisible() {
+    return sideTab !== 'source' && !document.getElementById('codePanel')?.classList.contains('collapsed');
+  }
+
+  function setSideTab(name, options = {}) {
+    const next = SIDE_TABS.includes(name) ? name : 'source';
+    sideTab = next;
+    tabButtons().forEach(button => {
+      const active = button.dataset.sideTab === next;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+      if (active && options.focus) button.focus();
     });
-    eventGapRange.addEventListener('change', () => setEventGap(eventGapRange.value, true));
-    const eventGapField = field('事件間隔時間', eventGapControl);
+    document.querySelectorAll('#codePanel [data-side-panel]').forEach(panel => {
+      panel.hidden = panel.dataset.sidePanel !== next;
+    });
+    document.getElementById('codePanel')?.setAttribute('data-side-tab', next);
+    if (options.persist !== false) {
+      try { localStorage.setItem(SIDE_TAB_STORAGE_KEY, next); } catch {}
+    }
+    if (next === 'source') {
+      if (typeof aceEditor !== 'undefined') aceEditor.resize?.();
+      return;
+    }
+    if (trace && settingsDirty) {
+      window.ASMTraceRenderers?.preflightEventAvailability?.(trace, { frameIndex: currentIndex });
+      renderSettings();
+    }
+  }
 
-    inspectorEventsPanel = el('div', 'trace-studio-inspector-panel trace-studio-events-panel');
-    inspectorCodePanel = el('div', 'trace-studio-inspector-panel trace-studio-code-panel');
-    inspector.append(inspectorEventsPanel, inspectorCodePanel);
+  function bindTabs() {
+    const buttons = tabButtons();
+    if (!buttons.length || buttons[0].dataset.sideTabBound) return;
+    buttons.forEach((button, index) => {
+      button.dataset.sideTabBound = '1';
+      button.addEventListener('click', () => setSideTab(button.dataset.sideTab));
+      button.addEventListener('keydown', event => {
+        const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+        if (event.key === 'Home' || event.key === 'End') {
+          event.preventDefault();
+          setSideTab(buttons[event.key === 'Home' ? 0 : buttons.length - 1].dataset.sideTab, { focus: true });
+          return;
+        }
+        if (!step) return;
+        event.preventDefault();
+        const target = buttons[(index + step + buttons.length) % buttons.length];
+        setSideTab(target.dataset.sideTab, { focus: true });
+      });
+    });
+    let saved = 'source';
+    try { saved = localStorage.getItem(SIDE_TAB_STORAGE_KEY) || 'source'; } catch {}
+    setSideTab(saved, { persist: false });
+  }
 
-    frameEventsEditor = section('事件程式碼');
-    frameEventsEditor.classList.add('trace-studio-frame-events-section');
-    frameEventsList = el('div', 'trace-studio-frame-events');
-    frameEventsEditor.append(frameEventsList);
-    frameFixedEditor = section('自動固定');
-    frameFixedEditor.classList.add('trace-studio-fixed-section');
-    frameFixedList = el('div', 'trace-studio-fixed-batches');
-    frameFixedEditor.append(frameFixedList);
-    inspectorEventsPanel.append(eventGapField, frameEventsEditor, frameFixedEditor);
-    renderFrameEventsEditor();
+  // ---------------------------------------------------------------------------
+  // 區段：標籤內容
+  // ---------------------------------------------------------------------------
+  function frameToolbar() {
+    const toolbar = el('div', 'side-panel-toolbar');
+    const label = el('strong', 'side-panel-frame', '');
+    frameLabels.push(label);
+    const historyControls = el('div', 'trace-studio-history');
+    const undoButton = el('button', '', '↶');
+    undoButton.type = 'button';
+    undoButton.title = '復原 (Ctrl+Z)';
+    undoButton.setAttribute('aria-label', '復原');
+    undoButton.addEventListener('click', undo);
+    const redoButton = el('button', '', '↷');
+    redoButton.type = 'button';
+    redoButton.title = '重做 (Ctrl+Y)';
+    redoButton.setAttribute('aria-label', '重做');
+    redoButton.addEventListener('click', redo);
+    undoButtons.push(undoButton);
+    redoButtons.push(redoButton);
+    historyControls.append(undoButton, redoButton);
+    toolbar.append(label, historyControls);
+    return toolbar;
+  }
 
+  function groupHeading(text) {
+    return el('h2', 'side-panel-group', text);
+  }
+
+  function buildCodeFramePanel() {
+    const content = el('div', 'side-panel-content trace-studio-code-panel');
     frameCodeSnippetEditor = section('程式碼片段');
     frameCodeSnippetEditor.classList.add('trace-studio-code-snippet-section');
     const snippetHeader = el('div', 'trace-studio-snippet-head');
@@ -1347,16 +788,10 @@
     resetCodeSnippetButton.type = 'button';
     resetCodeSnippetButton.title = '恢復自動篩選';
     resetCodeSnippetButton.setAttribute('aria-label', '恢復自動篩選');
-    resetCodeSnippetButton.append(snippetActionIcon('reset'));
+    resetCodeSnippetButton.append(snippetActionIcon());
     resetCodeSnippetButton.addEventListener('click', resetCurrentCodeSnippet);
-    snippetFocusButton = el('button', 'trace-studio-snippet-focus');
-    snippetFocusButton.type = 'button';
-    setSnippetFocus(false);
-    snippetFocusButton.addEventListener('click', () => setSnippetFocus(
-      !document.body.classList.contains('asm-trace-snippet-focus')
-    ));
     const snippetActions = el('div', 'trace-studio-snippet-actions');
-    snippetActions.append(resetCodeSnippetButton, snippetFocusButton);
+    snippetActions.append(resetCodeSnippetButton);
     snippetHeader.append(frameCodeSnippetMeta, snippetActions);
     frameCodeSnippetList = el('div', 'trace-studio-frame-events trace-studio-code-snippet-list');
     frameCodeSnippetList.addEventListener('wheel', event => {
@@ -1365,8 +800,6 @@
       frameCodeSnippetList.scrollLeft += event.deltaY;
     }, { passive: false });
     frameCodeSnippetEditor.append(snippetHeader, frameCodeSnippetList);
-    inspectorCodePanel.append(frameCodeSnippetEditor);
-    renderCodeSnippetEditor();
 
     const codePanel = section('程式碼框外觀');
     codePanel.dataset.traceCodeControls = '1';
@@ -1376,11 +809,7 @@
     codePanelFontSize.min = '8';
     codePanelFontSize.max = '64';
     codePanelFontSize.step = '1';
-    const savedCodeFontSize = window.ASMTraceCodePresenter?.normalizeFontSize?.(
-      trace?.studio?.codePanelFontSize
-    ) || 20;
-    codePanelFontSize.value = String(savedCodeFontSize);
-    codePanelFontSizeValue = el('output', 'trace-studio-range-value', `${savedCodeFontSize}px`);
+    codePanelFontSizeValue = el('output', 'trace-studio-range-value', '20px');
     const codeFontSizeRow = el('div', 'trace-studio-range-row');
     codeFontSizeRow.append(codePanelFontSize, codePanelFontSizeValue);
     codePanelFontSize.addEventListener('input', () => {
@@ -1391,7 +820,7 @@
       codePanelFontSizeValue.textContent = `${size}px`;
       window.ASMTraceCodePresenter?.applyPresentationSettings?.(trace);
     });
-    codePanelFontSize.addEventListener('change', recordHistory);
+    codePanelFontSize.addEventListener('change', () => recordHistory());
     codePanel.append(field('字體大小', codeFontSizeRow));
     codePanelRanges.clear();
     [
@@ -1406,9 +835,7 @@
       input.type = 'range';
       input.min = String(setting.min); input.max = String(setting.max); input.step = String(setting.step);
       input.dataset.codePanelSetting = setting.key;
-      const value = setting.normalize(trace?.studio?.[setting.key]);
-      input.value = String(value);
-      const output = el('output','trace-studio-range-value',`${value}${setting.suffix}`);
+      const output = el('output','trace-studio-range-value','');
       const row = el('div','trace-studio-range-row'); row.append(input,output);
       codePanelRanges.set(setting.key,{...setting,input,output});
       input.addEventListener('input', () => {
@@ -1418,175 +845,151 @@
         output.textContent = `${value}${setting.suffix}`;
         window.ASMTraceCodePresenter.applyPresentationSettings(trace);
       });
-      input.addEventListener('change',recordHistory);
+      input.addEventListener('change', () => recordHistory());
       codePanel.append(field(setting.label,row));
     });
-    inspectorCodePanel.append(codePanel);
-    renderInspectorNavigation();
-    return inspector;
+    content.append(groupHeading('這一幀'), frameCodeSnippetEditor, groupHeading('整份動畫'), codePanel);
+    return content;
   }
 
-  function closeStudio(options = {}) {
-    cancelThumbnailCulling();
-    cancelThumbnailRendering();
-    cancelEventAvailabilityRefresh();
-    writeSourceSettings();
-    window.ASMTraceCodePresenter?.clearSelection?.();
-    setSnippetFocus(false);
-    document.body.classList.remove('asm-trace-studio-open');
-    window.setLocalCameraStudio?.(false);
-    codePanelSelectionActive = false;
-    // Leaving the editor restores a stable scene, without replaying events.
-    // Explicitly disabling event animation also preserves viewport-aware LOD.
-    if (options.render !== false) renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+  function buildEventAnimationPanel() {
+    const content = el('div', 'side-panel-content trace-studio-events-panel');
+    frameEventsEditor = section('事件程式碼');
+    frameEventsEditor.classList.add('trace-studio-frame-events-section');
+    frameEventsList = el('div', 'trace-studio-frame-events');
+    frameEventsEditor.append(frameEventsList);
+    frameFixedEditor = section('自動固定');
+    frameFixedEditor.classList.add('trace-studio-fixed-section');
+    frameFixedList = el('div', 'trace-studio-fixed-batches');
+    frameFixedEditor.append(frameFixedList);
+    content.append(groupHeading('這一幀'), frameEventsEditor, frameFixedEditor, groupHeading('整份動畫'));
+    return content;
   }
 
-  function buildUi() {
-    const main = document.getElementById('main');
-    const vizPanel = document.getElementById('vizPanel');
-    if (!main || !vizPanel || document.getElementById('traceStudioRail')) return;
-
-    rail = el('aside', 'trace-studio-rail');
-    rail.id = 'traceStudioRail';
-    const railHeader = el('header', 'trace-studio-rail-head');
-    railHeader.append(el('strong', '', '切片縮圖'));
-    const historyControls = el('div', 'trace-studio-history');
-    undoButton = el('button', '', '↶');
-    undoButton.type = 'button';
-    undoButton.title = '復原 (Ctrl+Z)';
-    undoButton.addEventListener('click', undo);
-    redoButton = el('button', '', '↷');
-    redoButton.type = 'button';
-    redoButton.title = '重做 (Ctrl+Y)';
-    redoButton.addEventListener('click', redo);
-    historyControls.append(undoButton, redoButton);
-    const close = el('button', '', '返回程式碼');
-    close.type = 'button';
-    close.addEventListener('click', closeStudio);
-    railHeader.append(historyControls, close);
-    const frameList = el('div', 'trace-studio-frame-list');
-    frameList.addEventListener('scroll', scheduleThumbnailCulling, { passive: true });
-    rail.append(railHeader, frameList);
-
-    inspector = buildInspector();
-    inspectorResizer = el('div', 'trace-studio-inspector-resizer');
-    inspectorResizer.id = 'traceStudioInspectorResizer';
-    inspectorResizer.tabIndex = 0;
-    inspectorResizer.setAttribute('role', 'separator');
-    inspectorResizer.setAttribute('aria-label', '調整 Trace Studio 右側欄寬度');
-    inspectorResizer.setAttribute('aria-orientation', 'vertical');
-    inspectorResizer.setAttribute('aria-valuemin', '300');
-    inspectorResizer.setAttribute('aria-valuemax', '760');
-    inspectorResizer.title = '拖曳調整右側欄寬度；雙擊恢復預設';
-    inspectorResizer.addEventListener('pointerdown', beginInspectorResize);
-    inspectorResizer.addEventListener('dblclick', () => setInspectorWidth(DEFAULT_INSPECTOR_WIDTH, true));
-    inspectorResizer.addEventListener('keydown', event => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
-      event.preventDefault();
-      const current = Number(inspectorResizer.getAttribute('aria-valuenow')) || DEFAULT_INSPECTOR_WIDTH;
-      setInspectorWidth(event.key === 'Home'
-        ? DEFAULT_INSPECTOR_WIDTH
-        : current + (event.key === 'ArrowLeft' ? 24 : -24), true);
-    });
-    timeline = el('div', 'trace-studio-timeline');
-    timeline.id = 'traceStudioTimeline';
-    const timelineHead = el('div', 'trace-studio-timeline-head');
-    timelineHead.append(el('strong', '', '事件時間線'));
-    timeline.append(timelineHead, el('div', 'trace-studio-timeline-track'));
-    const timeTrack = timeline.querySelector('.trace-studio-timeline-track');
-    timeTrack.addEventListener('scroll', () => {
-      if (timelineScrollFrame) return;
-      timelineScrollFrame = requestAnimationFrame(() => {
-        timelineScrollFrame = 0;
-        mountTimelineFrames();
-      });
-    }, { passive: true });
-    new ResizeObserver(() => mountTimelineFrames()).observe(timeTrack);
-
-
-    main.insertBefore(rail, vizPanel);
-    main.append(inspectorResizer, inspector);
-    restoreInspectorWidth();
-    vizPanel.append(timeline);
-    window.addEventListener('resize', scheduleThumbnailCulling);
-    window.addEventListener('resize', restoreInspectorWidth);
-    window.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && document.body.classList.contains('asm-trace-snippet-focus')) {
-        event.preventDefault();
-        setSnippetFocus(false);
-      }
-    });
+  function buildPanels() {
+    if (panelsBuilt) return true;
+    codeFramePanel = document.getElementById('codeFramePanel');
+    eventAnimationPanel = document.getElementById('eventAnimationPanel');
+    if (!codeFramePanel || !eventAnimationPanel) return false;
+    panelsBuilt = true;
+    frameLabels = [];
+    undoButtons = [];
+    redoButtons = [];
+    codeFramePanel.append(frameToolbar(), buildCodeFramePanel());
+    const eventsContent = buildEventAnimationPanel();
+    // 整份動畫的事件設定由 trace-editor.js 建立，放在「整份動畫」標題之後。
+    const globalSettings = eventAnimationPanel.querySelector('.trace-event-settings-panel');
+    eventAnimationPanel.append(frameToolbar(), eventsContent);
+    if (globalSettings) eventsContent.append(globalSettings);
+    updateHistoryButtons();
+    return true;
   }
 
-  function open(source) {
-    cancelThumbnailRendering();
-    cancelEventAvailabilityRefresh();
-    trace = source || window.ASMTracePlayer?.getDocument?.();
-    if (!trace?.frames?.length) return;
-    currentIndex = Math.max(0, window.ASMTracePlayer?.getCurrentFrame?.() || 0);
-    // Compute the current frame before the inspector is created. Previously
-    // buildUi rendered the first-frame buttons from stale/default availability
-    // and they stayed green until that frame was visited through playback.
-    window.ASMTraceRenderers?.preflightEventAvailability?.(trace, { frameIndex: currentIndex });
-    const canvasTab = document.querySelector('.tab-btn[data-tab="tab-canvas"]');
-    if (canvasTab && !canvasTab.classList.contains('active')) canvasTab.click();
-    ensureStudioData();
-    buildUi();
-    document.body.classList.add('asm-trace-studio-open');
-    window.setLocalCameraStudio?.(true);
-    if (historyTrace !== trace) resetHistory();
-    codePanelSelectionActive = false;
-    inspectorMode = hasEventInspectorContent(trace.frames[currentIndex]) ? 'events' : 'code';
-    selectedFrames = new Set([trace.frames[currentIndex].id]);
-    selectionAnchor = currentIndex;
-    renderRail();
-    revealCurrentFrameInRail();
-    renderTimeline();
-    renderSelection();
-    renderInspectorNavigation();
-    if (!window.ASMTraceRenderers?.canReuseStudioScene?.(trace, trace.frames[currentIndex])) {
-      renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
-    } else {
-      window.ASMTraceRenderers.preflightEventAvailability(trace, { frameIndex: currentIndex });
+  function adoptGlobalEventSettings(panel) {
+    if (!panel) return;
+    const host = eventAnimationPanel?.querySelector('.trace-studio-events-panel');
+    if (host) host.append(panel);
+    else document.getElementById('eventAnimationPanel')?.append(panel);
+  }
+
+  function updateHistoryButtons() {
+    undoButtons.forEach(button => { button.disabled = historyIndex <= 0; });
+    redoButtons.forEach(button => { button.disabled = historyIndex < 0 || historyIndex >= history.length - 1; });
+  }
+
+  function setAttachedState(attached) {
+    document.getElementById('codePanel')?.classList.toggle('has-trace-settings', attached);
+  }
+
+  function renderSettings() {
+    if (!trace || !panelsBuilt) return;
+    settingsDirty = false;
+    const total = trace.frames.length;
+    frameLabels.forEach(label => { label.textContent = `第 ${currentIndex + 1} 幀／共 ${total} 幀`; });
+    if (codePanelFontSize && codePanelFontSizeValue) {
+      const size = window.ASMTraceCodePresenter?.normalizeFontSize?.(trace?.studio?.codePanelFontSize) || 20;
+      codePanelFontSize.value = String(size);
+      codePanelFontSizeValue.textContent = `${size}px`;
     }
-    applyCameraForFrame(currentIndex, false);
+    codePanelRanges.forEach(({input,output,normalize,suffix}, key) => {
+      const value = normalize(trace?.studio?.[key]);
+      input.value = String(value);
+      output.textContent = `${value}${suffix}`;
+    });
+    renderFrameEventsEditor();
+    renderCodeSnippetEditor();
+  }
+
+  function refreshEventAvailability() {
+    availabilityRefreshFrame = 0;
+    const frameIds = new Set(pendingAvailabilityFrames);
+    pendingAvailabilityFrames.clear();
+    if (!trace || !settingsTabVisible()) return;
+    if (frameIds.has(trace.frames[currentIndex]?.id)) renderFrameEventsEditor();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 區段：與播放器同步
+  // ---------------------------------------------------------------------------
+  function attach(source) {
+    cancelEventAvailabilityRefresh();
+    trace = source || window.ASMTracePlayer?.getDocument?.() || null;
+    if (!trace?.frames?.length || document.body.classList.contains('asm-embed-runtime')) {
+      if (!trace?.frames?.length) detach();
+      return;
+    }
+    currentIndex = Math.max(0, Math.min(trace.frames.length - 1,
+      window.ASMTracePlayer?.getCurrentFrame?.() || 0));
+    ensureStudioData();
+    if (!buildPanels()) return;
+    setAttachedState(true);
+    if (historyTrace !== trace) resetHistory();
+    updateHistoryButtons();
+    settingsDirty = true;
+    if (settingsTabVisible()) {
+      window.ASMTraceRenderers?.preflightEventAvailability?.(trace, { frameIndex: currentIndex });
+      renderSettings();
+    }
+  }
+
+  function detach() {
+    cancelEventAvailabilityRefresh();
+    trace = null;
+    historyTrace = null;
+    history = [];
+    historyIndex = -1;
+    setAttachedState(false);
+    updateHistoryButtons();
   }
 
   window.addEventListener('asm:trace-frame', event => {
     if (!trace || event.detail?.document !== trace) return;
-    if (!document.body.classList.contains('asm-trace-studio-open')) return;
-    const next = Math.max(0, Math.min(trace.frames.length - 1, Number(event.detail.index) || 0));
-    currentIndex = next;
-    window.ASMTraceRenderers?.preflightEventAvailability?.(trace, { frameIndex: next });
-    if (studioRenderDepth === 0) {
-      selectedFrames = new Set([trace.frames[next].id]);
-      selectionAnchor = next;
-    }
-    renderSelection();
-    applyCameraForFrame(currentIndex, Boolean(event.detail?.previousFrame), 0, event.detail?.previousFrame || null);
-    if (studioRenderDepth === 0) revealCurrentFrameInRail();
+    currentIndex = Math.max(0, Math.min(trace.frames.length - 1, Number(event.detail.index) || 0));
+    settingsDirty = true;
+    if (!settingsTabVisible()) return;
+    window.ASMTraceRenderers?.preflightEventAvailability?.(trace, { frameIndex: currentIndex });
+    renderSettings();
   });
 
   window.addEventListener('asm:trace-menu-colors', event => {
     if (!trace || event.detail?.document !== trace) return;
-    renderRail();
-    renderTimeline();
-    renderSelection();
+    settingsDirty = true;
+    if (settingsTabVisible()) renderSettings();
   });
 
   window.addEventListener('asm:trace-event-settings-changed', event => {
     if (!trace || event.detail?.document !== trace) return;
-    setEventGap(trace.studio?.eventSettings?.gapMs ?? 500, false);
-    renderFrameEventsEditor();
-    renderCodeSnippetEditor();
-    renderRail();
-    renderTimeline();
-    renderInspectorNavigation();
+    // 「整份動畫」的事件設定由使用者調整時也記入歷史；是否寫回程式碼維持原本的規則。
+    if (event.detail?.userEdit && !event.detail?.fromHistory) recordHistory({ write: false });
+    settingsDirty = true;
+    if (settingsTabVisible()) {
+      renderFrameEventsEditor();
+      renderCodeSnippetEditor();
+    }
   });
 
   window.addEventListener('asm:trace-active-event', event => {
-    if (!trace || event.detail?.document !== trace
-      || !document.body.classList.contains('asm-trace-studio-open')) return;
+    if (!trace || event.detail?.document !== trace || !settingsTabVisible()) return;
     const eventId = String(event.detail?.event?.id || '');
     syncActiveSnippetEvent(event.detail?.phase === 'start' ? eventId : '', event.detail?.phase === 'start');
     const groupId = window.ASMTraceEventCodeTree?.eventGroupId?.(event.detail?.event);
@@ -1603,33 +1006,30 @@
   });
 
   window.addEventListener('asm:trace-code-panel-selected', event => {
-    if (!trace || event.detail?.document !== trace
-      || !document.body.classList.contains('asm-trace-studio-open')) return;
-    // 點畫布上的程式碼框：切到「程式碼」頁並捲到程式碼框外觀設定。
-    codePanelSelectionActive = true;
-    inspectorMode = 'code';
-    renderInspectorNavigation();
+    if (!trace || event.detail?.document !== trace) return;
+    const codePanel = document.getElementById('codePanel');
+    if (!codePanel || codePanel.classList.contains('collapsed')
+      || document.body.classList.contains('asm-embed-runtime')) return;
+    // 點畫布上的程式碼框：切到「程式碼框」標籤並捲到程式碼框外觀設定。
+    setSideTab('code-frame');
     codePanelSettingsSection?.scrollIntoView?.({ block: 'nearest' });
   });
 
   window.addEventListener('asm:trace-event-availability-changed', event => {
-    if (!trace || event.detail?.document !== trace
-      || !document.body.classList.contains('asm-trace-studio-open')) return;
+    if (!trace || event.detail?.document !== trace || !settingsTabVisible()) return;
     pendingAvailabilityFrames.add(event.detail.frameId);
     if (!availabilityRefreshFrame) {
       availabilityRefreshFrame = requestAnimationFrame(refreshEventAvailability);
     }
   });
 
-  window.addEventListener('asm:trace-event-gap-input', event => {
-    if (!trace || event.detail?.document !== trace) return;
-    setEventGap(event.detail?.gapMs ?? 500, false);
-  });
-
   window.addEventListener('keydown', event => {
-    if (!document.body.classList.contains('asm-trace-studio-open') || !(event.ctrlKey || event.metaKey)) return;
-    const tag = event.target?.tagName?.toLowerCase();
-    if (['input', 'textarea', 'select'].includes(tag) || event.target?.isContentEditable) return;
+    if (!trace || !settingsTabVisible() || !(event.ctrlKey || event.metaKey) || window.isDrawingMode) return;
+    const target = event.target;
+    const tag = target?.tagName?.toLowerCase();
+    const textInput = tag === 'textarea' || tag === 'select' || target?.isContentEditable
+      || (tag === 'input' && !['range', 'checkbox', 'button'].includes(String(target.type || '').toLowerCase()));
+    if (textInput) return;
     const key = event.key.toLowerCase();
     if (key !== 'z' && key !== 'y') return;
     event.preventDefault();
@@ -1637,24 +1037,44 @@
     if (key === 'y' || event.shiftKey) redo();
     else undo();
   }, true);
+
+  function initialize() {
+    bindTabs();
+    document.getElementById('panelToggleBtn')?.addEventListener('click', () => {
+      // 摺疊時不更新內容；展開後若停在設定標籤就補一次重畫。
+      setTimeout(() => {
+        if (trace && settingsDirty && settingsTabVisible()) renderSettings();
+      }, 320);
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize);
+  else initialize();
+
   window.ASMTraceStudio = {
-    open,
-    close: closeStudio,
-    refresh() {
-      if (!trace || !document.body.classList.contains('asm-trace-studio-open')) return;
-      renderRail();
-      renderTimeline();
-      renderSelection();
-      renderFrameEventsEditor();
-      renderInspectorNavigation();
+    attach,
+    detach,
+    showTab: name => setSideTab(name),
+    currentTab: () => sideTab,
+    adoptGlobalEventSettings,
+    // 相容 API：舊呼叫端的 open 改為切到設定標籤；close 只把設定寫回程式碼。
+    open(source) {
+      attach(source);
+      if (!trace) return;
+      setSideTab(hasEventInspectorContent(trace.frames[currentIndex]) ? 'events' : 'code-frame');
     },
-    refreshViewport() {
-      if (!trace || !document.body.classList.contains('asm-trace-studio-open')) return;
-      applyCameraForFrame(currentIndex, false);
-      scheduleThumbnailCulling();
+    close() {
+      return writeSourceSettings();
+    },
+    refresh() {
+      if (!trace) return;
+      settingsDirty = true;
+      if (settingsTabVisible()) renderSettings();
     },
     flushSourceSettings() {
       return writeSourceSettings();
-    }
+    },
+    undo,
+    redo
   };
 })();

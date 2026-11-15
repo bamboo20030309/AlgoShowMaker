@@ -41,7 +41,7 @@ test('LOD numbers appear at 14px and disappear below that boundary', {timeout:30
  }finally{await browser.close();}
 });
 
-test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; text fitting caches exact typography', {timeout:120000}, async()=>{
+test('RUN stays on canvas; the settings tabs reuse the playing scene; text fitting caches exact typography', {timeout:120000}, async()=>{
  const root=path.resolve(__dirname, '..');
  const port=await new Promise(resolve=>{const s=net.createServer().listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
  const server=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),ASM_REGRESSION:'1',JWT_SECRET:require('node:crypto').randomBytes(32).toString('hex')},windowsHide:true,stdio:'ignore'});
@@ -62,7 +62,7 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   await page.waitForFunction(()=>!document.getElementById('runBtn').classList.contains('loading'),{},{timeout:90000});
   await page.waitForTimeout(250);
   assert.equal(await page.locator('#outputArea').textContent(),'完成');
-  assert.equal(await page.evaluate(()=>document.body.classList.contains('asm-trace-studio-open')),false);
+  assert.equal(await page.evaluate(()=>ASMTraceStudio.currentTab()),'source','RUN does not switch the left tab');
   assert.equal(await page.locator('.tab-btn[data-tab="tab-canvas"]').evaluate(el=>el.classList.contains('active')),true);
   assert.equal(await page.evaluate(()=>window.__renders),1);
   assert.equal(await page.locator('#asm-trace-root g[data-trace-index]').count(),3000);
@@ -126,16 +126,11 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   if (process.env.ASM_LOD_SCREENSHOTS === '1') {
     await page.screenshot({path:path.join(root,'test-results/culling-profile/lod-overview.png')});
   }
+  // Switching to the left event-animation tab only renders the settings, never the 3000-cell scene.
   const entry=await page.evaluate(()=>{const t=performance.now();ASMTraceStudio.open();return performance.now()-t;});
-  await page.waitForFunction(()=>document.querySelector('[data-trace-scene-reused="true"]'));
-  assert.equal(await page.evaluate(()=>window.__renders),1,'Studio reuses stable scene');
-  const clone=await page.locator('[data-trace-scene-reused="true"]').evaluate(el=>({
-    cells:el.querySelectorAll('g[data-trace-index]').length,
-    culled:el.querySelectorAll('[data-asm-viewport-culled]').length,
-    sharedIds:[...el.querySelectorAll('[id]')].filter(node=>document.querySelectorAll('#'+CSS.escape(node.id)).length!==1).length
-  }));
-  assert.deepEqual(clone,{cells:3000,culled:0,sharedIds:0});
-  // Closing/reopening the editor is a stable redraw, not an event replay.
+  assert.equal(await page.evaluate(()=>window.__renders),1,'the settings tab reuses the playing scene');
+  assert.ok(['events','code-frame'].includes(await page.evaluate(()=>ASMTraceStudio.currentTab())));
+  // Leaving and returning to the settings tabs never replays events or drops LOD.
   for(let cycle=0;cycle<3;cycle++){
     await page.evaluate(()=>ASMTraceStudio.close());
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -147,12 +142,10 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
     assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),0);
     await page.evaluate(()=>ASMTraceStudio.open());
   }
-  // Re-running while Studio is open must preserve source and land on canvas.
-  // Studio hides RUN; invoke the same handler to verify the guarded reload path.
+  // Re-running from a settings tab must preserve source and land on canvas.
   await page.evaluate(()=>document.getElementById('runBtn').click());
   await page.waitForFunction(()=>!document.getElementById('runBtn').classList.contains('loading'),{},{timeout:90000});
   await page.waitForTimeout(200);
-  assert.equal(await page.evaluate(()=>document.body.classList.contains('asm-trace-studio-open')),false);
   assert.equal(await page.evaluate(()=>aceEditor.getValue().includes('arr(500, 0)')),true);
   // Saved legacy data roundtrip and explicit disabled settings remain usable.
   const saved=await page.evaluate(()=>JSON.stringify(ASMTracePlayer.getDocument()));
@@ -228,6 +221,6 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   assert.ok(numeric.changed>0&&numeric.invalidated>0);
   assert.ok(numeric.mixed.length>0&&numeric.mixed.every(value=>value==='-12.3'));
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({studioEntryMs:entry,clone,typography}));
+  console.log(JSON.stringify({settingsTabEntryMs:entry,typography}));
  }finally{await browser?.close();server.kill();}
 });

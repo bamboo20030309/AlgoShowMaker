@@ -14,10 +14,7 @@
   let analyzedCode = '';
   let drawingEnabled = true;
   let currentTrace = null;
-  let studioButton = null;
-  let eventSettingsButton = null;
   let eventSettingsPanel = null;
-  let eventSettingsCloseTimer = null;
   let eventSettingsSaveTimer = null;
   let accountEventSettings = null;
   let accountEventSettingsToken = '';
@@ -247,10 +244,11 @@
     return window.ace?.edit && editor ? window.ace.edit(editor).getValue() : '';
   }
 
+  // 整份動畫的事件設定放在左側「事件動畫」標籤；沒有動畫時隱藏。
   function updateStudioButton() {
-    const disabled = !currentTrace?.frames?.length;
-    if (studioButton) studioButton.disabled = disabled;
-    if (eventSettingsButton) eventSettingsButton.disabled = disabled;
+    if (!eventSettingsPanel) return;
+    eventSettingsPanel.hidden = !currentTrace?.frames?.length;
+    if (!eventSettingsPanel.hidden) renderEventSettings();
   }
 
   function ensureEventSettings() {
@@ -288,8 +286,9 @@
       animatePositions: false
     });
     window.ASMTraceStudio?.refresh?.();
+    // userEdit：左側面板把這次調整記入復原歷史（寫回程式碼仍依 persistDocument）。
     window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', {
-      detail: { document: currentTrace }
+      detail: { document: currentTrace, userEdit: true }
     }));
     if (options.persistDocument === true) writeDocumentEventSettings();
     scheduleAccountEventSettingsSave();
@@ -322,8 +321,9 @@
         ? settings.defaultEnabled[definition.type]
         : definition.enabledByDefault !== false;
       enabled.title = '新指令預設播放動畫';
+      // 點擊當下才取設定物件：載入帳號預設後 eventSettings 會換成新物件，畫面內容相同時不一定重畫。
       enabled.addEventListener('change', () => {
-        settings.defaultEnabled[definition.type] = enabled.checked;
+        ensureEventSettings().defaultEnabled[definition.type] = enabled.checked;
         saveEventSettings();
       });
       const timeline = document.createElement('input');
@@ -331,9 +331,9 @@
       timeline.checked = Object.hasOwn(settings.timelineTypes, definition.type)
         ? settings.timelineTypes[definition.type]
         : definition.timelineByDefault === true;
-      timeline.title = '顯示在事件時間線';
+      timeline.title = '顯示在事件程式碼清單';
       timeline.addEventListener('change', () => {
-        settings.timelineTypes[definition.type] = timeline.checked;
+        ensureEventSettings().timelineTypes[definition.type] = timeline.checked;
         saveEventSettings();
       });
       row.append(name, enabled, timeline);
@@ -357,7 +357,7 @@
     panel.className = 'trace-event-settings-panel';
     panel.hidden = true;
     const head = document.createElement('header');
-    head.innerHTML = '<strong>事件設定</strong><span>預設動畫</span><span>列入事件線</span>';
+    head.innerHTML = '<strong>事件設定</strong><span>預設動畫</span><span>列進事件程式碼</span>';
     const list = document.createElement('div');
     list.className = 'trace-event-settings-list';
     const autoFixedRow = document.createElement('label');
@@ -436,7 +436,6 @@
     });
     readRow.append(readCopy, readToggle);
     panel.append(head, list, autoFixedRow, autoLoopBoundaryRow, readRow, gapRow);
-    document.body.append(panel);
     return panel;
   }
 
@@ -489,9 +488,6 @@
   // 區段：文件載入與畫面同步
   // ---------------------------------------------------------------------------
   function applyTraceDocument(trace, options = {}) {
-    if (options.openStudio === false && document.body.classList.contains('asm-trace-studio-open')) {
-      window.ASMTraceStudio?.close?.({ render: false });
-    }
     let preparedTrace = trace;
     const source = editorSource();
     const pending = pendingAnimation?.rebuild;
@@ -544,25 +540,19 @@
     sliceMode = currentTrace.sliceMode === 'manual' ? 'manual' : 'auto';
     updateStudioButton();
     loadAccountEventSettings();
-    setTimeout(() => {
-      if (embedMode === 'runtime' || options.openStudio === false) {
-        if (document.body.classList.contains('asm-trace-studio-open')) window.ASMTraceStudio?.close?.({ render: false });
-        return;
-      }
-      window.ASMTraceStudio?.open(currentTrace);
-    }, 0);
+    // 左側「程式碼框」「事件動畫」標籤跟著目前動畫；投影片放映的 runtime 不需要。
+    if (embedMode !== 'runtime') window.ASMTraceStudio?.attach?.(currentTrace);
     return currentTrace;
   }
 
   function clearAnimation() {
-    window.ASMTraceStudio?.close?.({ render: false });
+    window.ASMTraceStudio?.detach?.();
     currentTrace = null;
     pendingAnimation = null;
     pendingViewBaseline = null;
     sourceViewBaseline = null;
     mode = 'manual';
     sliceMode = 'auto';
-    if (eventSettingsPanel) eventSettingsPanel.hidden = true;
     updateStudioButton();
     window.ASMTracePlayer?.clear?.();
     window.dispatchEvent(new CustomEvent('asm:trace-loaded'));
@@ -620,47 +610,13 @@
   }
 
   function buildUi() {
-    studioButton = document.getElementById('editAnimationBtn');
-    eventSettingsButton = document.getElementById('eventSettingsBtn');
-    if (!studioButton || studioButton.dataset.traceBound) return;
-    studioButton.dataset.traceBound = '1';
-    studioButton.addEventListener('click', () => {
-      if (currentTrace) window.ASMTraceStudio?.open(currentTrace);
-    });
+    if (eventSettingsPanel) return;
+    const host = document.getElementById('eventAnimationPanel');
+    if (!host) return;
     eventSettingsPanel = buildEventSettingsPanel();
-    const clearEventSettingsClose = () => {
-      clearTimeout(eventSettingsCloseTimer);
-      eventSettingsCloseTimer = null;
-    };
-    const openEventSettings = () => {
-      if (!currentTrace) return;
-      clearEventSettingsClose();
-      eventSettingsPanel.hidden = false;
-      renderEventSettings();
-      const rect = eventSettingsButton.getBoundingClientRect();
-      eventSettingsPanel.style.left = `${Math.max(8, rect.left)}px`;
-      eventSettingsPanel.style.top = `${Math.round(rect.bottom)}px`;
-    };
-    const scheduleEventSettingsClose = () => {
-      clearEventSettingsClose();
-      eventSettingsCloseTimer = setTimeout(() => {
-        if (eventSettingsPanel) eventSettingsPanel.hidden = true;
-      }, 140);
-    };
-    eventSettingsButton?.addEventListener('pointerenter', openEventSettings);
-    eventSettingsButton?.addEventListener('pointerleave', scheduleEventSettingsClose);
-    eventSettingsPanel.addEventListener('pointerenter', clearEventSettingsClose);
-    eventSettingsPanel.addEventListener('pointerleave', scheduleEventSettingsClose);
-    eventSettingsButton?.addEventListener('click', event => {
-      if (!currentTrace) return;
-      event.stopPropagation();
-      openEventSettings();
-    });
-    document.addEventListener('pointerdown', event => {
-      if (!eventSettingsPanel || eventSettingsPanel.hidden) return;
-      if (eventSettingsPanel.contains(event.target) || eventSettingsButton?.contains(event.target)) return;
-      eventSettingsPanel.hidden = true;
-    });
+    eventSettingsPanel.classList.add('is-docked');
+    if (window.ASMTraceStudio?.adoptGlobalEventSettings) window.ASMTraceStudio.adoptGlobalEventSettings(eventSettingsPanel);
+    else host.append(eventSettingsPanel);
     updateStudioButton();
   }
 

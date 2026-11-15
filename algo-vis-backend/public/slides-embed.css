@@ -8,9 +8,6 @@ body.asm-embed-runtime #divider,
 body.asm-embed-runtime #drawingToolbar,
 body.asm-embed-runtime #algoSidePanel,
 body.asm-embed-runtime #myCodesPanel,
-body.asm-embed-runtime #traceStudioRail,
-body.asm-embed-runtime .trace-studio-inspector,
-body.asm-embed-runtime #traceStudioTimeline,
 body.asm-embed-runtime .gui-prop-panel {
   display: none !important;
 }

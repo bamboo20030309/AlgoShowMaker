@@ -277,14 +277,18 @@ test('a declaration is available when its object appears in a later frame', () =
   assert.equal(hidden.enabled, false);
 });
 
-test('Studio preflights the selected frame before building its event inspector', () => {
-  const studio = fs.readFileSync(path.join(publicDir, 'trace-studio.js'), 'utf8');
-  const openBody = studio.replace(/\r\n/g, '\n').match(/function open\(source\) \{[\s\S]*?\n  \}\n/)?.[0] || '';
-  const currentIndexAt = openBody.indexOf('currentIndex = Math.max');
-  const preflightAt = openBody.indexOf('preflightEventAvailability');
-  const buildUiAt = openBody.indexOf('buildUi()');
-  assert.ok(currentIndexAt >= 0 && currentIndexAt < preflightAt && preflightAt < buildUiAt,
-    'the first inspector render must use the same preflight state as later frame changes');
+test('the event animation tab preflights the current frame before rendering its event buttons', () => {
+  const studio = fs.readFileSync(path.join(publicDir, 'trace-studio.js'), 'utf8').replace(/\r\n/g, '\n');
+  const attachBody = studio.match(/function attach\(source\) \{[\s\S]*?\n  \}\n/)?.[0] || '';
+  const currentIndexAt = attachBody.indexOf('currentIndex = Math.max');
+  const preflightAt = attachBody.indexOf('preflightEventAvailability');
+  const renderAt = attachBody.indexOf('renderSettings()');
+  assert.ok(currentIndexAt >= 0 && currentIndexAt < preflightAt && preflightAt < renderAt,
+    'the first event-button render must use the same preflight state as later frame changes');
+  const tabBody = studio.match(/function setSideTab\(name, options = \{\}\) \{[\s\S]*?\n  \}\n/)?.[0] || '';
+  assert.ok(tabBody.indexOf('preflightEventAvailability') >= 0
+    && tabBody.indexOf('preflightEventAvailability') < tabBody.indexOf('renderSettings()'),
+    'switching to a settings tab also preflights before rendering');
   assert.doesNotMatch(studio, /trace-studio-event-toggle-state/,
     'instruction state is communicated by button color without an extra text badge');
 });

@@ -12,7 +12,7 @@ test('read emphasis defaults off, uses pure red when enabled, and preserves save
    const deck={groups:[{id:'g',slides:[{id:'s',kind:'algorithm-animation',animation:{mode:'trace',code:doc.sourceCode,input:'',traceDocument:doc}}]}]};
    // Reopen the same named database; no in-memory Trace is supplied.
    const dbName='read-settings-'+variant.name+'-'+Date.now();const first=ASMSlideStorage.create(indexedDB,localStorage,dbName);await first.saveDeck('d',JSON.stringify(deck));const second=ASMSlideStorage.create(indexedDB,localStorage,dbName);const compact=await second.loadDeck('d',[],{lazyTraces:true});const animation=await ASMSlideTraceStore.create(ASMSlideStorage,second).materializeAnimation(compact.groups[0].slides[0].animation);doc=animation.traceDocument;
-   ace.edit('editor').setValue(doc.sourceCode,-1);ASMTraceEditor.loadAnimation({mode:'trace',code:doc.sourceCode,input:'',traceDocument:doc},{openStudio:false});await CodeScript.goto(0);document.getElementById('eventSettingsBtn').click();const toggle=document.querySelector('.trace-read-highlight-toggle');const checked=toggle.checked;document.querySelector('.trace-event-settings-panel').hidden=true;
+   ace.edit('editor').setValue(doc.sourceCode,-1);ASMTraceEditor.loadAnimation({mode:'trace',code:doc.sourceCode,input:'',traceDocument:doc},{openStudio:false});await CodeScript.goto(0);ASMTraceStudio.showTab('events');const toggle=document.querySelector('.trace-read-highlight-toggle');const checked=toggle.checked;ASMTraceStudio.showTab('source');
    // Code highlight has its own lead-in. Observe the owner's complete event,
    // rather than assuming its visual phase has started at wall-clock 120 ms.
    let settled=false,reads=[];const pending=CodeScript.next().finally(()=>settled=true);
@@ -23,7 +23,7 @@ test('read emphasis defaults off, uses pure red when enabled, and preserves save
   window.ASMTraceCamera=camera;return results;
  },trace);
  for(const r of results){const on=['on','custom','saved-palette'].includes(r.name);assert.equal(r.checked,on,r.name+' toggle');assert.equal(r.reads.length,on?1:0,r.name+' actual read highlight');assert.equal(r.remaining,0);if(on){assert.ok(r.owner);assert.equal(r.reads[0].owner,r.owner);assert.equal(r.reads[0].stroke,r.name==='custom'?'#123456':r.name==='saved-palette'?'rgba(239, 154, 154, 0.6)':'red');assert.equal(r.reads[0].animation,'none');assert.equal(r.view.readHighlightEnabled,true);}if(r.name==='explicit-off'){assert.equal(r.view.readHighlightEnabled,false);assert.equal(r.view.readHighlightColor,'#123456');}}
- const ui=await page.evaluate(()=>{document.getElementById('eventSettingsBtn').click();const toggle=document.querySelector('.trace-read-highlight-toggle');toggle.click();const enabled=ASMTracePlayer.getDocument().studio.eventSettings.readHighlightEnabled;toggle.click();return {enabled,disabled:ASMTracePlayer.getDocument().studio.eventSettings.readHighlightEnabled};});assert.deepEqual(ui,{enabled:true,disabled:false});
+ const ui=await page.evaluate(()=>{ASMTraceStudio.showTab('events');const toggle=document.querySelector('.trace-read-highlight-toggle');toggle.click();const enabled=ASMTracePlayer.getDocument().studio.eventSettings.readHighlightEnabled;toggle.click();return {enabled,disabled:ASMTracePlayer.getDocument().studio.eventSettings.readHighlightEnabled};});assert.deepEqual(ui,{enabled:true,disabled:false});
  assert.deepEqual(errors,[]);
 });
 

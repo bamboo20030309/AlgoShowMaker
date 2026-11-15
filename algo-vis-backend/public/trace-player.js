@@ -31,7 +31,7 @@
 
   function applyPlaybackCamera(frame, previousFrame = null, delayMs = 0) {
     clearTimeout(cameraTimer);
-    if (!frame || window.document.body.classList.contains('asm-trace-studio-open')) return;
+    if (!frame) return;
     cameraTimer = setTimeout(() => {
       if (document?.frames?.[currentFrame]?.id !== frame.id) return;
       window.ASMTraceCamera.apply(document, frame, previousFrame);
@@ -45,11 +45,6 @@
       const camera = preservedViewportCamera;
       if (window.restoreCameraViewport) window.restoreCameraViewport(camera);
       else window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
-      return;
-    }
-    if (window.document.body.classList.contains('asm-trace-studio-open')
-      && window.ASMTraceStudio?.refreshViewport) {
-      window.ASMTraceStudio.refreshViewport();
       return;
     }
     if (isRuntimeEmbed() && runtimeVisibilityConfirmed) {

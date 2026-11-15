@@ -74,8 +74,6 @@
   }
 
   body:has(#arraySvg) #top-bar .menu-item,
-  body:has(#arraySvg) #top-bar #editAnimationBtn,
-  body:has(#arraySvg) #top-bar #eventSettingsBtn,
   body:has(#arraySvg) #top-bar .top-github-link {
     display: none;
   }
@@ -181,7 +179,7 @@
     display: flex;
   }
 
-  body:has(#arraySvg) #codePanel header {
+  body:has(#arraySvg) #codePanel > header {
     gap: 6px;
     padding-inline: 8px;
   }
@@ -259,51 +257,6 @@
 
   body:has(#arraySvg) .asm-mobile-algorithm-dock {
     bottom: max(6px, env(safe-area-inset-bottom));
-  }
-
-  body:has(#arraySvg):not(.asm-trace-studio-open) .asm-mobile-studio-only,
-  body.asm-trace-studio-open:has(#arraySvg) .asm-mobile-standard-only {
-    display: none;
-  }
-
-  /* Trace Studio becomes one canvas with optional frame/property drawers. */
-  body.asm-trace-studio-open:has(#arraySvg) #main {
-    display: block;
-  }
-
-  body.asm-trace-studio-open:has(#arraySvg) #vizPanel {
-    inset: 0 0 calc(var(--asm-mobile-dock-h) + env(safe-area-inset-bottom)) 0;
-    border: 0;
-  }
-
-  body.asm-trace-studio-open:has(#arraySvg) .trace-studio-rail,
-  body.asm-trace-studio-open:has(#arraySvg) .trace-studio-inspector {
-    position: fixed;
-    z-index: 1330;
-    top: var(--asm-mobile-header-h);
-    right: 0;
-    bottom: calc(var(--asm-mobile-dock-h) + 12px + env(safe-area-inset-bottom));
-    left: 0;
-    display: none;
-    width: auto;
-    height: auto;
-  }
-
-  body.asm-mobile-studio-rail-open.asm-trace-studio-open:has(#arraySvg) .trace-studio-rail,
-  body.asm-mobile-studio-inspector-open.asm-trace-studio-open:has(#arraySvg) .trace-studio-inspector {
-    display: flex;
-  }
-
-  body.asm-trace-studio-open:has(#arraySvg) .trace-studio-timeline {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    max-height: 84px;
-  }
-
-  body.asm-trace-studio-open:has(#arraySvg) #tab-canvas {
-    padding-bottom: 84px;
   }
 
   /* Slides editor: canvas first, tools live in bottom sheets. */

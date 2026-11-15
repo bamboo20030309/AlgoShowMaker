@@ -30,11 +30,11 @@ a=b;
     for(const settings of [{}, {gapMs:0}, {gapMs:600}]){
       const doc=structuredClone(source);doc.studio||={};doc.studio.eventSettings=settings;
       ASMTraceEditor.loadAnimation({mode:'trace',code:doc.sourceCode,input:'',traceDocument:doc},{openStudio:false});
-      document.getElementById('eventSettingsBtn').click();
+      ASMTraceStudio.showTab('events');
       const slider=document.querySelector('.trace-event-gap');
       const initial=Number(slider.value); slider.value=String(settings.gapMs||0);
       slider.dispatchEvent(new Event('input',{bubbles:true}));slider.dispatchEvent(new Event('change',{bubbles:true}));
-      document.querySelector('.trace-event-settings-panel').hidden=true;
+      ASMTraceStudio.showTab('source');
       const player=ASMTracePlayer;
       await player.render(0,{stable:true});
       const markers=[];const listener=e=>{if(e.detail?.event?.type==='assign')markers.push({phase:e.detail.phase,time:performance.now()});};

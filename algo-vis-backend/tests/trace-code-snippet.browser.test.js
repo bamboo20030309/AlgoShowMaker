@@ -67,24 +67,22 @@ test('Trace Studio edits automatic code snippets one line at a time', { timeout:
         .map((frame, frameIndex) => ASMTraceViewSource.sourceMatches(frame, selector) ? frameIndex : -1)
         .filter(frameIndex => frameIndex >= 0);
       await player.render(index, { animatePositions: false, animateEvents: false });
-      window.ASMTraceStudio.open();
+      window.ASMTraceStudio.showTab('code-frame');
       return true;
     });
     assert.equal(selected, true, 'fixture must produce an animated swap event frame');
-    await page.getByRole('button', { name: '事件', exact: true }).click();
-    const eventGapField = page.locator('.trace-studio-events-panel .trace-studio-field')
-      .filter({ hasText: '事件間隔時間' });
-    assert.equal(await eventGapField.count(), 1,
-      'the event gap control should live inside the event panel');
-    assert.equal(await eventGapField.evaluate(field => Boolean(
-      field.compareDocumentPosition(document.querySelector('.trace-studio-frame-events-section'))
+    // 事件間隔屬於「整份動畫」的事件設定，放在左側「事件動畫」標籤，在這一幀的事件程式碼之後。
+    await page.locator('#sideTabEvents').click();
+    const eventGap = page.locator('#eventAnimationPanel .trace-event-gap');
+    assert.equal(await eventGap.count(), 1, 'the event gap control lives in the event-animation tab');
+    assert.equal(await eventGap.evaluate(input => Boolean(
+      document.querySelector('#eventAnimationPanel .trace-studio-frame-events-section').compareDocumentPosition(input)
         & Node.DOCUMENT_POSITION_FOLLOWING
-    )), true, 'the event gap control should appear above the event code section');
-    assert.equal(await eventGapField.isVisible(), true,
-      'the event gap control should be visible in the event panel');
-    await page.getByRole('button', { name: '程式碼', exact: true }).click();
-    assert.equal(await eventGapField.isVisible(), false,
-      'the event gap control should not remain visible in the code panel');
+    )), true, 'whole-animation settings follow the current-frame event code');
+    assert.equal(await eventGap.isVisible(), true);
+    await page.locator('#sideTabCodeFrame').click();
+    assert.equal(await eventGap.isVisible(), false,
+      'the event gap control should not remain visible in the code-frame tab');
 
     const rows = page.locator('.trace-studio-snippet-line-button');
     await rows.first().waitFor();
@@ -123,29 +121,12 @@ test('Trace Studio edits automatic code snippets one line at a time', { timeout:
     assert.ok(Math.abs(gutterAfterScroll.x - gutterBeforeScroll.x) < 1,
       `the marker and line number should stay at the same position during horizontal scrolling (${gutterBeforeScroll.x} -> ${gutterAfterScroll.x})`);
 
-    const inspector = page.locator('.trace-studio-inspector');
-    const inspectorWidthBefore = (await inspector.boundingBox()).width;
-    const resizer = page.locator('#traceStudioInspectorResizer');
-    const resizerBox = await resizer.boundingBox();
-    await page.mouse.move(resizerBox.x + 2, resizerBox.y + 120);
-    await page.mouse.down();
-    await page.mouse.move(resizerBox.x - 90, resizerBox.y + 120);
-    await page.mouse.up();
-    const inspectorWidthAfter = (await inspector.boundingBox()).width;
-    assert.ok(inspectorWidthAfter > inspectorWidthBefore + 60, 'dragging the separator should widen the inspector');
-    assert.equal(await page.evaluate(() => Number(localStorage.getItem('asm_trace_studio_inspector_width_v1')) > 0), true,
-      'the resized inspector width should be saved locally');
-
-    const zoomButton = page.getByRole('button', { name: '放大', exact: true });
-    assert.equal(await zoomButton.locator('svg').count(), 1);
-    assert.equal(await zoomButton.evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
-    assert.equal(await page.getByRole('button', { name: '恢復自動篩選', exact: true }).locator('svg').count(), 1);
-    await zoomButton.click();
-    assert.equal(await page.getByRole('button', { name: '縮小', exact: true }).count(), 1);
-    assert.equal(await page.locator('body').evaluate(body => body.classList.contains('asm-trace-snippet-focus')), true);
-    assert.ok((await inspector.boundingBox()).width > 900, 'focus view should expand the snippet editor');
-    await page.keyboard.press('Escape');
-    assert.equal(await page.locator('body').evaluate(body => body.classList.contains('asm-trace-snippet-focus')), false);
+    // 側欄寬度沿用左側面板與畫布之間的分隔線；片段「放大檢視」按鈕已移除。
+    assert.equal(await page.locator('#traceStudioInspectorResizer').count(), 0);
+    assert.equal(await page.getByRole('button', { name: '放大', exact: true }).count(), 0);
+    const resetButton = page.getByRole('button', { name: '恢復自動篩選', exact: true });
+    assert.equal(await resetButton.locator('svg').count(), 1);
+    assert.equal(await resetButton.evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
 
     const regularRow = page.locator('.trace-studio-snippet-line-button.is-enabled')
       .filter({ hasNot: page.locator('mark.trace-studio-snippet-event-source') }).first();
