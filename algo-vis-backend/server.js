@@ -47,6 +47,7 @@ const TraceChunkStore = require('./trace-chunk-store');
 const SlideStorage = require('./public/slides-storage');
 const CloudContent = require('./cloud-content');
 const { resolveCompileOwner } = require('./compile-owner');
+const { OfficialExecutables } = require('./official-executables');
 const {
   CompileJobQueue,
   CompileQueueCancelledError,
@@ -438,6 +439,11 @@ app.get('/api/trace/version', (req, res) => {
     generationFingerprint: TRACE_GENERATION_FINGERPRINT });
 });
 
+const officialExecutables = new OfficialExecutables({
+  publicRoot: path.join(__dirname, 'public'), sampleRoot: path.join(__dirname, 'algorithm_sample'),
+  normalizeSource, compiler: COMPILER_FINGERPRINT,
+  engine: `${TraceProvenance.ENGINE_VERSION}/${TraceProvenance.FORMAT_VERSION}`,
+});
 const artifactCache = new ArtifactCache({
   rootDir: process.env.ARTIFACT_CACHE_DIR || path.join(__dirname, 'artifact-cache-data'),
   maxBytes: positiveIntegerEnv('ARTIFACT_CACHE_MAX_MB', 512) * 1024 * 1024,
@@ -447,6 +453,8 @@ const artifactCacheReady = artifactCache.init().then(async cache => {
   for (const entry of [...cache.entries.values()]) {
     if (entry.type !== 'executable') await cache.remove(entry.type, entry.key, { forcePinned: true });
   }
+  await officialExecutables.refresh({ force: true });
+  console.log('Official executable retention:', await officialExecutables.reconcile(cache));
   return cache;
 }).catch((error) => {
   console.error('Artifact cache initialization failed:', error.message);
@@ -455,7 +463,11 @@ const artifactCacheReady = artifactCache.init().then(async cache => {
 
 const artifactMaintenanceTimer = setInterval(() => {
   compileJobRegistry.metrics();
-  artifactCache.prune().catch(error => console.error('Artifact cache prune failed:', error.message));
+  Promise.resolve(artifactCacheReady).then(async cache => {
+    if (!cache) return;
+    if (await officialExecutables.refresh()) await officialExecutables.reconcile(cache);
+    await cache.prune();
+  }).catch(error => console.error('Artifact cache prune failed:', error.message));
 }, 60_000);
 artifactMaintenanceTimer.unref();
 
@@ -2790,6 +2802,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
 
   code = normalizeSource(code);
   let sourceCode = code;
+  let officialAvailableVariables = [];
   let traceVariables = [];
   let traceFrameDirectives = [];
   let traceKeepDirectives = [];
@@ -2817,6 +2830,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       traceEnabled = instrumented.drawingEnabled !== false;
       sourceCode = instrumented.code;
       traceVariables = instrumented.variables;
+      officialAvailableVariables = instrumented.allVariables || [];
       traceFrameDirectives = instrumented.frameDirectives.map((directive, index) => ({
         line: directive.line,
         name: directive.name || '',
@@ -2923,6 +2937,13 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
   // limits and sandbox, but neither reads nor writes shared compilation caches.
   const forceRecompile = req.body?.forceRecompile === true;
   const cacheAvailable = Boolean(await artifactCacheReady);
+  if (cacheAvailable && await officialExecutables.refresh()) await officialExecutables.reconcile(artifactCache);
+  const executablePolicy = officialExecutables.classify(code, {
+    traceEnabled, watches: trace?.watches, allVariables: officialAvailableVariables,
+  });
+  if (cacheAvailable && !forceRecompile && executablePolicy.official) {
+    await artifactCache.setPinned('executable', executableKey, true, { metadata: executablePolicy });
+  }
   res.setHeader('X-Compile-Trace-Cache', 'DISABLED');
   if (forceRecompile) res.setHeader('X-Compile-Executable-Cache', 'BYPASS');
 
@@ -2999,6 +3020,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
   const compilerMemoryKB = 512 * 1024;
   req.compileWorkSpawned = true;
   let executableCacheHit = false;
+  let executablePinned = executablePolicy.official && !forceRecompile;
   if (cacheAvailable && !forceRecompile) {
     let lease = null;
     try {
@@ -3006,6 +3028,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       if (lease) {
         fs.copyFileSync(lease.entry.path, exePath);
         executableCacheHit = true;
+        executablePinned = lease.entry.pinned;
         res.setHeader('X-Compile-Executable-Cache', 'HIT');
         logDebug('EXECUTABLE_CACHE_HIT: 重用已編譯執行檔');
       } else {
@@ -3139,7 +3162,8 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
     if (!executableCacheHit && cacheAvailable && !forceRecompile) {
       try {
         await artifactCache.putFile('executable', executableKey, exePath, {
-          metadata: { compilerFingerprint, engineFingerprint },
+          pinned: executablePolicy.official,
+          metadata: { compilerFingerprint, engineFingerprint, ...executablePolicy },
         });
         logDebug('EXECUTABLE_CACHE_STORED: 已保存可重用執行檔');
       } catch (error) {
@@ -3341,6 +3365,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
           trace: 'DISABLED',
           executable: forceRecompile ? 'BYPASS' : executableCacheHit ? 'HIT' : 'MISS',
           executableId: executableKey,
+          retention: forceRecompile ? 'bypass' : executablePinned ? 'official-permanent' : 'temporary',
         },
       };
       // At this point the child has closed and trace parsing is complete. Free
