@@ -396,3 +396,47 @@ test('presentation playback loads players on demand, pauses on navigation and pa
     server.kill();
   }
 });
+
+test('video poster and player fill their bounds without Reveal image margins or maximums', { timeout: 60000 }, async t => {
+  const { startIsolatedServer } = require('./helpers/isolated-server');
+  const { base } = await startIsolatedServer(t);
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  t.after(() => browser.close());
+  const deck = { groups: [{ id: 'fit-group', slides: [slide('fit-slide', [
+    { id: 'fit-old', type: 'video', videoId: ID_A, x: 70, y: 80, w: 640, h: 360 },
+    { id: 'fit-custom', type: 'video', videoId: ID_B, x: 800, y: 80, w: 240, h: 427,
+      aspect: '9:16', muted: true, autoplay: false, startSeconds: 12, title: 'custom' }
+  ])] }] };
+  const { page, errors } = await openPage(browser, deck);
+  await page.route(/^https:\/\/i\.ytimg\.com\//, route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body:
+    '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360"><rect width="480" height="360" fill="#287bc1"/><path d="M0 0H480V360H0Z" fill="none" stroke="#42d17b" stroke-width="12"/></svg>' }));
+  await ready(page, base);
+  async function assertEdges(selector, owner) {
+    const offsets = await page.locator(selector).evaluateAll((els, ownerSelector) => els.map(el => {
+      const a = el.getBoundingClientRect(), b = el.closest(ownerSelector).getBoundingClientRect();
+      return [a.left-b.left, a.top-b.top, a.right-b.right, a.bottom-b.bottom];
+    }), owner);
+    assert.ok(offsets.length > 0, selector);
+    for (const values of offsets) for (const offset of values) assert.ok(Math.abs(offset) < 0.1, `${selector}: ${offsets}`);
+  }
+  await setEditMode(page, true);
+  await assertEdges('.video-poster', '.video-widget');
+  await page.locator('[data-tool="video"]').click();
+  await page.locator('#videoInsertUrl').fill(`https://youtu.be/${ID_A}`);
+  await page.locator('#confirmVideoInsertBtn').click();
+  await page.waitForFunction(() => document.querySelectorAll('.video-widget').length === 3);
+  await assertEdges('.video-poster', '.video-widget');
+  const saved = await savedDeck(page);
+  const custom = saved.groups[0].slides[0].widgets.find(w => w.id === 'fit-custom');
+  assert.deepEqual([custom.w, custom.h, custom.aspect, custom.muted, custom.autoplay, custom.startSeconds], [240,427,'9:16',true,false,12]);
+  await page.reload();
+  await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready'));
+  await assertEdges('.video-poster', '.video-widget');
+  await setEditMode(page, false);
+  await page.locator('.video-widget').last().locator('.video-play-button').click();
+  await page.locator('.video-widget iframe').waitFor();
+  await assertEdges('.slide-video-frame', '.video-widget');
+  const fs = require('node:fs'); fs.mkdirSync(path.join(__dirname,'../test-results/video-fit'), {recursive:true});
+  await page.screenshot({path:path.join(__dirname,'../test-results/video-fit/verified.png')});
+  assert.deepEqual(errors, []);
+});

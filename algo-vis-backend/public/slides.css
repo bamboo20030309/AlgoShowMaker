@@ -3732,6 +3732,19 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--control
   background: #111518;
 }
 
+/* Reveal applies 95% maximums and 20px image margins to slide media.
+   Video media owns the entire widget viewport in both editor and presentation. */
+.video-widget .video-poster,
+.video-widget .slide-video-frame {
+  display: block;
+  box-sizing: border-box;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .video-widget .video-poster {
   position: absolute;
   inset: 0;
