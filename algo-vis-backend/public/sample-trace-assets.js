@@ -14,43 +14,8 @@
     if (!validFile(file)) throw new Error('範例 Trace 索引包含無效檔名');
     return file;
   }
-  function createLoader(fetcher = (...args) => fetch(...args), { fingerprint = trace => {
-    const storage = globalThis.ASMSlideStorage;
-    return storage?.digest(storage.canonical(trace));
-  } } = {}) {
-    let pendingIndex = null;
-    async function index() {
-      if (!pendingIndex) pendingIndex = (async () => {
-        const response = await fetcher('/deck-traces/index.json', { cache: 'no-cache' });
-        if (response.status === 404) return null;
-        if (!response.ok) throw new Error(`範例 Trace 索引讀取失敗（HTTP ${response.status}）`);
-        const value = await response.json();
-        if (value?.schema !== 1 || !value.traces || typeof value.traces !== 'object') throw new Error('範例 Trace 索引格式無效');
-        return value;
-      })().catch(error => { pendingIndex = null; throw error; });
-      return pendingIndex;
-    }
-    return async function load(id, retry = false) {
-      if (!validId(id)) throw new Error('動畫 Trace ID 格式無效');
-      const file = filenameFor(await index(), id);
-      const response = await fetcher('/deck-traces/' + file, { cache: /-[a-f0-9]{64}\.json$/.test(file) ? 'force-cache' : 'no-cache' });
-      if (response.status === 404 && !retry) {
-        pendingIndex = null;
-        return load(id, true);
-      }
-      if (!response.ok) throw Object.assign(new Error(`動畫 Trace 讀取失敗（HTTP ${response.status}）`), {
-        code: response.status === 404 ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
-      });
-      const trace = await response.json();
-      const actual = await fingerprint(trace);
-      if (actual && actual !== id) {
-        // A page can retain an old index while a named sample is rebuilt.
-        // Refresh once to find the archived version; never cache the wrong ID.
-        if (!retry) { pendingIndex = null; return load(id, true); }
-        throw Object.assign(new Error('範例 Trace 內容與引用 ID 不符'), { code: 'TRACE_HASH_MISMATCH' });
-      }
-      return trace;
-    };
+  function createLoader() {
+    return async () => { throw Object.assign(new Error('Trace 不再持久保存，請重新執行程式碼'), { code: 'TRACE_NOT_FOUND' }); };
   }
   return { validId, validFile, filenameFor, createLoader };
 });

@@ -203,22 +203,9 @@
   const DRAFT_KEY = deckUid ? `${STORAGE_KEY}:deck:${deckUid}`
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
-  const loadSampleTrace = window.ASMSampleTraceAssets.createLoader();
   const traceRefreshStates = new Map();
   let lastCloudStatus = { state: 'loading', text: '正在載入…' };
-  const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, async key => {
-    if (sampleId || (!deckUid && !shareToken)) {
-      return loadSampleTrace(key);
-    }
-    const response = await fetch(`${remoteDeckEndpoint()}/traces/${encodeURIComponent(key)}`, {
-      headers: deckUid ? { Authorization: `Bearer ${authToken()}` } : {}
-    });
-    const result = await response.json();
-    if (!response.ok) throw Object.assign(new Error(result.error || '動畫載入失敗'), {
-      code: response.status === 404 || result.code === 'RESOURCE_INCOMPLETE' ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
-    });
-    return result.trace;
-  }, async animation => {
+  const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, null, async animation => {
     setCloudStatus('loading', '動畫需要更新，正在取得新版結果…');
     try {
       return await rebuildSlideAnimation(animation);
@@ -240,6 +227,11 @@
   // 用投影片保存的程式與輸入重新產生動畫：成功才換掉結果並存檔（公開範例只寫本機副本），
   // 失敗時拋出錯誤、原動畫原封不動。過期自動更新與畫布 RUN 共用此流程。
   async function rebuildSlideAnimation(animation) {
+    const queued = progressiveRebuildSession?.entries.find(entry => entry.slide.animation === animation && ['pending', 'running'].includes(entry.state));
+    if (queued) {
+      const prepared = await queued.finished;
+      return traceStore.materializeAnimation(prepared);
+    }
     const sourceRevision = JSON.stringify(animation);
     const rebuilt = await window.ASMDeck.rebuildMissingAnimation(animation);
     if (window.ASMTraceProvenance.status(rebuilt.traceDocument, rebuilt.code, rebuilt.input).kind !== 'current') {
@@ -867,7 +859,7 @@
     // only their token-scoped browser draft, while edit links keep cloud syncing.
     sharedAccess = shareToken ? (data.access === 'view' ? 'local' : data.access) : null;
     if (isLocalCopy()) document.body.classList.remove('asm-edit-mode');
-    deck = normalizeDeck(await traceStore.detachDeck(isLocalCopy() && localDeck ? localDeck : data.slide.deck));
+    deck = normalizeDeck(window.ASMAnimationRecipe.deck(isLocalCopy() && localDeck ? localDeck : data.slide.deck));
     cloudDeckTitle = data.slide.title || '未命名投影片';
     if (!isLocalCopy() || !localDeck) {
       let card = {};
@@ -888,20 +880,20 @@
   }
 
   function progressiveRebuildLabel(session, active = null) {
-    if (!session.total) return session.mode === 'sample' ? '僅本次開啟，重新整理後還原' : '精簡投影片已匯入';
+    if (!session.total) return session.mode === 'sample' ? '僅本次開啟，重新整理後還原' : '投影片動畫已準備完成';
     if (session.completed >= session.total) {
       if (session.mode === 'sample') return session.pending
         ? `公開投影片・${session.pending} 張動畫需要重新 RUN`
         : '僅本次開啟，重新整理後還原';
       return session.pending
-        ? `投影片已匯入；${session.pending} 張動畫請修正程式後 RUN`
-        : '精簡投影片已匯入';
+        ? `投影片已載入；${session.pending} 張動畫請修正程式後 RUN`
+        : '投影片動畫已準備完成';
     }
     const progress = `${session.completed}/${session.total}`;
     const current = active?.slide?.id === getSlide()?.id ? '目前頁' : '背景';
     return session.mode === 'sample'
       ? `公開投影片已開啟・${current}動畫 ${progress}`
-      : `投影片已匯入・${current}動畫 ${progress}`;
+      : `投影片已載入・${current}動畫 ${progress}`;
   }
 
   function updateProgressiveRebuildStatus(session, active = null) {
@@ -911,27 +903,14 @@
     setCloudStatus(session.completed >= session.total ? 'saved' : 'loading', progressiveRebuildLabel(session, active));
   }
 
-  function prioritizeProgressiveRebuild(h = currentH, v = currentV) {
+  function prioritizeProgressiveRebuild() {
+    // Navigation must not reorder the sequential preparation queue.
     const session = progressiveRebuildSession;
-    // Once rebuilding is finished, the status belongs to persistence. Merely
-    // changing slides must not replace pending/saving/error with "imported".
-    if (!session || session.completed >= session.total) return;
-    const focus = orderedDeckSlides().findIndex(entry => entry.h === h && entry.v === v);
-    if (focus >= 0) session.focusOrder = focus;
-    updateProgressiveRebuildStatus(session, session.active);
+    if (session && session.completed < session.total) updateProgressiveRebuildStatus(session, session.active);
   }
 
   function nextProgressiveRebuildEntry(session) {
-    return session.entries
-      .filter(entry => entry.state === 'pending')
-      .sort((left, right) => {
-        const leftDistance = Math.abs(left.order - session.focusOrder);
-        const rightDistance = Math.abs(right.order - session.focusOrder);
-        if (leftDistance !== rightDistance) return leftDistance - rightDistance;
-        const leftBehind = left.order < session.focusOrder ? 1 : 0;
-        const rightBehind = right.order < session.focusOrder ? 1 : 0;
-        return leftBehind - rightBehind || left.order - right.order;
-      })[0] || null;
+    return session.entries.find(entry => entry.state === 'pending') || null;
   }
 
   async function runProgressiveRebuild(session) {
@@ -942,13 +921,14 @@
       session.active = entry;
       updateProgressiveRebuildStatus(session, entry);
       try {
+        const sourceRevision = JSON.stringify(entry.slide.animation);
         const animation = await window.ASMDeck.rebuildAnimation(entry.slide.animation);
         if (progressiveRebuildSession !== session) return;
         const cacheKind = animation.cacheKind || 'run';
         delete animation.cacheKind;
         delete animation.rebuild;
         const current = getSlideById(entry.slide.id);
-        if (current) {
+        if (current && JSON.stringify(current.animation) === sourceRevision) {
           const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation }] }] }, { upload: canSaveRemoteDeck() });
           if (progressiveRebuildSession !== session) return;
           current.animation = detached.groups[0].slides[0].animation;
@@ -956,6 +936,7 @@
         }
         session.stats[cacheKind] += 1;
         entry.state = 'ready';
+        entry.resolve(current?.animation || animation);
       } catch (error) {
         if (progressiveRebuildSession !== session) return;
         const current = getSlideById(entry.slide.id);
@@ -966,6 +947,7 @@
         session.pending += 1;
         session.stats.pending += 1;
         entry.state = 'failed';
+        entry.reject(error);
       }
       session.completed += 1;
       session.active = null;
@@ -974,17 +956,22 @@
     }
     if (progressiveRebuildSession !== session) return;
     document.body.dataset.asmdeckLastImportStats = JSON.stringify(session.stats);
-    await saveDeck({ history: false, cloud: session.mode === 'import' });
+    await saveDeck({ history: false, cloud: session.mode === 'import' || (session.mode === 'load' && canSaveRemoteDeck()) });
     updateProgressiveRebuildStatus(session);
   }
 
   function startProgressiveDeckRebuild({ mode = 'import' } = {}) {
+    if (progressiveRebuildSession) for (const entry of progressiveRebuildSession.entries) if (entry.state === 'pending' || entry.state === 'running') entry.reject(new Error('投影片已切換'));
     const allSlides = orderedDeckSlides();
     const entries = allSlides.map((entry, order) => ({ ...entry, order, state: 'pending' }))
       .filter(entry => entry.slide.kind === 'algorithm-animation'
-        && entry.slide.animation?.rebuild
+        && entry.slide.animation?.code?.trim()
         && !entry.slide.animation?.traceRef
         && !entry.slide.animation?.traceDocument?.frames?.length);
+    for (const entry of entries) {
+      entry.finished = new Promise((resolve, reject) => { entry.resolve = resolve; entry.reject = reject; });
+      entry.finished.catch(() => {});
+    }
     const currentOrder = allSlides.findIndex(entry => entry.h === currentH && entry.v === currentV);
     const session = {
       generation: ++progressiveRebuildGeneration,
@@ -1235,22 +1222,7 @@
       let blob = null;
       if (!blob) {
         const draft = await editorAnimationExportSnapshot();
-        await window.ASMTraceVersionCheck.check({ force: true });
-        // 匯出才逐頁核實所有引用；平常仍依目前頁面延遲載入，不把完整 Trace 塞進檔案。
-        for (const [pageIndex, entry] of orderedDeckSlides().entries()) {
-          const animation = entry.slide.animation;
-          if (!animation || entry.slide.kind !== 'algorithm-animation') continue;
-          try {
-            if (draft?.slideId === entry.slide.id) {
-              traceStore.retry(draft.animation);
-              const checked = await traceStore.materializeAnimation(draft.animation);
-              draft.animation = checked;
-            } else {
-              traceStore.retry(animation);
-              await traceStore.materializeAnimation(animation);
-            }
-          } catch (error) { throw new Error(`第 ${pageIndex + 1} 頁動畫未能更新：${error.message}`); }
-        }
+        // Export saves source/settings even while the sequential run is pending.
         const projected = await window.ASMDeck.project(deck, draft,
           { includePrebuiltTraces: false });
         projected.cover = { ...archiveCover, title: cloudDeckTitle,
@@ -1280,7 +1252,7 @@
   async function importDeckJsonText(text) {
     const parsed = JSON.parse(text);
     const importedDeck = parsed && parsed.deck ? parsed.deck : parsed;
-    const nextDeck = normalizeDeck(await traceStore.detachDeck(importedDeck, { upload: canSaveRemoteDeck() }));
+    const nextDeck = normalizeDeck(window.ASMAnimationRecipe.deck(importedDeck));
     if (!sampleId) await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
       { allowMissingTraces: true });
     const previousDeck = deck;
@@ -1290,6 +1262,7 @@
     saveDeck();
     if (canRestoreDeckInPlace(previousDeck, deck)) restoreDeckInPlace(previousDeck);
     else renderDeck();
+    startProgressiveDeckRebuild({ mode: 'import' });
   }
 
   let deckImportInProgress = false;
@@ -12921,6 +12894,9 @@
     bindOverviewDrag();
     window.addEventListener('beforeunload', () => { rememberSlidePosition(); stopTtsPlayback(); });
     restoreSlidePosition();
+    const preparation = pendingProgressiveRebuild || { mode: 'load' };
+    pendingProgressiveRebuild = null;
+    startProgressiveDeckRebuild(preparation);
     renderDeck();
     updateAlgorithmEditButton();
     initReveal();
@@ -12929,11 +12905,7 @@
     const initialSave = saveDeck({ history: false, cloud: false });
     pushHistorySnapshot();
     await initialSave;
-    if (pendingProgressiveRebuild) {
-      const options = pendingProgressiveRebuild;
-      pendingProgressiveRebuild = null;
-      startProgressiveDeckRebuild(options);
-    }
+    await window.ASMDeck.clearCache();
   }
 
   window.addEventListener('focus', async () => {

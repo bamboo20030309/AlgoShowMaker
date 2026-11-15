@@ -8,7 +8,7 @@ const { readPackage, savedTrace } = require('./helpers/deck-package');
 const { canonical } = require('../public/slides-storage');
 const root = path.resolve(__dirname, '../public');
 
-test('every real catalog asset has an intact archive and resolvable prebuilt trace IDs matching its code/input', async () => {
+test('every real catalog asset has an intact archive and executable recipes without persisted Trace results', async () => {
   const catalog = JSON.parse(fs.readFileSync(path.join(root, 'guest-decks.json')));
   for (const entry of catalog.decks) {
     const relative = entry.archive.split('?')[0].replace(/^\//, '');
@@ -16,22 +16,16 @@ test('every real catalog asset has an intact archive and resolvable prebuilt tra
     assert.ok(absolute.startsWith(root + path.sep), 'public archives cannot escape the asset root');
     const bytes = fs.readFileSync(absolute);
     assert.equal(bytes.subarray(0, 9).toString(), 'ASMDECK2\n');
+    assert.ok(relative.includes(await archive.sha256(bytes)),'published URL hash matches its actual bytes');
     const payload = readPackage(bytes);
     assert.equal(await archive.sha256(JSON.stringify(payload.body)), payload.manifest.contentHash, entry.id);
     const decoded = await archive.decode(new Blob([bytes]));
     assert.ok(decoded.deck.groups.length > 0, entry.id);
     const slides = payload.body.deck.groups.flatMap(group => group.slides || []);
     for (const slide of slides.filter(slide => slide.animation)) {
-      const id = slide.animation.traceRef;
-      assert.match(id || '', /^[a-f0-9]{64}$/, `${entry.id}/${slide.id} is missing a trace ID`);
-      assert.equal(slide.animation.prebuilt, undefined);
-      assert.equal(slide.animation.traceDocument, undefined);
-      const trace = savedTrace(payload.body, slide.animation, { presentation: false });
-      assert.ok(trace?.frames?.length > 0, `${entry.id}/${slide.id} trace ID cannot be resolved`);
-      assert.equal(await archive.sha256(canonical(trace)), id, 'trace contents match their canonical ID');
-      const expected = global.ASMTraceProvenance.create(slide.animation.code, slide.animation.input || '');
-      assert.equal(trace.provenance.sourceFingerprint, expected.sourceFingerprint, `${entry.id} code changed without a matching trace`);
-      assert.equal(trace.provenance.inputFingerprint, expected.inputFingerprint, `${entry.id} input changed without a matching trace`);
+      assert.equal(slide.animation.traceRef,undefined);assert.equal(slide.animation.traceDocument,undefined);assert.equal(slide.animation.prebuilt,undefined);
+      assert.ok(slide.animation.code.trim());assert.equal(typeof slide.animation.input,'string');assert.match(slide.animation.executableRef?.id||'',/^[a-f0-9]{64}$/);
+      assert.equal(slide.animation.executionPolicy,'executable-only-v1');
     }
   }
 });

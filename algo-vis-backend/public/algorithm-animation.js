@@ -57,8 +57,11 @@
       rules: Array.isArray(rules) ? clone(rules) : [],
       traceDocument,
       ...(typeof animation.traceRef === 'string' ? {
-        traceRef: animation.traceRef, traceView: clone(animation.traceView || {})
+        traceRef: animation.traceRef
       } : {}),
+      ...(animation.traceView ? { traceView: clone(animation.traceView) } : {}),
+      ...(animation.executableRef ? { executableRef: clone(animation.executableRef) } : {}),
+      ...(animation.executionPolicy ? { executionPolicy: animation.executionPolicy } : {}),
       ...(animation.rebuild ? { rebuild: clone(animation.rebuild) } : {}),
       ...(typeof animation.rebuildError === 'string' ? { rebuildError: animation.rebuildError } : {})
     };

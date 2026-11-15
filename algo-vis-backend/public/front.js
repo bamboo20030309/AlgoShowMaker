@@ -616,77 +616,21 @@ async function loadDefaultAlgorithm() {
   if (!canApplyDefaultAlgorithm()) return;
   defaultAlgorithmLoadController = new AbortController();
   const { signal } = defaultAlgorithmLoadController;
-  let previewApplied = false;
   try {
-    const manifestResponse = await fetch(DEFAULT_ALGORITHM_MANIFEST, { signal, cache: 'no-store' });
-    if (!manifestResponse.ok) throw new Error(`無法讀取預設線篩動畫清單 (${manifestResponse.status})`);
-    const manifest = window.ASMTraceBundle.validateManifest(await manifestResponse.json());
-    await window.ASMTraceProvenance.ready();
-    if (!canApplyDefaultAlgorithm()) return;
-
-    if (manifest.generationFingerprint !== window.ASMTraceProvenance.generationFingerprint) {
-      setDefaultAnimationState('loading', manifest.totalFrames);
-      // 舊封裝僅供取回原始碼與輸入，不先顯示過期的第一幀。
-      const source = await fetchDefaultAnimationBundle(manifest.preview, manifest, 'preview', signal);
-      const rebuilt = await window.ASMDeck.rebuildMissingAnimation(source.animation);
-      if (signal.aborted || !canApplyDefaultAlgorithm()) return;
-      applyDefaultAnimation({ ...source, animation: rebuilt, totalFrames: rebuilt.traceDocument.frames.length }, 'ready', 'rebuilt');
-      return;
-    }
-
-    const cached = await window.ASMTraceBundle.cacheGet(manifest);
+    await window.ASMDeck.clearCache();
+    const response = await fetch(DEFAULT_ALGORITHM_MANIFEST, { signal, cache: 'no-store' });
+    if (!response.ok) throw new Error(`無法讀取預設線篩設定 (${response.status})`);
+    const manifest = await response.json();
+    if (!canApplyDefaultAlgorithm() || signal.aborted) return;
+    setDefaultAnimationState('loading', 0);
+    const animation = await window.ASMDeck.rebuildMissingAnimation(manifest.animation);
     if (signal.aborted || !canApplyDefaultAlgorithm()) return;
-    if (cached) {
-      applyDefaultAnimation(cached, 'ready', 'indexeddb');
-      document.body.dataset.defaultAnimationCache = 'hit';
-      return;
-    }
-
-    const previewPromise = fetchDefaultAnimationBundle(manifest.preview, manifest, 'preview', signal);
-    // Observe both parallel downloads immediately. An edit can abort them while
-    // preview is still pending; leaving full unobserved creates pageerror 'edited'.
-    const fullPromise = fetchDefaultAnimationBundle(manifest.full, manifest, 'full', signal)
-      .then(value => ({ value }), error => ({ error }));
-    const preview = await previewPromise;
-    if (signal.aborted) return;
-    previewApplied = applyDefaultAnimation(preview, 'loading', 'preview');
-    if (!previewApplied) return;
-
-    const fullResult = await fullPromise;
-    if (fullResult.error) throw fullResult.error;
-    const full = fullResult.value;
-    if (!applyDefaultAnimation(full, 'ready', 'network')) return;
-    document.body.dataset.defaultAnimationCache = 'storing';
-    window.ASMTraceBundle.cachePut(manifest, full).then(stored => {
-      document.body.dataset.defaultAnimationCache = stored ? 'stored' : 'unavailable';
-    });
+    applyDefaultAnimation({ animation, totalFrames: animation.traceDocument.frames.length }, 'ready', 'executed');
+    document.body.dataset.defaultAnimationCache = 'disabled';
   } catch (error) {
-    algorithmDraftApplying = false;
-    if (error?.name === 'AbortError' || signal.aborted) return;
-    console.error('預設線篩動畫載入失敗', error);
-    if (previewApplied) {
-      setDefaultAnimationState('error', Number(document.getElementById('frameInfo')?.textContent.match(/\/\s*(\d+)/)?.[1]));
-      return;
-    }
-    if (!canApplyDefaultAlgorithm()) return;
-    try {
-      const response = await fetch('sample_code.cpp');
-      if (!response.ok) throw new Error('無法讀取線篩範例程式碼');
-      const code = await response.text();
-      if (!canApplyDefaultAlgorithm()) return;
-      activeBuiltinDefault = { code, input: '100' };
-      algorithmDraftApplying = true;
-      aceEditor.setValue(code, -1);
-      const inputArea = document.getElementById('inputArea');
-      if (inputArea) inputArea.value = '100';
-      algorithmDraftApplying = false;
-      setDefaultAnimationState('error');
-      setTimeout(foldDrawBlocks, 0);
-    } catch (fallbackError) {
-      algorithmDraftApplying = false;
-      console.error(fallbackError);
-    }
+    if (!signal.aborted) { console.error('預設線篩執行失敗', error); setDefaultAnimationState('error'); }
   } finally {
+    algorithmDraftApplying = false;
     if (defaultAlgorithmLoadController?.signal === signal) defaultAlgorithmLoadController = null;
   }
 }

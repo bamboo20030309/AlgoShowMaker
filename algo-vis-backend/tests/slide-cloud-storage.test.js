@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const SlideStorage = require('../public/slides-storage');
+const compact = source => require('../public/animation-recipe').deck(source);
 
 function routes(previous) {
   const handlers = {}, writes = [], queries = [];
@@ -44,31 +45,15 @@ function routes(previous) {
   return { invoke, writes, queries };
 }
 
-test('lazy owner/shared deck reads return IDs and result endpoints enforce deck/share scope', async () => {
-  const source = { groups: [{ slides: [{ animation: { traceDocument: { frames: [{ state: {} }],
-    studio: { enabled: false } } } }] }] };
-  const record = await SlideStorage.project(source), key = record.references[0].key;
-  const previous = () => ({ deck: structuredClone(record.deck), trace_references: record.references,
-    trace_results: record.traces, share_view_token: 'view', share_edit_token: 'edit', share_mode: 'edit' });
-  for (const path of ['GET /api/slides/:deck_uid', 'GET /api/shared-slides/:share_token']) {
-    const response = await routes(previous()).invoke(path, {}, { query: { traceMode: 'lazy' } });
-    assert.equal(response.statusCode, 200);
-    const animation = response.body.slide.deck.groups[0].slides[0].animation;
-    assert.equal(animation.traceDocument, undefined);
-    assert.equal(animation.traceRef, key);
-    assert.equal(animation.traceView.studio.enabled, false);
+test('lazy owner/shared reads contain recipes; retired result endpoints preserve authorization',async()=>{
+  const source={groups:[{slides:[{animation:{code:'int main(){}',traceDocument:{frames:[{}],studio:{enabled:false}}}}]}]},record=await SlideStorage.project(source),key='b'.repeat(64);
+  const previous=()=>({deck:structuredClone(record.deck),trace_references:[],trace_results:{},share_view_token:'view',share_edit_token:'edit',share_mode:'edit'});
+  for(const path of ['GET /api/slides/:deck_uid','GET /api/shared-slides/:share_token']){
+    const response=await routes(previous()).invoke(path,{}, {query:{traceMode:'lazy'}});assert.equal(response.statusCode,200);
+    const a=response.body.slide.deck.groups[0].slides[0].animation;assert.equal(a.traceRef,undefined);assert.equal(a.traceDocument,undefined);assert.equal(a.traceView.studio.enabled,false);
   }
-  const owned = routes(previous());
-  const route = 'GET /api/slides/:deck_uid/traces/:key';
-  const result = await owned.invoke(route, {}, { params: { deck_uid: 'owned', key } });
-  assert.deepEqual(result.body.trace, record.traces[key]);
-  assert.deepEqual(JSON.parse(JSON.stringify(owned.queries[0])), { deck_uid: 'owned', user_uid: 'owner' });
-  assert.equal((await owned.invoke(route, {}, { params: { deck_uid: 'owned', key: 'a'.repeat(64) } })).statusCode, 404);
-  assert.equal((await owned.invoke(route, {}, { params: { deck_uid: 'owned', key: 'invalid' } })).statusCode, 400);
-  const shared = 'GET /api/shared-slides/:share_token/traces/:key';
-  assert.equal((await routes(previous()).invoke(shared, {}, { params: { share_token: 'view', key } })).statusCode, 200);
-  assert.equal((await routes({ ...previous(), share_mode: 'off' }).invoke(shared, {}, { params: { share_token: 'view', key } })).statusCode, 404);
-  assert.equal((await routes(previous()).invoke(shared, {}, { params: { share_token: 'other', key } })).statusCode, 404);
+  const owned=routes(previous()),path='GET /api/slides/:deck_uid/traces/:key';assert.equal((await owned.invoke(path,{}, {params:{deck_uid:'owned',key}})).statusCode,410);assert.deepEqual(JSON.parse(JSON.stringify(owned.queries[0])),{deck_uid:'owned',user_uid:'owner'});
+  const shared='GET /api/shared-slides/:share_token/traces/:key';assert.equal((await routes(previous()).invoke(shared,{}, {params:{share_token:'view',key}})).statusCode,410);assert.equal((await routes({...previous(),share_mode:'off'}).invoke(shared,{}, {params:{share_token:'view',key}})).statusCode,404);assert.equal((await routes(previous()).invoke(shared,{}, {params:{share_token:'other',key}})).statusCode,404);
 });
 
 // -----------------------------------------------------------------------------
@@ -94,23 +79,17 @@ test('owner and shared saves retain durable results without rewriting unchanged 
     assert.equal(Object.keys(update.$set).some(key => key.startsWith('trace_results')), false);
     const restored = SlideStorage.hydrate({ deck: update.$set.deck,
       references: update.$set.trace_references, traces: previous.trace_results });
-    assert.deepEqual(restored, edited);
+    assert.deepEqual(restored, compact(edited));
   }
 });
 
-test('missing or forged cloud result never commits a deck', async () => {
-  const projected = await SlideStorage.project({ groups: [{ slides: [{ animation: {
-    traceDocument: { frames: [] } } }] }] });
-  const harness = routes({ deck: { groups: [] }, updated_at: new Date(1) });
-  const response = await harness.invoke('PUT /api/slides/:deck_uid', {
-    deck: projected.deck, trace_storage: { references: projected.references, traces: {} }
-  });
-  assert.equal(response.statusCode, 400);
-  assert.equal(harness.writes.length, 0);
+test('legacy result IDs no longer gate a valid source save',async()=>{
+ const source={groups:[{slides:[{animation:{code:'int main(){}',traceRef:'a'.repeat(64)}}]}]},harness=routes({deck:{groups:[]},updated_at:new Date(1)});
+ const response=await harness.invoke('PUT /api/slides/:deck_uid',{deck:source});assert.equal(response.statusCode,200);assert.equal(harness.writes[0].update.$set.deck.groups[0].slides[0].animation.traceRef,undefined);
 });
 
 test('cloud reads restore complete results for owner and authorized shared viewer', async () => {
-  const deck = { groups: [{ slides: [{ animation: { traceDocument: { frames: [],
+  const deck = { groups: [{ slides: [{ animation: { code: 'int main(){}', traceDocument: { frames: [],
     studio: { events: { declare: true } } } } }] }] };
   const record = await SlideStorage.project(deck);
   for (const path of ['GET /api/slides/:deck_uid', 'GET /api/shared-slides/:share_token']) {
@@ -118,17 +97,18 @@ test('cloud reads restore complete results for owner and authorized shared viewe
       trace_results: record.traces, share_edit_token: 'edit', share_mode: 'edit' });
     const response = await harness.invoke(path);
     assert.equal(response.statusCode, 200);
-    assert.deepEqual(response.body.slide.deck, deck);
+    assert.deepEqual(response.body.slide.deck, compact(deck));
     assert.deepEqual(Array.from(response.body.slide.trace_keys), Object.keys(record.traces));
   }
 });
 
 test('public HTTP uses the archive SHA-256 fallback for durable trace references', async () => {
   const context = vm.createContext({ TextEncoder, TextDecoder, Uint8Array, Uint32Array,
-    ArrayBuffer, DataView, console });
+    ArrayBuffer, DataView, console, ASMTraceViewSource: require('../public/trace-view-source') });
+  vm.runInContext(fs.readFileSync(require.resolve('../public/animation-recipe.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(require.resolve('../public/asmdeck.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(require.resolve('../public/slides-storage.js'), 'utf8'), context);
-  const source = { groups: [{ slides: [{ animation: { traceDocument: { frames: [] } } }] }] };
+  const source = { groups: [{ slides: [{ animation: { code: 'int main(){}', traceDocument: { frames: [] } } }] }] };
   const browser = await context.ASMSlideStorage.project(source);
   const node = await SlideStorage.project(source);
   assert.deepEqual(Object.keys(browser.traces), Object.keys(node.traces));

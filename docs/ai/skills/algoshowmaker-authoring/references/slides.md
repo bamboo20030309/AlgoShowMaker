@@ -28,7 +28,7 @@ repo 範例來源：
 
 動畫頁使用 `kind: 'algorithm-animation'`，其 `animation` 包含 `mode: 'trace'`、`code`、`input` 及相應重建設定；複用既有頁时保留 trace provenance 與設定。建立頁面後要在實際應用載入，不能只看 JSON 是否能解析。
 
-新 `.asmdeck` 使用 `ASMDECK2\n` 檔頭、4-byte little-endian 封面長度、獨立 UTF-8 JSON 封面區，後面才是 gzip 內容區；不是純 JSON。封面存標題、分类／標籤、頁數、實際最後編輯時間與縮圖。匯出時提供 `projected.cover`；使用既有封面 renderer，首張內容未變就沿用快取，不把匯出時間當作最後編輯時間。`ASMDeck.readCover`／`readCoverURL` 可只讀封面；首頁只讀完整卡片清單，不能為縮圖下载投影片內容。舊 `ASMDECK1\n` 檔案仍可匯入。套件包含 manifest 與 body；新匯出的 body 包含 deck 與 assets；動畫只保存 traceRef（Trace ID）與 traceView（顯示設定），完整 Trace 留在獨立儲存，不內嵌 prebuiltTraces 或 traceDocument。舊檔的內嵌 Trace 仍可匯入。使用者看到動畫頁才讀取對應 ID；找不到結果時提示重新 RUN，不能默默重新編譯全部教材。跨電腦使用引用型檔案時，必須提供可存取的獨立 Trace 來源。manifest 有格式、套件／引擎版本、body 的 SHA-256 等資料。使用既有 serializer／經閱讀的 builder 產生，勿手填 hash 或版本。JSON 序列化順序也會影響內容雜湊。
+新 `.asmdeck` 使用 `ASMDECK2\n` 檔頭、4-byte little-endian 封面長度、獨立 UTF-8 JSON 封面區，後面才是 gzip 內容區；不是純 JSON。封面存標題、分类／標籤、頁數、實際最後編輯時間與縮圖。匯出時提供 `projected.cover`；使用既有封面 renderer，首張內容未變就沿用快取，不把匯出時間當作最後編輯時間。`ASMDeck.readCover`／`readCoverURL` 可只讀封面；首頁只讀完整卡片清單，不能為縮圖下载投影片內容。舊 `ASMDECK1\n` 檔案仍可匯入。套件包含 manifest 與 body；新匯出的 body 包含 deck 與 assets；動畫保存程式碼、輸入、顯示設定及 executableRef（原生執行檔 ID），不保存 traceRef、prebuiltTraces 或 traceDocument。載入整份投影片後從第一個動畫依序重新執行；Trace 只保留在本次頁面記憶體。舊檔匯入先保留來源與顯示設定，再丟棄舊結果。跨電腦若原生執行檔不存在或不相容，依程式碼重新編譯；無來源則明確回報，不偽造成功結果。manifest 有格式、套件／引擎版本、body 的 SHA-256 等資料。使用既有 serializer／經閱讀的 builder 產生，勿手填 hash 或版本。JSON 序列化順序也會影響內容雜湊。
 
 ## 驗證與交付
 

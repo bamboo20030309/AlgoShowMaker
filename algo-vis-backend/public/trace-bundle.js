@@ -73,67 +73,14 @@
     return `${manifest.engineVersion}:${manifest.full.contentHash}`;
   }
 
-  function openCache() {
-    return new Promise((resolve, reject) => {
-      if (!root.indexedDB) return reject(new Error('IndexedDB 無法使用'));
-      const request = root.indexedDB.open(CACHE_DB, 1);
-      request.onupgradeneeded = () => request.result.createObjectStore(CACHE_STORE, { keyPath: 'key' });
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async function cacheGet(manifest) {
-    if (!compatibleEngineVersion(manifest.engineVersion)) return null;
-    let database;
-    try {
-      database = await openCache();
-      const record = await new Promise((resolve, reject) => {
-        const request = database.transaction(CACHE_STORE, 'readonly').objectStore(CACHE_STORE).get(cacheKey(manifest));
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-      });
-      if (!record) return null;
-      return validate(record.payload, manifest.full, manifest, 'full');
-    } catch (error) {
-      console.warn('預設動畫 IndexedDB 快取讀取失敗', error);
-      return null;
-    } finally {
-      database?.close();
-    }
-  }
-
-  async function cachePut(manifest, payload) {
-    validate(payload, manifest.full, manifest, 'full');
-    let database;
-    try {
-      database = await openCache();
-      await new Promise((resolve, reject) => {
-        const transaction = database.transaction(CACHE_STORE, 'readwrite');
-        const store = transaction.objectStore(CACHE_STORE);
-        store.clear();
-        store.put({ key: cacheKey(manifest), payload, savedAt: Date.now() });
-        transaction.oncomplete = resolve;
-        transaction.onerror = () => reject(transaction.error);
-        transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
-      });
-      return true;
-    } catch (error) {
-      console.warn('預設動畫 IndexedDB 快取寫入失敗', error);
-      return false;
-    } finally {
-      database?.close();
-    }
-  }
+  async function cacheGet() { return null; }
+  async function cachePut() { return false; }
 
   function validateManifest(manifest) {
     if (manifest?.format !== FORMAT || manifest.packageVersion !== PACKAGE_VERSION
       || !compatibleEngineVersion(manifest.engineVersion) || !Number.isInteger(manifest.totalFrames)
-      || manifest.totalFrames < 1 || !manifest.preview?.url || !manifest.full?.url) {
-      throw new Error('預設動畫清單與目前引擎不相容。');
-    }
+      || manifest.totalFrames < 1 || !manifest.preview?.url || !manifest.full?.url) throw new Error('預設動畫清單與目前引擎不相容。');
     return manifest;
   }
-
   return { decode, cacheGet, cachePut, validateManifest, currentEngineVersion, compatibleEngineVersion, FORMAT, PACKAGE_VERSION, MAGIC };
 });

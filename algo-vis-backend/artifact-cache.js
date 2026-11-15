@@ -6,7 +6,7 @@ const { createHash, randomUUID } = require('node:crypto');
 
 const fsp = fs.promises;
 const CACHE_VERSION = 1;
-const ARTIFACT_TYPES = new Set(['executable', 'trace']);
+const ARTIFACT_TYPES = new Set(['executable', 'trace', 'transport']);
 const CONTENT_KEY_PATTERN = /^[a-f0-9]{64}$/;
 
 class ArtifactCacheCapacityError extends Error {

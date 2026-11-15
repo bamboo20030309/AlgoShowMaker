@@ -57,6 +57,7 @@ function createStore(repo) {
     return result;
   }
   async function put(id, key, part, total, data) {
+    if (typeof data === 'string' && /(^|[^\\])"frames"\s*:\s*\[/.test(data)) throw fault('Trace 不再上傳儲存，請重新整理後保存程式碼與設定', 410);
     if (!validKey(key) || !Number.isInteger(part) || !Number.isInteger(total)
       || total < 1 || total > 512 || part < 0 || part >= total
       || typeof data !== 'string' || data.length > CHUNK_CHARS + 1) throw fault('上傳分塊格式無效');
@@ -78,7 +79,7 @@ function createStore(repo) {
     const traces = {}, assets = {};
     let bytes = Buffer.byteLength(JSON.stringify(record));
     for (const resource of keys.slice(1)) {
-      if (lazyTraces && !record.asset_keys.includes(resource)) continue;
+      if (!record.asset_keys.includes(resource)) continue;
       const text = await read(id, resource);
       bytes += Buffer.byteLength(text);
       if (bytes > MAX_DECK_BYTES) throw fault('投影片總容量超過 512 MB', 413);
@@ -106,50 +107,49 @@ function createStore(repo) {
       for (const name of Object.keys(value)) value[name] = restore(value[name]);
       return value;
     }
-    return { record, keys, traces, deck: restore(lazyDeck || SlideStorage.hydrate(complete)) };
+    return { record, keys, traces, deck: restore(SlideStorage.hydrate({ deck: lazyDeck || complete.deck, references: record.references })) };
   }
-  async function commit(id, query, key, metadata) {
+  async function commit(id, query, key, metadata, { preserveUpdatedAt = false } = {}) {
     return exclusive(id, async () => {
       const old = await repo.deck(query);
       if (!old) throw fault('找不到投影片或已無編輯權限', 403);
-      // Upgrade legacy results on the server. Editing a title must not download
-      // every old animation into the browser just to upload it again.
-      if (!old.cloud_snapshot) {
-        const manifest = JSON.parse(await read(id, key));
-        const legacy = old.trace_references?.length
-          ? { traces: old.trace_results || {} }
-          : await SlideStorage.project(old.deck || { groups: [] });
-        for (const ref of manifest.references || []) {
-          if (!Object.hasOwn(legacy.traces, ref.key)) continue;
-          const text = SlideStorage.canonical(legacy.traces[ref.key]);
-          if (hash(text) !== ref.key || Buffer.byteLength(text) > MAX_BYTES) throw fault('舊動畫結果驗證失敗');
-          const parts = [];
-          for (let start = 0; start < text.length;) {
-            let end = Math.min(start + CHUNK_CHARS, text.length);
-            if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
-            parts.push(text.slice(start, end)); start = end;
-          }
-          const existing = await repo.parts(id, ref.key);
-          for (const [part, data] of parts.entries()) {
-            const previous = existing.find(value => value.part === part);
-            if (previous && (previous.data !== data || previous.total !== parts.length)) throw fault('舊動畫分塊內容衝突', 409);
-            if (!previous) await repo.put(id, ref.key, part, parts.length, data);
-          }
+      // Normalize old snapshots before committing: source/settings survive,
+      // result IDs and payloads never become durable resources again.
+      let next = await snapshot(id, key, { lazyTraces: true });
+      const compact = SlideStorage.hydrate({ deck: next.record.deck, references: next.record.references });
+      for (const group of compact.groups || []) for (const slide of group.slides || []) {
+        if (slide.animation && !slide.animation.code?.trim() && !slide.animation.scriptContent) {
+          throw fault('動畫缺少可重建的程式碼，保留原資料並停止遷移', 409);
         }
       }
-      const next = await snapshot(id, key);
+      const record = { ...next.record, deck: compact, references: [], retainHistory: false,
+        execution_policy: 'executable-only-v1' };
+      const text = JSON.stringify(record);
+      const newKey = hash(text);
+      if (newKey !== key) {
+        const parts = [];
+        for (let start = 0; start < text.length;) {
+          let end = Math.min(start + CHUNK_CHARS, text.length);
+          if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
+          parts.push(text.slice(start, end)); start = end;
+        }
+        for (const [part, data] of parts.entries()) await repo.put(id, newKey, part, parts.length, data);
+        key = newKey;
+        next = await snapshot(id, key, { lazyTraces: true });
+      }
       // Pin before switching the durable reference. A failed commit never removes old data.
       await repo.pin(id, next.keys);
       const saved = await repo.commit({ ...query, updated_at: old.updated_at }, {
         ...metadata, cloud_snapshot: key, resource_keys: next.keys,
         deck: { groups: [] }, trace_references: [], trace_results: {},
         slide_count: (next.record.deck.groups || []).reduce((sum, group) => sum + (group.slides || []).length, 0),
-        updated_at: new Date()
+        updated_at: preserveUpdatedAt ? old.updated_at : new Date()
       });
       if (!saved) throw fault('投影片已由其他頁面更新，請重新儲存', 409);
       const unused = (old.resource_keys || []).filter(value => !next.keys.includes(value));
       try { if (!next.record.retainHistory) await repo.remove(id, unused); }
       catch (error) { console.error('Deferred unused slide resource cleanup:', error.message); }
+      await repo.purgeTraceResults?.(id, next.keys);
       return saved;
     });
   }
@@ -168,7 +168,29 @@ function createStore(repo) {
       return snapshot(id, current.cloud_snapshot, options);
     });
   }
-  return { read, status, put, snapshot, currentSnapshot, commit, sweep };
+  async function migrate(id) {
+    const old = await repo.deck({ deck_uid: id });
+    if (!old) return;
+    if (old.cloud_snapshot) {
+      const current = await snapshot(id, old.cloud_snapshot, { lazyTraces: true });
+      if (current.record.execution_policy === 'executable-only-v1' && !old.trace_references?.length && !Object.keys(old.trace_results || {}).length) {
+        await repo.purgeTraceResults?.(id, current.keys); return old;
+      }
+      return commit(id, { deck_uid: id }, old.cloud_snapshot, {}, { preserveUpdatedAt: true });
+    }
+    const deck = SlideStorage.hydrate({ deck: old.deck, references: old.trace_references || [] });
+    const record = { version: 1, deck, references: [], asset_keys: [], execution_policy: 'executable-only-v1' };
+    const text = JSON.stringify(record), key = hash(text);
+    const parts = [];
+    for (let start = 0; start < text.length;) {
+      let end = Math.min(start + CHUNK_CHARS, text.length);
+      if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
+      parts.push(text.slice(start, end)); start = end;
+    }
+    for (const [part, data] of parts.entries()) await put(id, key, part, parts.length, data);
+    return commit(id, { deck_uid: id }, key, {}, { preserveUpdatedAt: true });
+  }
+  return { read, status, put, snapshot, currentSnapshot, commit, sweep, migrate };
 }
 
 // -----------------------------------------------------------------------------
@@ -182,6 +204,10 @@ function register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, c
   schema.index({ deck_uid: 1, key: 1, part: 1 }, { unique: true });
   const Chunk = mongoose.model('SlideResourceChunk', schema);
   const store = createStore({
+    purgeTraceResults: async (id, keep) => {
+      const keys = await Chunk.distinct('key', { deck_uid: id, key: { $nin: keep }, data: /"frames"\s*:\s*\[/ });
+      if (keys.length) await Chunk.deleteMany({ deck_uid: id, key: { $in: keys } });
+    },
     parts: (id, key) => Chunk.find({ deck_uid: id, key }).sort({ part: 1 }).lean(),
     partStatus: (id, key) => Chunk.find({ deck_uid: id, key }).select('part total').sort({ part: 1 }).lean(),
     usage: async id => (await Chunk.aggregate([{ $match: { deck_uid: id } },
@@ -226,7 +252,14 @@ function register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, c
   }
   const timer = setInterval(() => store.sweep().catch(error => console.error('Slide resource cleanup:', error.message)), 3600 * 1000);
   timer.unref();
-  return { restore: async (slide, options) => store.currentSnapshot(slide.deck_uid, options),
+  return { migrateAll: async () => {
+      let migrated = 0, failed = 0;
+      for await (const slide of SlideDeck.find({}).select('deck_uid').lean().cursor()) {
+        try { await store.migrate(slide.deck_uid); migrated++; }
+        catch (error) { failed++; console.error('Trace migration retained original deck', slide.deck_uid, error.message); }
+      }
+      return { migrated, failed };
+    }, restore: async (slide, options) => store.currentSnapshot(slide.deck_uid, options),
     trace: async (slide, key, { history = false } = {}) => {
       const current = await store.currentSnapshot(slide.deck_uid, { lazyTraces: true });
       if (!history && !current.record.references.some(ref => ref.key === key)) throw fault('動畫參照不存在', 404);

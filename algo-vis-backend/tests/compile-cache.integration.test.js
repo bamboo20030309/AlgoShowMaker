@@ -46,7 +46,7 @@ async function compile(client, code, input) {
   return { response, body };
 }
 
-test('shared trace cache skips identical work and executable cache accepts another input', {
+test('trace results always execute; executable cache accepts another input', {
   skip: !baseUrl,
   timeout: 30_000,
 }, async () => {
@@ -57,11 +57,11 @@ test('shared trace cache skips identical work and executable cache accepts anoth
   assert.ok(first.body.traceDocument?.frames?.length > 0);
 
   const exact = await compile(client, code, '7\n');
-  assert.equal(exact.response.headers.get('x-compile-trace-cache'), 'HIT');
+  assert.equal(exact.response.headers.get('x-compile-trace-cache'), 'DISABLED');
   assert.equal(exact.body.output.trim(), '7');
 
   const anotherInput = await compile(client, code, '11\n');
-  assert.equal(anotherInput.response.headers.get('x-compile-trace-cache'), 'MISS');
+  assert.equal(anotherInput.response.headers.get('x-compile-trace-cache'), 'DISABLED');
   assert.equal(anotherInput.response.headers.get('x-compile-executable-cache'), 'HIT');
   assert.equal(anotherInput.body.output.trim(), '11');
 });

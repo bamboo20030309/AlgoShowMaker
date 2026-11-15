@@ -1,5 +1,7 @@
 # 投影片 Trace 引用與按需載入
 
+> 歷史設計，已由 2026-11-16 的執行檔配方取代：不再持久保存 Trace 或讀取舊結果 ID。現行規則見根目錄 `docs/guides/trace-cache-updates.md`。
+
 日期：2026-10-05；開發分支：intergration。
 
 ## 儲存契約

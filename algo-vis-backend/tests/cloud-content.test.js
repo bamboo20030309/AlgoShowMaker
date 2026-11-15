@@ -70,101 +70,42 @@ function fixture() {
     interrupt: value => { failPart = value; }, conflict: value => { failCommit = value; } };
 }
 const deck = value => ({ groups: [{ slides: [{ canvas: { objects: [{ src: 'data:image/png;base64,AAAA' }] },
-  animation: { code: 'cpp', input: '6', traceDocument: {
+  animation: { code: 'cpp', input: String(value), traceDocument: {
     sourceCode: 'cpp', frames: [{ state: { arr: [value] } }], studio: { zoom: 2 }
   } } }] }] });
 const options = f => ({ endpoint: '/api/slides/owned', fetch: f.fetch, storage: Storage, headers: {}, title: 'test' });
 
-test('reference-only saves reuse results and lazy cloud reads omit execution payloads', async () => {
-  const f = fixture(), traces = TraceStore.create(Storage, Storage.create(new IDBFactory(), null));
-  const compact = await traces.detachDeck(deck(7), { upload: true });
-  await Cloud.save(compact, { ...options(f), traceStore: traces });
-  const snapshot = await f.store.currentSnapshot('owned', { lazyTraces: true });
-  assert.equal(snapshot.deck.groups[0].slides[0].animation.traceDocument, undefined);
-  assert.equal(Object.keys(snapshot.traces).length, 0);
-  const ref = compact.groups[0].slides[0].animation.traceRef;
-  assert.equal(JSON.parse(await f.store.read('owned', ref)).frames[0].state.arr[0], 7);
-  f.requests.length = 0;
-  compact.title = 'renamed';
-  await Cloud.save(compact, { ...options(f), traceStore: traces });
-  assert.ok(f.requests.every(request => !request.url.includes(ref) || !request.body),
-    'metadata edit checks availability without uploading unchanged Trace');
-  await Cloud.save({ groups: [] }, { ...options(f), traceStore: traces });
-  assert.ok(f.rows.some(row => row.key === ref), 'undo can restore a removed animation');
-  await Cloud.save(compact, { ...options(f), traceStore: traces });
-  assert.deepEqual((await f.store.currentSnapshot('owned')).deck, { ...deck(7), title: 'renamed' });
+// Trace persistence was intentionally removed on 2026-11-16. These contracts
+// retain the cloud atomicity/ownership checks while requiring recipe-only saves.
+const compact = source => require('../public/animation-recipe').deck(source);
+test('cloud saves source/settings and never uploads execution payloads', async () => {
+  const f=fixture(),source=deck(7);await Cloud.save(source,options(f));
+  const snapshot=await f.store.currentSnapshot('owned',{lazyTraces:true});
+  assert.deepEqual(snapshot.deck,compact(source));assert.deepEqual(snapshot.record.references,[]);assert.deepEqual(snapshot.traces,{});
+  assert.ok(f.rows.every(row=>!row.data.includes('"frames"')));
 });
-
-test('imported unmarked local IDs upload without RUN and partial chunks resume', async () => {
-  const f = fixture(), client = Storage.create(new IDBFactory(), null);
-  const traces = TraceStore.create(Storage, client, null, () => { throw Error('must not compile'); });
-  const source = deck('x'.repeat(350000));
-  source.groups[0].slides[0].animation.traceDocument.studio.eventSettings = { autoFixedEnabled: false };
-  const compact = await traces.detachDeck(source); // Deliberately no pending upload marker.
-  const key = compact.groups[0].slides[0].animation.traceRef;
-  const text = Storage.canonical(await client.loadTrace(key)), pieces = Cloud.chunks(text);
-  await f.store.put('owned', key, 0, pieces.length, pieces[0]);
-  const original = JSON.stringify(compact);
-  await Cloud.save(compact, { ...options(f), traceStore: traces });
-  assert.equal(JSON.stringify(compact), original);
-  assert.deepEqual((await f.store.currentSnapshot('owned')).deck, source);
-  assert.equal(f.requests.filter(r => r.url.endsWith('/'+key+'/0') && r.body).length, 0);
-  const uploadCount = f.uploads();
-  await Cloud.save(compact, { ...options(f), traceStore: TraceStore.create(Storage, Storage.create(new IDBFactory(), null)) });
-  assert.equal(f.uploads(), uploadCount, 'complete remote Trace needs no local cache or RUN');
+test('missing imported result IDs do not block saving source or trigger RUN', async () => {
+  const f=fixture(),source=deck(2),a=source.groups[0].slides[0].animation;
+  delete a.traceDocument;a.traceRef='f'.repeat(64);a.traceView={studio:{eventSettings:{autoFixedEnabled:false},codePanelFontSize:19}};
+  let runs=0;const traces=TraceStore.create(Storage,Storage.create(new IDBFactory(),null),null,async()=>{runs++;throw Error('should not run during save');});
+  await Cloud.save(source,{...options(f),traceStore:traces});assert.equal(runs,0);
+  const saved=(await f.store.currentSnapshot('owned')).deck.groups[0].slides[0].animation;
+  assert.equal(saved.traceRef,undefined);assert.equal(saved.traceView.studio.codePanelFontSize,19);assert.equal(saved.traceView.studio.eventSettings.autoFixedEnabled,false);
 });
-
-test('save repairs every missing reference and updates IDs before cloud commit', async () => {
-  const f = fixture(), client = Storage.create(new IDBFactory(), null);
-  let runs = 0;
-  const traces = TraceStore.create(Storage, client, null, async animation => {
-    runs++;
-    return { ...animation, traceDocument: { sourceCode: animation.code,
-      frames: [{ state: { value: Number(animation.input) } }], ...animation.traceView } };
-  });
-  const compact = { groups: [{ slides: [1,2].map(value => ({ id: 's'+value,
-    animation: { code: 'cpp', input: String(value), traceRef: String(value).repeat(64),
-      traceView: { studio: { eventSettings: { autoFixedEnabled: false }, codePanelFontSize: 19 } } } })) }] };
-  const original = JSON.stringify(compact), updates=[];
-  await Cloud.save(compact, { ...options(f), traceStore: traces, onRecovered: update => updates.push(update) });
-  assert.equal(JSON.stringify(compact), original, 'snapshot caller is not mutated');
-  assert.equal(runs, 2); assert.equal(updates.length, 2);
-  const saved = (await f.store.currentSnapshot('owned', { lazyTraces: true })).deck;
-  for (const update of updates) {
-    assert.notEqual(update.animation.traceRef, update.before.traceRef);
-    assert.equal(saved.groups[0].slides[update.slideIndex].animation.traceRef, update.animation.traceRef);
-    compact.groups[0].slides[update.slideIndex].animation = update.animation;
-  }
-  await Cloud.save(compact, { ...options(f), traceStore: traces });
-  assert.equal(runs, 2);
-  const loaded = (await f.store.currentSnapshot('owned')).deck;
-  assert.equal(loaded.groups[0].slides[1].animation.traceDocument.studio.codePanelFontSize, 19);
-  assert.equal(loaded.groups[0].slides[1].animation.traceDocument.studio.eventSettings.autoFixedEnabled, false);
+test('source-less animation migration retains the previous committed snapshot', async () => {
+  const f=fixture();await Cloud.save(deck(8),options(f));const old=f.decks.get('owned');
+  await assert.rejects(Cloud.save({groups:[{slides:[{animation:{traceRef:'a'.repeat(64)}}]}]},options(f)),/缺少可重新執行的程式碼/);
+  assert.equal(f.decks.get('owned'),old);
 });
-
-test('failed repair names the page and keeps the previous committed result', async () => {
-  const f = fixture(); await Cloud.save(deck(8), options(f));
-  const old = f.decks.get('owned');
-  const traces = TraceStore.create(Storage, Storage.create(new IDBFactory(), null), null, async () => { throw Error('compile failed'); });
-  const broken = { groups: [{ slides: [{}, { animation: { code: 'bad', traceRef: 'f'.repeat(64) } }] }] };
-  await assert.rejects(Cloud.save(broken, { ...options(f), traceStore: traces }), /第 2 張.*ffffffffffff.*compile failed/);
-  assert.equal(f.decks.get('owned'), old);
-  assert.equal(broken.groups[0].slides[1].animation.traceRef, 'f'.repeat(64));
-  await assert.rejects(f.store.read('owned', 'a'.repeat(64)), error => error.code === 'RESOURCE_INCOMPLETE'
-    && error.resourceKey === 'a'.repeat(64));
-});
-
-test('legacy cloud results migrate on the server without a browser Trace download', async () => {
-  const f = fixture(), source = deck(9), old = await Storage.project(source);
-  Object.assign(f.decks.get('owned'), { deck: old.deck, trace_references: old.references, trace_results: old.traces });
-  const traces = TraceStore.create(Storage, Storage.create(new IDBFactory(), null), () => {
-    throw Error('metadata migration must not download Trace');
-  });
-  const compact = JSON.parse(JSON.stringify(old.deck));
-  compact.groups[0].slides[0].animation.traceView = old.references[0].view;
-  await traces.detachDeck(compact);
-  await Cloud.save(compact, { ...options(f), traceStore: traces });
-  assert.deepEqual((await f.store.currentSnapshot('owned')).deck, source);
+test('legacy cloud result references migrate without reading unavailable result resources', async () => {
+  const f=fixture(),source=deck(9),a=source.groups[0].slides[0].animation,key='d'.repeat(64);
+  delete a.traceDocument;a.traceRef=key;
+  Object.assign(f.decks.get('owned'),{deck:source,trace_references:[{groupIndex:0,slideIndex:0,key,view:{studio:{zoom:2}}}],trace_results:{[key]:{frames:[{}]}}});
+  const editedAt=f.decks.get('owned').updated_at;
+  await f.store.migrate('owned');
+  assert.equal(f.decks.get('owned').updated_at,editedAt,'migration must not pretend the user edited the deck');
+  const saved=await f.store.currentSnapshot('owned');assert.deepEqual(saved.record.references,[]);assert.deepEqual(f.decks.get('owned').trace_results,{});
+  assert.equal(saved.deck.groups[0].slides[0].animation.traceView.studio.zoom,2);assert.equal(saved.deck.groups[0].slides[0].animation.traceRef,undefined);
 });
 
 // -----------------------------------------------------------------------------
@@ -176,7 +117,7 @@ test('large cloud save splits every request, restores exactly and never mutates 
   assert.equal(JSON.stringify(source), original);
   const saved = f.decks.get('owned');
   assert.ok(JSON.stringify(saved).length < 10000, 'Mongo deck only holds a small manifest reference');
-  assert.deepEqual((await f.store.snapshot('owned', saved.cloud_snapshot)).deck, source);
+  assert.deepEqual((await f.store.snapshot('owned', saved.cloud_snapshot)).deck, compact(source));
   assert.ok(f.requests.every(request => !request.body || Buffer.byteLength(request.body) < 8 * 1024 * 1024));
   const uploads = f.uploads();
   await Cloud.save(source, options(f));
@@ -189,12 +130,12 @@ test('failed upload/commit retains old playable result; successful replacement r
   f.conflict(true);
   await assert.rejects(Cloud.save(deck(2), options(f)), /其他頁面/);
   assert.equal(f.decks.get('owned'), old);
-  assert.deepEqual((await f.store.snapshot('owned', old.cloud_snapshot)).deck, first);
+  assert.deepEqual((await f.store.snapshot('owned', old.cloud_snapshot)).deck, compact(first));
   f.conflict(false);
   const second = deck(2);
   second.groups[0].slides.push(first.groups[0].slides[0]);
   await Cloud.save(second, options(f));
-  assert.deepEqual((await f.store.snapshot('owned', f.decks.get('owned').cloud_snapshot)).deck, second);
+  assert.deepEqual((await f.store.snapshot('owned', f.decks.get('owned').cloud_snapshot)).deck, compact(second));
   await Cloud.save(deck(3), options(f));
   const current = f.decks.get('owned');
   assert.ok(oldKeys.filter(key => !current.resource_keys.includes(key)).every(key => !f.rows.some(row => row.key === key)));
@@ -211,7 +152,7 @@ test('interrupted upload resumes missing chunks without committing an empty deck
   assert.ok(uploaded > 0);
 });
 test('resource validation rejects missing, forged, conflicting or cross-deck resources', async () => {
-  const f = fixture(), text = JSON.stringify({ frames: [] }), key = hash(text);
+  const f = fixture(), text = JSON.stringify('data:image/png;base64,AAAA'), key = hash(text);
   await f.store.put('owned', key, 0, 1, text);
   await assert.rejects(f.store.read('other', key), /完整上傳/);
   await assert.rejects(f.store.put('owned', key, 0, 1, 'changed'), /衝突/);
@@ -227,7 +168,7 @@ test('stale upload sweep preserves currently referenced results and removes orph
   f.rows.forEach(row => { row.touched_at = new Date(0); });
   await f.store.sweep();
   assert.equal(f.rows.some(row => row.key === key), false);
-  assert.deepEqual((await f.store.snapshot('owned', f.decks.get('owned').cloud_snapshot)).deck, deck(1));
+  assert.deepEqual((await f.store.snapshot('owned', f.decks.get('owned').cloud_snapshot)).deck, compact(deck(1)));
 });
 test('reading a previously captured deck after replacement uses the current snapshot, not deleted history', async () => {
   const f = fixture();
@@ -235,7 +176,7 @@ test('reading a previously captured deck after replacement uses the current snap
   const captured = f.decks.get('owned');
   await Cloud.save(deck(2), options(f));
   assert.notEqual(captured.cloud_snapshot, f.decks.get('owned').cloud_snapshot);
-  assert.deepEqual((await f.store.currentSnapshot(captured.deck_uid)).deck, deck(2));
+  assert.deepEqual((await f.store.currentSnapshot(captured.deck_uid)).deck, compact(deck(2)));
 });
 test('chunk boundaries preserve Unicode surrogate pairs and escaped JSON stays under request limit', () => {
   const text = 'x'.repeat(256 * 1024 - 1) + '😀' + '\n'.repeat(800000);
@@ -243,3 +184,5 @@ test('chunk boundaries preserve Unicode surrogate pairs and escaped JSON stays u
   assert.equal(parts.join(''), text);
   for (const data of parts) assert.ok(Buffer.byteLength(JSON.stringify({ data, total: parts.length })) < 8 * 1024 * 1024);
 });
+
+test('old clients cannot upload Trace payloads to the generic resource endpoint',async()=>{const f=fixture(),text=JSON.stringify({frames:[{}]});await assert.rejects(f.store.put('owned',hash(text),0,1,text),error=>error.status===410);assert.equal(f.rows.length,0);});

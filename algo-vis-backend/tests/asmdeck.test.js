@@ -39,7 +39,7 @@ test('HTTP without SubtleCrypto preserves hashes, round-trips, and rejects tampe
   const sandbox = { module: { exports: {} }, TextEncoder, TextDecoder, Uint8Array,
     ArrayBuffer, DataView, Uint32Array, Blob, Response, CompressionStream, DecompressionStream,
     crypto: {}, ASMTraceProvenance: global.ASMTraceProvenance,
-    ASMTraceViewSource: global.ASMTraceViewSource };
+    ASMTraceViewSource: global.ASMTraceViewSource, ASMAnimationRecipe: require('../public/animation-recipe') };
   vm.runInNewContext(fs.readFileSync(require.resolve('../public/asmdeck.js'), 'utf8'), sandbox);
   const fallback = sandbox.module.exports;
   for (const input of ['', 'abc', '繁體中文🙂', 'x'.repeat(55), 'x'.repeat(56),
@@ -105,16 +105,15 @@ test('asmdeck projection is detached, strips trace results, and retains playback
   assert.equal(JSON.stringify(live), before);
   const slide = projected.deck.groups[0].slides[0];
   assert.equal(slide.animation.traceDocument, undefined);
-  assert.match(slide.animation.traceRef, /^[a-f0-9]{64}$/);
-  const seed = projected.cacheSeeds.find(seed => seed.key === slide.animation.traceRef);
-  assert.ok(seed.trace.frames.length, 'full result is retained independently');
+  assert.equal(slide.animation.traceRef, undefined);
+  assert.deepEqual(projected.cacheSeeds, []);
   assert.equal(slide.animation.traceView.studio.eventSettings.autoFixedEnabled, false);
   assert.equal(slide.animation.rebuild.globals.eventSettings.gapMs, 720);
   assert.deepEqual(slide.animation.rebuild.view.studio.eventInstructionStates, {
     'assign:main:i++': true
   });
   assert.equal(Object.keys(projected.assets).length, 1);
-  assert.equal(projected.cacheSeeds[0].trace.frames.length, 1);
+  assert.deepEqual(projected.prebuiltTraces, {});
   // 動畫完全由指令驅動（2026-11-14）：Studio 手動鏡頭與拖曳位置不進封存，事件設定照常保留。
   assert.equal(slide.animation.rebuild.view.studio.cameraRules, undefined, 'manual camera rules are dropped');
   assert.equal(slide.animation.presentationCamera, undefined, 'temporary camera must not enter an archive');
@@ -123,27 +122,21 @@ test('asmdeck projection is detached, strips trace results, and retains playback
   assert.equal(slide.canvas.objects[0].src, slide.canvas.objects[1].src);
 });
 
-test('legacy archive imports a verified embedded trace and rebuild uses it without HTTP', async () => {
-  const projected = await archive.project(fixture(), null, { includePrebuiltTraces: true });
-  const traceIds = Object.keys(projected.prebuiltTraces);
-  assert.equal(traceIds.length, 1);
-  assert.equal(projected.deck.groups[0].slides[0].animation.prebuilt.traceId, traceIds[0]);
-  await assert.rejects(archive.encode(projected), /Trace/);
-  const decoded = await archive.decode(await legacyArchive(projected));
-  const animation = decoded.deck.groups[0].slides[0].animation;
-  assert.equal(animation.traceDocument.frames.length, 1);
-  const priorFetch = global.fetch;
-  global.fetch = async () => { throw new Error('prebuilt trace must not call HTTP'); };
-  try {
-    const kinds = [];
-    const rebuilt = await archive.rebuildDeck(decoded.deck, () => {}, (_slide, kind) => kinds.push(kind));
-    assert.deepEqual(kinds, ['prebuilt']);
-    assert.equal(rebuilt.groups[0].slides[0].animation.traceDocument.frames.length, 1);
-  } finally { global.fetch = priorFetch; }
+async function legacyProjected() {
+  const live=fixture(),projected=await archive.project(live),trace=live.groups[0].slides[0].animation.traceDocument;
+  const traceId=await archive.sha256(JSON.stringify(trace)),a=projected.deck.groups[0].slides[0].animation;
+  projected.prebuiltTraces[traceId]=trace;
+  a.prebuilt={traceId,...ASMTraceProvenance.create(a.code,a.input),engineVersion:archive.engineVersion()};
+  return projected;
+}
+test('legacy embedded results are verified then discarded, retaining source/settings for fresh execution',async()=>{
+  const projected=await legacyProjected();await assert.rejects(archive.encode(projected),/Trace/);
+  const decoded=await archive.decode(await legacyArchive(projected)),a=decoded.deck.groups[0].slides[0].animation;
+  assert.equal(a.traceDocument,undefined);assert.equal(a.prebuilt,undefined);assert.equal(a.code,fixture().groups[0].slides[0].animation.code);assert.equal(a.rebuild.globals.eventSettings.gapMs,720);
 });
 
 test('prebuilt trace is ignored after input or engine identity changes', async () => {
-  const blob = await legacyArchive(await archive.project(fixture(), null, { includePrebuiltTraces: true }));
+  const blob = await legacyArchive(await legacyProjected());
   const bytes = Buffer.from(await blob.arrayBuffer());
   const payload = JSON.parse(gunzipSync(bytes.subarray((await archive.readCover(blob))?.bodyOffset || archive.MAGIC.length)));
   const animation = payload.body.deck.groups[0].slides[0].animation;
@@ -227,22 +220,17 @@ test('every bundled guest deck remains decodable after engine upgrades', async (
     const animations = decoded.deck.groups.flatMap(group => group.slides || [])
       .filter(slide => slide.kind === 'algorithm-animation');
     assert.equal(decoded.manifest.prebuiltTraceHashes, undefined, `${entry.id} must not embed trace payloads`);
-    const index = JSON.parse(fs.readFileSync(path.join(publicRoot, 'deck-traces/index.json'), 'utf8'));
     for (const slide of animations) {
-      assert.match(slide.animation.traceRef, /^[a-f0-9]{64}$/);
-      assert.equal(slide.animation.traceDocument, undefined);
-      const file = require('../public/sample-trace-assets').filenameFor(index, slide.animation.traceRef);
-      const trace = JSON.parse(fs.readFileSync(path.join(publicRoot, 'deck-traces', file), 'utf8'));
-      assert.ok(trace.frames?.length, `${entry.id} external trace must exist`);
-      assert.equal(ASMTraceProvenance.status(trace, slide.animation.code, slide.animation.input).kind, 'current');
+      assert.equal(slide.animation.traceRef,undefined);assert.equal(slide.animation.traceDocument,undefined);
+      assert.ok(slide.animation.code.trim());assert.equal(slide.animation.executionPolicy,'executable-only-v1');
     }
   }
 });
 
-test('dirty code is refused instead of silently exporting the prior RUN', async () => {
+test('edited source can be exported before RUN without retaining the prior result', async () => {
   const live = fixture();
   live.groups[0].slides[0].animation.code += '\nint changed = 1;';
-  await assert.rejects(() => archive.project(live), /尚未更新/);
+  const projected=await archive.project(live);assert.equal(projected.deck.groups[0].slides[0].animation.code,live.groups[0].slides[0].animation.code);assert.equal(projected.deck.groups[0].slides[0].animation.traceDocument,undefined);
 });
 
 test('editor draft only replaces the export snapshot', async () => {

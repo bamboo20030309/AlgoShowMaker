@@ -20,6 +20,7 @@
           const animation = source.groups[h].slides[v].animation;
           if (!animation) continue;
           if (animation.traceDocument) {
+            if (animation.traceDocument.executableRef) slide.animation.executableRef = clone(animation.traceDocument.executableRef);
             const trace = { ...animation.traceDocument };
             const view = {};
             for (const name of ['studio', 'skins', 'rules']) {
@@ -29,7 +30,7 @@
             await client.putTrace(key, trace);
             slide.animation.traceRef = key;
             slide.animation.traceView = view;
-            if (upload) pendingUploads.add(key);
+            // Runtime results are never uploaded or persisted.
           }
           if (slide.animation.traceRef) retained.add(slide.animation.traceRef);
         }
@@ -41,10 +42,7 @@
       if (!loads.has(key)) {
         const promise = (async () => {
           let trace = await client.loadTrace(key);
-          if (!trace && fetchRemote) {
-            trace = await fetchRemote(key);
-            await client.putTrace(key, trace);
-          }
+
           if (!trace) throw Object.assign(new Error('找不到動畫結果，請重新匯入或 RUN'), { code: 'TRACE_NOT_FOUND' });
           return trace;
         })();
@@ -56,7 +54,7 @@
       return loads.get(key);
     }
     async function materializeAnimation(animation) {
-      if (!animation?.traceRef && !animation?.traceDocument && !animation?.rebuild) return animation;
+      if (!animation?.traceRef && !animation?.traceDocument && !animation?.rebuild && !animation?.code?.trim()) return animation;
       let trace;
       try {
         if (!animation.traceDocument && !animation.traceRef) throw Object.assign(new Error('動畫尚無執行結果'), { code: 'TRACE_NOT_FOUND' });
@@ -105,9 +103,7 @@
       return deck;
     }
     async function uploadTraces(references) {
-      const traces = {};
-      for (const ref of references) if (pendingUploads.has(ref.key)) traces[ref.key] = await load(ref.key);
-      return traces;
+      return {};
     }
     return { detachDeck, load, materializeAnimation, materializeDeck, uploadTraces,
       retry: animation => recoveries.delete(storage.canonical(animation)),

@@ -12,10 +12,10 @@
   // 雲端 deck 投影
   // 重用本機 storage 的內容定址規則，把大型 trace 拆成可獨立上傳的 references。
   // -----------------------------------------------------------------------------
-  async function project(source, storage, traceStore = null, supplementalTraces = {}, retainHistory = Boolean(traceStore)) {
+  async function project(source, storage, traceStore = null, supplementalTraces = {}, retainHistory = false) {
     const projected = await storage.project(source);
-    Object.assign(projected.traces, supplementalTraces);
-    if (traceStore) Object.assign(projected.traces, await traceStore.uploadTraces(projected.references));
+    // Legacy callers may supply results; never persist these runtime values.
+
     const assets = {};
     async function extract(value) {
       if (typeof value === 'string' && value.startsWith('data:')) {
@@ -31,7 +31,7 @@
     for (const [key, trace] of Object.entries(projected.traces)) resources[key] = storage.canonical(trace);
     const deck = await extract(projected.deck);
     const record = { version: 1, deck, references: projected.references, asset_keys: Object.keys(assets),
-      ...(retainHistory ? { retainHistory: true } : {}) };
+      retainHistory: false, execution_policy: 'executable-only-v1' };
     Object.assign(resources, assets);
     const text = JSON.stringify(record), snapshot = await storage.digest(text);
     resources[snapshot] = text;
@@ -81,28 +81,6 @@
       && Array.isArray(status.parts) && new Set(status.parts).size === status.total
       && status.parts.every(part => Number.isInteger(part) && part >= 0 && part < status.total);
     let page = 0;
-    for (const [groupIndex, group] of prepared.groups.entries()) {
-      for (const [slideIndex, slide] of group.slides.entries()) {
-        page++;
-        const animation = slide.animation;
-        if (!animation?.traceRef || animation.traceDocument) continue;
-        const key = animation.traceRef;
-        try {
-          if (!statuses.has(key)) statuses.set(key, await request(endpoint + '/resources/' + key, { method: 'GET' }));
-          if (complete(statuses.get(key)) || statuses.get(key).legacyAvailable === true) continue;
-          if (!traceStore) continue; // Legacy clients retain server-side migration.
-          const materialized = await traceStore.materializeAnimation(animation);
-          const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation: materialized }] }] }, { upload: true });
-          slide.animation = detached.groups[0].slides[0].animation;
-          const replacement = slide.animation.traceRef;
-          supplemental[replacement] = await traceStore.load(replacement);
-          await onRecovered?.({ groupIndex, slideIndex, before: animation, animation: slide.animation });
-        } catch (error) {
-          throw Object.assign(new Error(`第 ${page} 張投影片的動畫（${key.slice(0, 12)}）無法補齊：${error.message}`),
-            { status: error.status, code: error.code, resourceKey: key });
-        }
-      }
-    }
     // Only serialize inline/newly repaired results. Pending markers alone do
     // not force downloading every already-durable animation on metadata saves.
     const projected = await project(prepared, storage, null, supplemental, Boolean(traceStore));
