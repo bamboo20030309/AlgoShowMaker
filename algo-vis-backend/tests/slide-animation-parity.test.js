@@ -12,6 +12,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const plain = value => JSON.parse(JSON.stringify(value));
+// Minimal detached element: the runtime builds its RUN button and error bar at load.
+const fakeElement = () => {
+  const children = [];
+  return {
+    hidden: false, disabled: false, textContent: '', innerHTML: '',
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener() {}, setAttribute() {}, before() {},
+    append(...nodes) { children.push(...nodes); },
+    querySelector: () => children[0] || fakeElement()
+  };
+};
 
 function context(mode = 'editor') {
   const listeners = new Map();
@@ -25,6 +36,7 @@ function context(mode = 'editor') {
     location: { origin: 'http://localhost:3000', search: `?asmEmbed=${mode}` },
     localStorage: { getItem: () => '' },
     document: { addEventListener() {}, body: { classList: { add() {} } },
+      createElement: fakeElement, querySelector: () => null,
       getElementById: id => id === 'inputArea' ? input : null },
     addEventListener: (type, fn) => listeners.set(type, fn),
     parent: { postMessage: value => messages.push(plain(value)) },
