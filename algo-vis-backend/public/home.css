@@ -1489,3 +1489,8 @@ body > main::-webkit-scrollbar-thumb:hover {
     top: -40px;
   }
 }
+
+/* Legal notices stay accessible in both guest and signed-in workspace views. */
+.site-legal-footer { padding: 12px 24px 20px; text-align: center; font-size: 12px; }
+.site-legal-footer a { color: var(--text-muted); text-underline-offset: 3px; }
+.site-legal-footer a:hover { color: var(--text-bright); }

@@ -518,6 +518,13 @@ function usesLegacyAnimationCompiler(source) {
 }
 
 // 設定中間件
+// Distribution folders omit the packages' root LICENSE files. Expose only
+// these known notices, without exposing node_modules or arbitrary paths.
+for (const [url, file] of [
+  ['/vendor/reveal/LICENSE', 'reveal.js/LICENSE'],
+  ['/vendor/fabric/LICENSE', 'fabric/LICENSE'],
+  ['/vendor/iro/LICENSE.txt', '@jaames/iro/LICENSE.txt'],
+]) app.get(url, (req, res) => res.sendFile(path.join(__dirname, 'node_modules', file)));
 app.use('/vendor/reveal', express.static(path.join(__dirname, 'node_modules', 'reveal.js', 'dist')));
 app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'fabric', 'dist')));
 app.use('/vendor/iro', express.static(path.join(__dirname, 'node_modules', '@jaames', 'iro', 'dist')));

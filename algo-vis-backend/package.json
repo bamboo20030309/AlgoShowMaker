@@ -18,7 +18,9 @@
     "loadtest:compile": "node scripts/benchmarks/compile-load-test.js",
     "test:inventory": "node scripts/validation/validation-manifest.js",
     "test:events": "node scripts/validation/event-contracts.js",
-    "validate:backend-linux": "node scripts/validation/validate-backend-linux.js"
+    "validate:backend-linux": "node scripts/validation/validate-backend-linux.js",
+    "licenses:generate": "node scripts/build/third-party-notices.js",
+    "licenses:check": "node scripts/build/third-party-notices.js --check"
   },
   "dependencies": {
     "@jaames/iro": "^5.5.2",

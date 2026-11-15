@@ -144,4 +144,4 @@ npm run test:inventory
 
 ## 授權
 
-本專案採用 [MIT License](LICENSE)。
+本專案採用 [MIT License](LICENSE)。第三方套件各自的授權、原始碼來源與完整聲明見 [第三方授權](THIRD_PARTY_NOTICES.md)，網站首頁也提供同名入口。
