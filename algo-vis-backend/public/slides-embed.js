@@ -70,58 +70,6 @@
   }
 
   // -----------------------------------------------------------------------------
-  // 投影片畫布 RUN（只在 runtime）
-  // 父頁在投影片編輯畫面替 <html> 加 asm-slide-editing，RUN 才會顯示；放映時工具列只留播放鍵與進度條。
-  // 按下後由父頁用投影片保存的程式與輸入重新產生動畫；失敗時保留原動畫並在畫布上方顯示錯誤。
-  // -----------------------------------------------------------------------------
-  const runButton = mode === 'runtime' ? document.createElement('button') : null;
-  const runError = mode === 'runtime' ? document.createElement('div') : null;
-  if (runButton) {
-    runButton.type = 'button';
-    runButton.id = 'slideRunBtn';
-    runButton.className = 'slide-run-btn';
-    runButton.title = '用這張投影片保存的程式與輸入重新產生動畫';
-    runButton.innerHTML = '<svg class="step-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>RUN</span>';
-    runButton.hidden = true;
-    runButton.addEventListener('click', () => {
-      if (runButton.disabled || window.parent === window) return;
-      window.parent.postMessage({ type: 'asm-runtime-run' }, window.location.origin);
-    });
-    document.querySelector('#tab-canvas .controls')?.prepend(runButton);
-
-    runError.id = 'slideRunError';
-    runError.className = 'slide-run-error';
-    runError.setAttribute('role', 'alert');
-    runError.hidden = true;
-    const text = document.createElement('span');
-    const openEditor = document.createElement('button');
-    openEditor.type = 'button';
-    openEditor.textContent = '開啟編輯器';
-    openEditor.addEventListener('click', () => window.parent.postMessage({ type: 'asm-runtime-open-editor' }, window.location.origin));
-    const dismiss = document.createElement('button');
-    dismiss.type = 'button';
-    dismiss.className = 'slide-run-error-close';
-    dismiss.setAttribute('aria-label', '關閉');
-    dismiss.textContent = '×';
-    dismiss.addEventListener('click', () => { runError.hidden = true; });
-    runError.append(text, openEditor, dismiss);
-    document.getElementById('canvasWrapper')?.before(runError);
-  }
-
-  function setRunState(state, message = '') {
-    if (!runButton) return;
-    const running = state === 'running';
-    runButton.disabled = running;
-    runButton.classList.toggle('is-running', running);
-    runButton.querySelector('span').textContent = running ? '執行中…' : 'RUN';
-    if (running || state === 'done') runError.hidden = true;
-    if (state === 'error') {
-      runError.querySelector('span').textContent = `RUN 失敗，仍保留原動畫：${message}`;
-      runError.hidden = false;
-    }
-  }
-
-  // -----------------------------------------------------------------------------
   // 編輯器快照與來源新鮮度
   // 匯出時讀取目前 Ace、輸入與 trace；若來源已變更則標記舊 trace，避免把它誤當可播放結果。
   // -----------------------------------------------------------------------------
@@ -155,9 +103,6 @@
   function applyAnimation(animation = {}, editorSessionKey = null, cameraSurface = editorSessionKey) {
     settleAnimationVisuals();
     currentAnimation = normalize(animation);
-    // 舊版腳本動畫沒有可重新產生的 trace，不提供 RUN。
-    if (runButton) runButton.hidden = currentAnimation.mode !== 'trace' || !currentAnimation.code?.trim();
-    if (runError) runError.hidden = true;
     window.setLocalCameraSurface?.(`slides:${mode}:${cameraSurface || 'default'}`);
     if (typeof aceEditor !== 'undefined') {
       window.__asmEmbeddedAnimationPayload = currentAnimation;
@@ -194,8 +139,15 @@
       if (mode === 'runtime' && runtimeVisible) Promise.resolve(applied).then(prepareRuntimeGeometry);
       return;
     }
-    if (event.data.type === 'asm-runtime-run-state' && mode === 'runtime') {
-      setRunState(event.data.state, event.data.message);
+    if (event.data.type === 'asm-runtime-set-input') {
+      // 投影片編輯欄的輸入框：寫入同一份輸入，觸發新鮮度檢查讓紅點亮起。
+      const input = document.getElementById('inputArea');
+      const value = String(event.data.input ?? '');
+      currentAnimation = { ...currentAnimation, input: value };
+      if (input && input.value !== value) {
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
       return;
     }
     if (event.data.type === 'asm-editor-hidden' && mode === 'editor') {

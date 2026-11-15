@@ -569,6 +569,12 @@
   const fragmentStyleSelect = document.getElementById('fragmentStyleSelect');
   const fragmentIndexInput = document.getElementById('fragmentIndexInput');
   const algorithmEditSlideBtn = document.getElementById('algorithmEditSlideBtn');
+  const algorithmSidebarBlock = document.getElementById('algorithmSidebarBlock');
+  const algorithmSlideInput = document.getElementById('algorithmSlideInput');
+  const algorithmSlideRunBtn = document.getElementById('algorithmSlideRunBtn');
+  const algorithmSlideStatus = document.getElementById('algorithmSlideStatus');
+  const algorithmSlideError = document.getElementById('algorithmSlideError');
+  const algorithmEditAlert = algorithmEditSlideBtn?.querySelector('.algorithm-edit-alert');
   const algorithmEditorModal = document.getElementById('algorithmEditorModal');
   const algorithmEditorFrame = document.getElementById('algorithmEditorFrame');
   const algorithmEditorStatus = document.getElementById('algorithmEditorStatus');
@@ -7429,10 +7435,138 @@
     hideStructureContextMenu();
   }
 
+  // -----------------------------------------------------------------------------
+  // 側欄的動畫區塊：編輯動畫、輸入與 RUN
+  // 輸入直接寫回投影片的動畫資料；改完約 1.5 秒或離開輸入框時自動重新執行（只改輸入時伺服器
+  // 重用快取的執行檔，不重新編譯）。失敗時保留原動畫，並在 RUN 旁提示到「編輯動畫」查看。
+  // -----------------------------------------------------------------------------
+  const slideRunStates = new Map();
+  const pendingSlideReruns = new Set();
+  const runningSlideAnimations = new Set();
+  const ALGORITHM_AUTO_RUN_MS = 1500;
+  let algorithmInputSaveTimer = null;
+  let algorithmAutoRunTimer = null;
+
+  function slideRunState(slide) {
+    if (!slide) return { state: 'current' };
+    if (runningSlideAnimations.has(slide.id)) return { state: 'running' };
+    const saved = slideRunStates.get(slide.id);
+    if (saved) return saved;
+    const queued = progressiveRebuildSession?.entries.find(entry => entry.slide.id === slide.id);
+    if (queued && ['pending', 'running'].includes(queued.state)) return { state: 'running' };
+    if (slide.animation?.rebuildError) return { state: 'error', message: slide.animation.rebuildError };
+    return { state: 'current' };
+  }
+
+  function slideIsRunnable(slide) {
+    return slide?.kind === 'algorithm-animation' && slide.animation?.mode === 'trace'
+      && Boolean(slide.animation?.code?.trim());
+  }
+
+  function renderAlgorithmRunState(slide = getSlide()) {
+    if (!algorithmSidebarBlock || slide?.kind !== 'algorithm-animation' || slide !== getSlide()) return;
+    const { state, message = '' } = slideRunState(slide);
+    const runnable = slideIsRunnable(slide);
+    algorithmSidebarBlock.dataset.runState = state;
+    if (algorithmSlideRunBtn) {
+      algorithmSlideRunBtn.disabled = state === 'running' || !runnable;
+      algorithmSlideRunBtn.querySelector('span').textContent = state === 'running' ? '執行中…' : 'RUN';
+      algorithmSlideRunBtn.title = runnable
+        ? '用這張投影片的程式與輸入重新執行'
+        : '這張投影片還沒有可執行的程式；請先到「編輯動畫」撰寫';
+    }
+    if (algorithmSlideStatus) {
+      algorithmSlideStatus.textContent = !runnable ? '請先到「編輯動畫」撰寫程式'
+        : { current: '已是最新', stale: '輸入已修改，動畫尚未更新', running: '更新動畫中…', error: '' }[state] || '';
+    }
+    if (algorithmSlideError) {
+      algorithmSlideError.hidden = state !== 'error';
+      const detail = String(message || '').split('\n').map(line => line.trim()).find(Boolean) || '';
+      algorithmSlideError.querySelector('code').textContent = detail;
+      algorithmSlideError.querySelector('code').title = String(message || '');
+    }
+    if (algorithmEditAlert) algorithmEditAlert.hidden = state !== 'error';
+  }
+
+  function setSlideRunState(slide, state, message = '') {
+    if (!slide) return;
+    if (state === 'current') slideRunStates.delete(slide.id);
+    else slideRunStates.set(slide.id, { state, message });
+    renderAlgorithmRunState(slide);
+  }
+
   function updateAlgorithmEditButton() {
     const slide = getSlide();
     const isAlgorithm = slide?.kind === 'algorithm-animation';
-    if (algorithmEditSlideBtn) algorithmEditSlideBtn.hidden = !isAlgorithm;
+    if (algorithmSidebarBlock) algorithmSidebarBlock.hidden = !isAlgorithm;
+    if (!isAlgorithm) return;
+    if (algorithmSlideInput && document.activeElement !== algorithmSlideInput) {
+      algorithmSlideInput.value = slide.animation?.input || '';
+    }
+    renderAlgorithmRunState(slide);
+  }
+
+  function algorithmFrameForSlide(slide) {
+    return document.querySelector(`section.asm-slide[data-slide-id="${slide?.id}"] .algorithm-slide-frame`);
+  }
+
+  // 輸入改了就讓畫布上的紅點亮起（動畫需要更新），並讓編輯動畫頁看到同一份輸入。
+  function postAlgorithmInputToFrame(slide) {
+    const frame = algorithmFrameForSlide(slide);
+    frame?.contentWindow?.postMessage({ type: 'asm-runtime-set-input', input: slide.animation?.input || '' },
+      window.location.origin);
+  }
+
+  function scheduleAlgorithmAutoRun(slide, delay = ALGORITHM_AUTO_RUN_MS) {
+    clearTimeout(algorithmAutoRunTimer);
+    algorithmAutoRunTimer = setTimeout(() => {
+      algorithmAutoRunTimer = null;
+      if (getSlideById(slide.id) !== slide || slideRunState(slide).state !== 'stale') return;
+      requestSlideRun(slide);
+    }, Math.max(0, delay));
+  }
+
+  async function requestSlideRun(slide) {
+    clearTimeout(algorithmAutoRunTimer);
+    if (!slideIsRunnable(slide)) return;
+    if (runningSlideAnimations.has(slide.id)) {
+      // 執行中又改了輸入：這次完成後以最新內容再跑一次。
+      pendingSlideReruns.add(slide.id);
+      return;
+    }
+    await runSlideAnimation(algorithmFrameForSlide(slide), slide);
+    if (pendingSlideReruns.delete(slide.id) && getSlideById(slide.id) === slide) await requestSlideRun(slide);
+  }
+
+  function bindAlgorithmSidebar() {
+    algorithmSlideInput?.addEventListener('input', () => {
+      const slide = getSlide();
+      if (slide?.kind !== 'algorithm-animation') return;
+      slide.animation ||= normalizeAlgorithmAnimation();
+      slide.animation.input = algorithmSlideInput.value;
+      setSlideRunState(slide, 'stale');
+      postAlgorithmInputToFrame(slide);
+      clearTimeout(algorithmInputSaveTimer);
+      algorithmInputSaveTimer = setTimeout(() => saveDeck({ history: false }), 400);
+      scheduleAlgorithmAutoRun(slide);
+    });
+    // 一次輸入完成（離開輸入框）記成一筆復原歷史，並立刻執行尚未更新的修改。
+    algorithmSlideInput?.addEventListener('change', () => {
+      clearTimeout(algorithmInputSaveTimer);
+      saveDeck();
+    });
+    algorithmSlideInput?.addEventListener('blur', () => {
+      const slide = getSlide();
+      if (slide && slideRunState(slide).state === 'stale') scheduleAlgorithmAutoRun(slide, 0);
+    });
+    algorithmSlideRunBtn?.addEventListener('click', () => {
+      const slide = getSlide();
+      if (slide?.kind === 'algorithm-animation') requestSlideRun(slide);
+    });
+    document.getElementById('algorithmSlideErrorOpen')?.addEventListener('click', () => {
+      const slide = getSlide();
+      if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
+    });
   }
 
   // -----------------------------------------------------------------------------
@@ -8348,6 +8482,7 @@
       const slide = getSlide();
       if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
     });
+    bindAlgorithmSidebar();
     document.getElementById('saveAlgorithmEditorBtn')?.addEventListener('click', saveAlgorithmEditor);
     window.addEventListener('message', handleAlgorithmEmbedMessage);
     document.addEventListener('mousedown', clearSelectionWhenClickingOutsideSlide, true);
@@ -10361,7 +10496,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-128';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-129';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10377,6 +10512,8 @@
 
   function refreshAlgorithmSlideInPlace(slide) {
     if (!slide || slide.kind !== 'algorithm-animation') return;
+    // 動畫物件可能被整個換掉（載入時依序重建），側欄的狀態與輸入跟著更新。
+    if (slide === getSlide()) updateAlgorithmEditButton();
     const section = document.querySelector(`section.asm-slide[data-slide-id="${slide.id}"]`);
     const frame = section?.querySelector('.algorithm-slide-frame');
     const placeholder = section?.querySelector('.algorithm-slide-placeholder');
@@ -10401,7 +10538,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-128';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-129';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10421,23 +10558,35 @@
   // -----------------------------------------------------------------------------
   // 畫布 RUN：重新產生這張投影片的動畫。成功後換上新動畫（從第 0 幀開始），
   // 失敗時保留原動畫，並把錯誤摘要交給 iframe 顯示在畫布上方。
-  const runningSlideAnimations = new Set();
   async function runSlideAnimation(frame, slide) {
     if (runningSlideAnimations.has(slide.id)) return;
-    const post = (state, message = '') => frame.contentWindow?.postMessage(
-      { type: 'asm-runtime-run-state', state, message }, window.location.origin);
+    const ranCode = slide.animation?.code;
+    const ranInput = slide.animation?.input;
     runningSlideAnimations.add(slide.id);
-    post('running');
+    setSlideRunState(slide, 'running');
     try {
       await rebuildSlideAnimation(slide.animation);
-      if (getSlideById(slide.id) !== slide || !frame.isConnected) return;
-      await sendAlgorithmAnimationToFrame(frame, slide);
-      sendAlgorithmFrameVisibility(frame);
-      post('done');
+      if (getSlideById(slide.id) !== slide) return;
+      if (slide.animation?.code !== ranCode || slide.animation?.input !== ranInput) {
+        // 執行期間又被修改：結果不套用（rebuildSlideAnimation 不覆寫較新的修改），稍後以最新內容重跑。
+        slideRunStates.set(slide.id, { state: 'stale' });
+        pendingSlideReruns.add(slide.id);
+        return;
+      }
+      slideRunStates.delete(slide.id);
+      if (slide.animation) delete slide.animation.rebuildError;
+      const target = frame?.isConnected ? frame : algorithmFrameForSlide(slide);
+      if (target?.contentWindow) {
+        await sendAlgorithmAnimationToFrame(target, slide);
+        sendAlgorithmFrameVisibility(target);
+      } else {
+        refreshAlgorithmSlideInPlace(slide);
+      }
     } catch (error) {
-      post('error', error?.message || String(error));
+      slideRunStates.set(slide.id, { state: 'error', message: error?.message || String(error) });
     } finally {
       runningSlideAnimations.delete(slide.id);
+      renderAlgorithmRunState(slide);
     }
   }
 
@@ -10487,16 +10636,6 @@
       }
       return;
     }
-    if (event.data.type === 'asm-runtime-run' || event.data.type === 'asm-runtime-open-editor') {
-      const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
-        .find(frame => frame.contentWindow === event.source);
-      const slide = runtimeFrame ? getSlideById(runtimeFrame.dataset.slideId) : null;
-      // RUN 與開啟編輯器只屬於投影片編輯畫面；放映與唯讀檢視不提供。
-      if (!slide || slide.kind !== 'algorithm-animation' || !document.body.classList.contains('asm-edit-mode')) return;
-      if (event.data.type === 'asm-runtime-open-editor') openAlgorithmEditor(slide.id);
-      else runSlideAnimation(runtimeFrame, slide);
-      return;
-    }
     if (!['asm-animation-compiled', 'asm-save-animation'].includes(event.data.type)
       || event.source !== algorithmEditorFrame?.contentWindow) return;
     const slide = getSlideById(editingAlgorithmSlideId);
@@ -10532,7 +10671,7 @@
     if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
       sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
     } else {
-      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-128' + (isLocalCopy() ? '&localOnly=1' : '');
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-129' + (isLocalCopy() ? '&localOnly=1' : '');
     }
   }
 

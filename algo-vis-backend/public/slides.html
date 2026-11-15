@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=video-embed-3" />
+  <link rel="stylesheet" href="slides.css?v=animation-sidebar-1" />
   <link rel="stylesheet" href="slide-presentation-controls.css?v=6" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-7" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
@@ -216,10 +216,30 @@
       </div>
     </div>
 
-    <button id="algorithmEditSlideBtn" type="button" class="palette-item algorithm-edit-sidebar-action" hidden>
-      <span class="tool-icon">{;}</span>
-      <span>編輯演算法動畫</span>
-    </button>
+    <!-- 動畫投影片：編輯動畫（同一個畫布展開成完整頁面）、輸入與 RUN。只改輸入時伺服器重用快取的執行檔，只重新執行。 -->
+    <section id="algorithmSidebarBlock" class="algorithm-sidebar-block" aria-label="動畫" hidden>
+      <button id="algorithmEditSlideBtn" type="button" class="palette-item algorithm-edit-sidebar-action">
+        <span class="tool-icon">{;}</span>
+        <span>編輯動畫</span>
+        <i class="algorithm-edit-alert" aria-hidden="true" hidden></i>
+      </button>
+      <div class="algorithm-input-head">
+        <label for="algorithmSlideInput">輸入</label>
+        <button id="algorithmSlideRunBtn" type="button" class="algorithm-run-btn"
+          title="用這張投影片的程式與輸入重新執行">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>RUN</span>
+        </button>
+      </div>
+      <div id="algorithmSlideError" class="algorithm-slide-error" role="alert" hidden>
+        <strong>執行失敗</strong>
+        <span>請到「編輯動畫」查看錯誤。</span>
+        <code></code>
+        <button type="button" id="algorithmSlideErrorOpen">開啟編輯動畫</button>
+      </div>
+      <textarea id="algorithmSlideInput" class="algorithm-slide-input" spellcheck="false" wrap="off"
+        placeholder="程式執行時的輸入（stdin）" aria-describedby="algorithmSlideStatus"></textarea>
+      <p id="algorithmSlideStatus" class="algorithm-slide-status" role="status" aria-live="polite"></p>
+    </section>
     </div>
 
     <div id="overviewSidebarPanel" class="sidebar-panel overview-sidebar-panel" hidden>
@@ -860,7 +880,7 @@
   <script src="slide-fabric-selection.js?v=8"></script>
   <script src="color-picker-policy.js?v=4"></script>
   <script src="slide-presentation-controls.js?v=9"></script>
-  <script src="slides.js?v=slides-374"></script>
+  <script src="slides.js?v=slides-375"></script>
   <script src="mobile-ui.js?v=mobile-7"></script>
 </body>
 

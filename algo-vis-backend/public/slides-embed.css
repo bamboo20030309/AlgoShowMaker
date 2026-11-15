@@ -23,46 +23,14 @@ body.asm-embed-runtime #vizPanel {
   background: #fbfcfa;
 }
 
-/* Algorithm slides keep the original result tabs so the slide itself can
-   switch between the canvas, input, output, debug log and syntax tree. */
-body.asm-embed-runtime #subTabs {
-  flex: 0 0 42px;
-  height: 42px;
-  box-sizing: border-box;
-  align-items: flex-end;
-  gap: 2px;
-  padding: 4px 14px 0;
-  border-bottom-color: #eeeeee;
-  background: #ffffff;
-}
-
-body.asm-embed-runtime #subTabs .tab-btn {
-  margin-top: 0;
-  padding: 7px 14px 8px;
-  border-radius: 8px 8px 0 0;
-  background: transparent;
-  color: #687774;
-}
-
-body.asm-embed-runtime #subTabs .tab-btn:hover {
-  background: rgba(78, 113, 109, 0.06);
-  color: #355d59;
-}
-
-body.asm-embed-runtime #subTabs .tab-btn.active {
-  background: #ffffff;
-  color: var(--primary-blue);
-}
-
-body.asm-embed-runtime #subTabs .tab-btn::after {
-  right: 14px;
-  left: 14px;
-  height: 2px;
-  background: var(--primary-blue);
+/* 投影片上的動畫只有畫布（2026-11-16）：輸入在投影片編輯欄，輸出、除錯記錄與語法樹在編輯動畫頁。 */
+body.asm-embed-runtime #subTabs,
+body.asm-embed-runtime #vizPanel > .subContent:not(#tab-canvas) {
+  display: none !important;
 }
 
 body.asm-embed-runtime #tab-canvas {
-  display: flex;
+  display: flex !important;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
@@ -97,95 +65,10 @@ body.asm-embed-runtime #viewport .draggable-object {
 
 /* --------------------------------------------------------------------------
  * 投影片畫布工具列
- * 父頁在投影片編輯畫面替 <html> 加 asm-slide-editing：完整工具列＋RUN。
- * 放映（或唯讀檢視）與編輯畫面的工具列完全相同，只少了 RUN 與 RUN 錯誤列；
+ * 放映、唯讀檢視與編輯畫面的工具列完全相同；RUN 在投影片編輯欄的輸入框上方。
  * 上一大步／下一大步在投影片中一律不顯示。
  * -------------------------------------------------------------------------- */
 body.asm-embed-runtime .controls #prevKeyFrameBtn,
 body.asm-embed-runtime .controls #nextKeyFrameBtn {
   display: none !important;
-}
-
-html:not(.asm-slide-editing) body.asm-embed-runtime .controls #slideRunBtn,
-html:not(.asm-slide-editing) body.asm-embed-runtime #slideRunError {
-  display: none !important;
-}
-
-body.asm-embed-runtime .controls .slide-run-btn {
-  gap: 4px;
-  padding: 4px 12px 4px 9px;
-  border-color: var(--primary-blue);
-  background: var(--primary-blue);
-  color: #fff;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-body.asm-embed-runtime .controls .slide-run-btn:hover {
-  background: var(--hover-blue, var(--primary-blue));
-  color: #fff;
-}
-
-body.asm-embed-runtime .controls .slide-run-btn[hidden] {
-  display: none;
-}
-
-body.asm-embed-runtime .controls .slide-run-btn .step-icon {
-  width: 14px;
-  height: 14px;
-}
-
-/* 紅點亮（程式、輸入或引擎版本過期）時 RUN 加強調。 */
-body.asm-embed-runtime .controls:has(#traceFreshnessNotice:is([data-status="outdated"], [data-status="dirty"])) .slide-run-btn:not(:disabled) {
-  border-color: #d9480f;
-  background: #e8590c;
-  box-shadow: 0 0 0 3px rgba(232, 89, 12, 0.22);
-}
-
-body.asm-embed-runtime .controls .slide-run-btn.is-running {
-  cursor: progress;
-  opacity: 0.75;
-  transform: none;
-}
-
-body.asm-embed-runtime .slide-run-error {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 10px 7px 14px;
-  border-bottom: 1px solid #f5c2c7;
-  background: #fff5f5;
-  color: #842029;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-body.asm-embed-runtime .slide-run-error[hidden] {
-  display: none;
-}
-
-body.asm-embed-runtime .slide-run-error span {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-body.asm-embed-runtime .slide-run-error button {
-  flex: 0 0 auto;
-  padding: 3px 10px;
-  border: 1px solid #e0a3a9;
-  border-radius: 6px;
-  background: #fff;
-  color: #842029;
-  font: inherit;
-  cursor: pointer;
-}
-
-body.asm-embed-runtime .slide-run-error .slide-run-error-close {
-  padding: 0 6px;
-  border-color: transparent;
-  background: transparent;
-  font-size: 18px;
-  line-height: 1;
 }

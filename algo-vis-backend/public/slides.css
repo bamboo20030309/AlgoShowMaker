@@ -447,6 +447,184 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal {
   display: none;
 }
 
+/* 動畫投影片的側欄區塊：放在工具清單最下方，輸入框撐滿剩下的高度。 */
+#defaultToolPanel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.algorithm-sidebar-block {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--chrome-line);
+}
+
+.algorithm-sidebar-block[hidden] {
+  display: none;
+}
+
+.algorithm-sidebar-block .algorithm-edit-sidebar-action {
+  position: relative;
+  min-height: 46px;
+  align-items: center;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-weight: 700;
+}
+
+.algorithm-edit-alert {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff5c5c;
+  box-shadow: 0 0 0 2px var(--chrome-bg);
+}
+
+.algorithm-edit-alert[hidden] {
+  display: none;
+}
+
+.algorithm-input-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.algorithm-input-head label {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.algorithm-run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 3px 11px 3px 8px;
+  border: 1px solid var(--primary-blue, #007acc);
+  border-radius: 6px;
+  background: var(--primary-blue, #007acc);
+  color: #fff;
+  font: 700 12px/1 Arial, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.algorithm-run-btn svg {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+
+.algorithm-run-btn:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.algorithm-run-btn:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* 輸入已修改、動畫尚未更新時，RUN 加強調。 */
+.algorithm-sidebar-block[data-run-state="stale"] .algorithm-run-btn:not(:disabled) {
+  border-color: #d9480f;
+  background: #e8590c;
+  box-shadow: 0 0 0 3px rgba(232, 89, 12, 0.25);
+}
+
+.algorithm-slide-input {
+  flex: 1 1 auto;
+  min-height: 7.5em;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  background: #11181b;
+  color: #e9f1ef;
+  font: 13px/1.45 Consolas, "Courier New", monospace;
+  resize: none;
+  white-space: pre;
+  overflow: auto;
+}
+
+.algorithm-slide-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(29, 143, 131, 0.35);
+}
+
+.algorithm-slide-status {
+  margin: 0;
+  min-height: 1.3em;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.algorithm-sidebar-block[data-run-state="stale"] .algorithm-slide-status {
+  color: #ffb27d;
+}
+
+.algorithm-slide-error {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 112, 112, 0.7);
+  border-radius: 6px;
+  background: rgba(220, 53, 69, 0.18);
+  color: #ffd9d9;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.algorithm-slide-error[hidden] {
+  display: none;
+}
+
+.algorithm-slide-error strong {
+  color: #ff9a9a;
+  font-size: 13px;
+}
+
+.algorithm-slide-error code {
+  overflow: hidden;
+  color: #ffc2c2;
+  font: 11px/1.4 Consolas, "Courier New", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.algorithm-slide-error code:empty {
+  display: none;
+}
+
+.algorithm-slide-error button {
+  justify-self: start;
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 154, 154, 0.8);
+  border-radius: 5px;
+  background: transparent;
+  color: #ffe1e1;
+  font: inherit;
+  cursor: pointer;
+}
+
+.algorithm-slide-error button:hover {
+  background: rgba(255, 154, 154, 0.16);
+}
+
 .algorithm-edit-sidebar-action .tool-icon {
   flex: 0 0 auto;
   border-color: rgba(255, 213, 153, 0.9);
