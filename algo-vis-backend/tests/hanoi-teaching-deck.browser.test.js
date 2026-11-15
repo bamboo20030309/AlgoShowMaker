@@ -17,7 +17,7 @@ test('Tower of Hanoi teaching deck explains the lesson and rebuilds its final an
   { timeout: 120000 }, async () => {
     const root = path.resolve(__dirname, '..');
     const archivePath = path.join(root, 'public', 'guest-decks', 'hanoi-teaching.asmdeck');
-    const sourcePath = path.join(root, 'algorithm_sample', 'Backtracking', 'hanoi-recursion.cpp');
+    const sourcePath = path.join(root, 'algorithm_sample', 'Backtracking', 'hanoi_recursion.cpp');
     const decoded = await ASMDeck.decode(new Blob([fs.readFileSync(archivePath)]));
     const slides = decoded.deck.groups.flatMap(group => group.slides || []);
     const lessonText = slides.flatMap(slide => slide.canvas?.objects || [])

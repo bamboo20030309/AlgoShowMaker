@@ -17,16 +17,18 @@ const definitions={
  'prefix-sum':[['prefix-sum-1d','一維前綴和'],['prefix-sum-2d','二維前綴和']],
  'lcs-teaching':[['lcs-table','LCS－建表'],['lcs-backtracking','LCS－回溯']]
 };
-const categoryLabels={Sorting:'排序',Math:'數學',Data_Structure:'資料結構',Backtracking:'回溯與遞迴',DP:'動態規劃'};
 const canonical=text=>String(text||'').replace(/\r\n?/g,'\n');
 const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
 async function exportSlideSamples({root=backend}={}){
- const publicRoot=path.join(root,'public'),sampleRoot=path.join(root,'algorithm_sample'),folder='Slide_Examples';
+ const publicRoot=path.join(root,'public'),sampleRoot=path.join(root,'algorithm_sample');
  const provenance=require('../../public/trace-provenance');
  provenance.configure({generationFingerprint:require('../../trace-generation').generationFingerprint(root)});
  const A=require('../../public/asmdeck');
  const catalog=JSON.parse(await fs.readFile(path.join(publicRoot,'guest-decks.json'),'utf8'));
- const entries=[],byCode=new Map(),labels={[folder]:'投影片範例'},files=new Map();let animationCount=0;
+ const manifestPath=path.join(sampleRoot,'.slide-samples.json');
+ let previous;try{previous=JSON.parse(await fs.readFile(manifestPath,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+ const managed=new Set((previous?.entries||[]).map(entry=>entry.path));
+ const entries=[],byCode=new Map(),files=new Map();let animationCount=0;
  for(const deck of catalog.decks){
   const archive=path.resolve(publicRoot,'.'+deck.archive.split('?')[0]);
   if(!archive.startsWith(publicRoot+path.sep))throw Error('Deck path escaped public');
@@ -39,29 +41,30 @@ async function exportSlideSamples({root=backend}={}){
    const named=definition.length===1?definition[0]:definition[order];
    if(!named)throw Error('Missing animation name for '+deck.id+'/'+order);
    order++;animationCount++;
-   const category=deck.categories?.[0]||'Other',directory=folder+'/'+category;
-   labels[directory]=categoryLabels[category]||category;
+   const category=deck.categories?.[0]||'Other',directory=category;
    let entry=byCode.get(deck.id+':'+hash);
    if(!entry){
-    const file=directory+'/'+named[0]+'.cpp';
+    let stem=named[0].replace(/-/g,'_');
+    let file=directory+'/'+stem+'.cpp';
+    try{await fs.access(path.join(sampleRoot,file));if(!managed.has(file)){stem+='_slides';file=directory+'/'+stem+'.cpp';await fs.access(path.join(sampleRoot,file)).then(()=>{if(!managed.has(file))throw Error('Unmanaged filename collision: '+file);},error=>{if(error.code!=='ENOENT')throw error;});}}catch(error){if(error.code!=='ENOENT')throw error;}
     if(files.has(file))throw Error('Different programs share a filename: '+file);
-    files.set(file,code);labels[file]=named[1];
+    files.set(file,code);
     entry={path:file,title:named[1],sourceDeckId:deck.id,sourceDeckTitle:deck.title,codeSha256:hash,slides:[],inputs:[]};
     entries.push(entry);byCode.set(deck.id+':'+hash,entry);
    }
    const input=canonical(a.input),existing=entry.inputs.find(v=>v.sha256===digest(input));let inputRecord=existing;
    if(!existing){
-    const variant=entry.inputs.length===0?'sample-input':'input-'+String(entry.inputs.length+1).padStart(2,'0');
+    const variant=entry.inputs.length===0?'sample_input':'input_'+String(entry.inputs.length+1).padStart(2,'0');
     const inputPath=entry.path.replace(/\.cpp$/,'-'+variant+'.txt');
-    files.set(inputPath,input);labels[inputPath]=entry.inputs.length===0?'範例測資':'測資 '+(entry.inputs.length+1);
+    files.set(inputPath,input);
     inputRecord={path:inputPath,sha256:digest(input)};entry.inputs.push(inputRecord);
    }
    entry.slides.push({slideId:slide.id,page:page+1,inputPath:inputRecord.path});
   }
  }
- const manifest={schema:1,source:'public/guest-decks.json',deckCount:catalog.decks.length,animationCount,labels,entries};
+ const manifest={schema:2,source:'public/guest-decks.json',deckCount:catalog.decks.length,animationCount,entries};
  for(const[relative,content]of files){const target=path.join(sampleRoot,relative);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,content,'utf8');}
- await fs.writeFile(path.join(sampleRoot,folder,'.manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+ await fs.writeFile(manifestPath,JSON.stringify(manifest,null,2)+'\n');
  return manifest;
 }
 if(require.main===module)exportSlideSamples().then(m=>console.log(JSON.stringify({decks:m.deckCount,animations:m.animationCount,programs:m.entries.length,inputs:m.entries.reduce((n,e)=>n+e.inputs.length,0)}))).catch(e=>{console.error(e);process.exitCode=1});

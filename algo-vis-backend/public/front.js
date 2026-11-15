@@ -2564,6 +2564,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
       fileDiv.addEventListener('click', async (e) => {
         e.stopPropagation();
+        // Keep the selected program's inputs open while the long list scrolls.
+        listContainer.querySelectorAll('.code-wrapper.inputs-open').forEach(node => node.classList.remove('inputs-open'));
+        wrapper.classList.add('inputs-open');
         await loadSampleData(item.path, null);
         // 點擊後是否要自動收起面板？看你喜好，這裡先保留開啟
         // sidePanel.classList.remove('open');
@@ -2575,11 +2578,10 @@ document.addEventListener('DOMContentLoaded', function () {
       const baseName = item.name.replace(/\.(cpp|c|js|py)$/i, '');
 
       const relatedInputs = inputFiles.filter(inputFile => {
-        const inputName = inputFile.name;
-        if (!inputName.startsWith(baseName)) return false;
-        const charAfter = inputName[baseName.length];
-        const validSeparators = ['-'];
-        return validSeparators.includes(charAfter);
+        // The first hyphen separates the exact program stem from the input name.
+        // e.g. 8queen matches 8queen-sample_input, never 8queen_recursion-*.
+        const separator = inputFile.name.indexOf('-');
+        return separator > 0 && inputFile.name.slice(0, separator) === baseName;
       });
 
       // C. 渲染測資列表

@@ -1387,7 +1387,8 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
 }
 
 /* [關鍵互動] 滑鼠滑到 wrapper 上時，顯示測資列表 */
-.code-wrapper:hover .input-list-container {
+.code-wrapper:hover .input-list-container,
+.code-wrapper.inputs-open .input-list-container {
   display: block;
   animation: fadeInDown 0.2s ease;
 }

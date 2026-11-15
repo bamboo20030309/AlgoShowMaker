@@ -1,84 +1,11 @@
 {
-  "schema": 1,
+  "schema": 2,
   "source": "public/guest-decks.json",
   "deckCount": 15,
   "animationCount": 36,
-  "labels": {
-    "Slide_Examples": "投影片範例",
-    "Slide_Examples/Sorting": "排序",
-    "Slide_Examples/Sorting/quick-sort.cpp": "快速排序",
-    "Slide_Examples/Sorting/quick-sort-sample-input.txt": "範例測資",
-    "Slide_Examples/Sorting/quick-sort-input-02.txt": "測資 2",
-    "Slide_Examples/Sorting/merge-sort-recursive.cpp": "合併排序－遞迴版",
-    "Slide_Examples/Sorting/merge-sort-recursive-sample-input.txt": "範例測資",
-    "Slide_Examples/Sorting/merge-sort-recursive-input-02.txt": "測資 2",
-    "Slide_Examples/Sorting/merge-sort-iterative.cpp": "合併排序－倍增版",
-    "Slide_Examples/Sorting/merge-sort-iterative-sample-input.txt": "範例測資",
-    "Slide_Examples/Sorting/merge-sort-iterative-input-02.txt": "測資 2",
-    "Slide_Examples/Sorting/bubble-sort.cpp": "冒泡排序",
-    "Slide_Examples/Sorting/bubble-sort-sample-input.txt": "範例測資",
-    "Slide_Examples/Sorting/bubble-sort-input-02.txt": "測資 2",
-    "Slide_Examples/Sorting/selection-sort.cpp": "選擇排序",
-    "Slide_Examples/Sorting/selection-sort-sample-input.txt": "範例測資",
-    "Slide_Examples/Sorting/selection-sort-input-02.txt": "測資 2",
-    "Slide_Examples/Sorting/insertion-sort.cpp": "插入排序",
-    "Slide_Examples/Sorting/insertion-sort-sample-input.txt": "範例測資",
-    "Slide_Examples/Sorting/insertion-sort-input-02.txt": "測資 2",
-    "Slide_Examples/Sorting/heap-sort.cpp": "堆積排序",
-    "Slide_Examples/Sorting/heap-sort-sample-input.txt": "範例測資",
-    "Slide_Examples/Sorting/heap-sort-input-02.txt": "測資 2",
-    "Slide_Examples/Math": "數學",
-    "Slide_Examples/Math/linear-sieve-detailed.cpp": "線性篩－逐步版",
-    "Slide_Examples/Math/linear-sieve-detailed-sample-input.txt": "範例測資",
-    "Slide_Examples/Math/linear-sieve-condensed.cpp": "線性篩－濃縮版",
-    "Slide_Examples/Math/linear-sieve-condensed-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure": "資料結構",
-    "Slide_Examples/Data_Structure/max-heap-push-pop.cpp": "堆積－插入與刪除",
-    "Slide_Examples/Data_Structure/max-heap-push-pop-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/max-heap-incremental-build.cpp": "堆積－逐筆建堆",
-    "Slide_Examples/Data_Structure/max-heap-incremental-build-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/max-heap-bottom-up-build.cpp": "堆積－由下而上建堆",
-    "Slide_Examples/Data_Structure/max-heap-bottom-up-build-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/bit-build.cpp": "BIT－一般建樹",
-    "Slide_Examples/Data_Structure/bit-build-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/bit-linear-build.cpp": "BIT－線性建樹",
-    "Slide_Examples/Data_Structure/bit-linear-build-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/bit-range-query.cpp": "BIT－區間查詢",
-    "Slide_Examples/Data_Structure/bit-range-query-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/segment-tree-recursive-build.cpp": "線段樹－遞迴建樹",
-    "Slide_Examples/Data_Structure/segment-tree-recursive-build-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/segment-tree-recursive-lazy.cpp": "線段樹－遞迴區間操作",
-    "Slide_Examples/Data_Structure/segment-tree-recursive-lazy-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/segment-tree-iterative-build.cpp": "線段樹－迭代建樹",
-    "Slide_Examples/Data_Structure/segment-tree-iterative-build-sample-input.txt": "範例測資",
-    "Slide_Examples/Data_Structure/segment-tree-iterative-lazy.cpp": "線段樹－迭代區間操作",
-    "Slide_Examples/Data_Structure/segment-tree-iterative-lazy-sample-input.txt": "範例測資",
-    "Slide_Examples/Backtracking": "回溯與遞迴",
-    "Slide_Examples/Backtracking/hanoi.cpp": "河內塔",
-    "Slide_Examples/Backtracking/hanoi-sample-input.txt": "範例測資",
-    "Slide_Examples/Backtracking/eight-queens-loop.cpp": "八皇后－一般迴圈",
-    "Slide_Examples/Backtracking/eight-queens-loop-sample-input.txt": "範例測資",
-    "Slide_Examples/Backtracking/eight-queens-array-recursion.cpp": "八皇后－陣列遞迴",
-    "Slide_Examples/Backtracking/eight-queens-array-recursion-sample-input.txt": "範例測資",
-    "Slide_Examples/Backtracking/eight-queens-bitmask.cpp": "八皇后－位元運算",
-    "Slide_Examples/Backtracking/eight-queens-bitmask-sample-input.txt": "範例測資",
-    "Slide_Examples/Backtracking/fibonacci-recursive.cpp": "費式數列－遞迴",
-    "Slide_Examples/Backtracking/fibonacci-recursive-sample-input.txt": "範例測資",
-    "Slide_Examples/Backtracking/fibonacci-array.cpp": "費式數列－陣列",
-    "Slide_Examples/Backtracking/fibonacci-array-sample-input.txt": "範例測資",
-    "Slide_Examples/Math/prefix-sum-1d.cpp": "一維前綴和",
-    "Slide_Examples/Math/prefix-sum-1d-sample-input.txt": "範例測資",
-    "Slide_Examples/Math/prefix-sum-2d.cpp": "二維前綴和",
-    "Slide_Examples/Math/prefix-sum-2d-sample-input.txt": "範例測資",
-    "Slide_Examples/DP": "動態規劃",
-    "Slide_Examples/DP/lcs-table.cpp": "LCS－建表",
-    "Slide_Examples/DP/lcs-table-sample-input.txt": "範例測資",
-    "Slide_Examples/DP/lcs-backtracking.cpp": "LCS－回溯",
-    "Slide_Examples/DP/lcs-backtracking-sample-input.txt": "範例測資"
-  },
   "entries": [
     {
-      "path": "Slide_Examples/Sorting/quick-sort.cpp",
+      "path": "Sorting/quick_sort_slides.cpp",
       "title": "快速排序",
       "sourceDeckId": "quick-sort",
       "sourceDeckTitle": "快速排序",
@@ -87,27 +14,27 @@
         {
           "slideId": "quick-teaching-23",
           "page": 10,
-          "inputPath": "Slide_Examples/Sorting/quick-sort-sample-input.txt"
+          "inputPath": "Sorting/quick_sort_slides-sample_input.txt"
         },
         {
           "slideId": "quick-teaching-31",
           "page": 13,
-          "inputPath": "Slide_Examples/Sorting/quick-sort-input-02.txt"
+          "inputPath": "Sorting/quick_sort_slides-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Sorting/quick-sort-sample-input.txt",
+          "path": "Sorting/quick_sort_slides-sample_input.txt",
           "sha256": "b5f65b64e16c9095a1607fd1733c07c19b0ad9ec36be01efacb9639f915dcf4d"
         },
         {
-          "path": "Slide_Examples/Sorting/quick-sort-input-02.txt",
+          "path": "Sorting/quick_sort_slides-input_02.txt",
           "sha256": "4c18c2b02e72dcc28eff8f102da8d6ff3c164d5813b3c4b26771fc9dcb270920"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Sorting/merge-sort-recursive.cpp",
+      "path": "Sorting/merge_sort_recursive.cpp",
       "title": "合併排序－遞迴版",
       "sourceDeckId": "merge-sort",
       "sourceDeckTitle": "合併排序",
@@ -116,27 +43,27 @@
         {
           "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5",
           "page": 11,
-          "inputPath": "Slide_Examples/Sorting/merge-sort-recursive-sample-input.txt"
+          "inputPath": "Sorting/merge_sort_recursive-sample_input.txt"
         },
         {
           "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f",
           "page": 15,
-          "inputPath": "Slide_Examples/Sorting/merge-sort-recursive-input-02.txt"
+          "inputPath": "Sorting/merge_sort_recursive-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Sorting/merge-sort-recursive-sample-input.txt",
+          "path": "Sorting/merge_sort_recursive-sample_input.txt",
           "sha256": "de58de78ff5b3955c361f22237f66c95aece69d658f76dac0239313e8776a154"
         },
         {
-          "path": "Slide_Examples/Sorting/merge-sort-recursive-input-02.txt",
+          "path": "Sorting/merge_sort_recursive-input_02.txt",
           "sha256": "2ad39e6837075fcb9ebbd61530bd389c30180abbbb114f2301f2f2639ad469bb"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Sorting/merge-sort-iterative.cpp",
+      "path": "Sorting/merge_sort_iterative.cpp",
       "title": "合併排序－倍增版",
       "sourceDeckId": "merge-sort",
       "sourceDeckTitle": "合併排序",
@@ -145,27 +72,27 @@
         {
           "slideId": "df651625-0eef-4981-aa60-1d1fd9c1f083",
           "page": 22,
-          "inputPath": "Slide_Examples/Sorting/merge-sort-iterative-sample-input.txt"
+          "inputPath": "Sorting/merge_sort_iterative-sample_input.txt"
         },
         {
           "slideId": "718d5119-6f4f-46f5-8247-7fe2e78ff61d",
           "page": 26,
-          "inputPath": "Slide_Examples/Sorting/merge-sort-iterative-input-02.txt"
+          "inputPath": "Sorting/merge_sort_iterative-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Sorting/merge-sort-iterative-sample-input.txt",
+          "path": "Sorting/merge_sort_iterative-sample_input.txt",
           "sha256": "de58de78ff5b3955c361f22237f66c95aece69d658f76dac0239313e8776a154"
         },
         {
-          "path": "Slide_Examples/Sorting/merge-sort-iterative-input-02.txt",
+          "path": "Sorting/merge_sort_iterative-input_02.txt",
           "sha256": "249949ee8a06c842375caf8748e1bdf7e8b7e173322b86e472b5f82b79635df2"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Sorting/bubble-sort.cpp",
+      "path": "Sorting/bubble_sort_slides.cpp",
       "title": "冒泡排序",
       "sourceDeckId": "bubble-sort",
       "sourceDeckTitle": "冒泡排序",
@@ -174,27 +101,27 @@
         {
           "slideId": "bubble-teaching-27",
           "page": 10,
-          "inputPath": "Slide_Examples/Sorting/bubble-sort-sample-input.txt"
+          "inputPath": "Sorting/bubble_sort_slides-sample_input.txt"
         },
         {
           "slideId": "bubble-teaching-36",
           "page": 13,
-          "inputPath": "Slide_Examples/Sorting/bubble-sort-input-02.txt"
+          "inputPath": "Sorting/bubble_sort_slides-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Sorting/bubble-sort-sample-input.txt",
+          "path": "Sorting/bubble_sort_slides-sample_input.txt",
           "sha256": "8802298f483aaceb38f99d33853822765b05a2f97bd73b54953bfc6ec0871144"
         },
         {
-          "path": "Slide_Examples/Sorting/bubble-sort-input-02.txt",
+          "path": "Sorting/bubble_sort_slides-input_02.txt",
           "sha256": "8cfedae878d576c520900cc4bea7fac280403a7d779406b8aca7042bb37224e8"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Sorting/selection-sort.cpp",
+      "path": "Sorting/selection_sort_slides.cpp",
       "title": "選擇排序",
       "sourceDeckId": "selection-sort",
       "sourceDeckTitle": "選擇排序",
@@ -203,27 +130,27 @@
         {
           "slideId": "selection-teaching-24",
           "page": 10,
-          "inputPath": "Slide_Examples/Sorting/selection-sort-sample-input.txt"
+          "inputPath": "Sorting/selection_sort_slides-sample_input.txt"
         },
         {
           "slideId": "selection-teaching-33",
           "page": 13,
-          "inputPath": "Slide_Examples/Sorting/selection-sort-input-02.txt"
+          "inputPath": "Sorting/selection_sort_slides-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Sorting/selection-sort-sample-input.txt",
+          "path": "Sorting/selection_sort_slides-sample_input.txt",
           "sha256": "174d3bb693c6e4daacf4451611872ff74f9c3ae2fc848a597ffdffa745898115"
         },
         {
-          "path": "Slide_Examples/Sorting/selection-sort-input-02.txt",
+          "path": "Sorting/selection_sort_slides-input_02.txt",
           "sha256": "e62c4ac0856c1dd9a45e3e44772ba10cbdc494cab3f4211b397f88ea30b72226"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Sorting/insertion-sort.cpp",
+      "path": "Sorting/insertion_sort_slides.cpp",
       "title": "插入排序",
       "sourceDeckId": "insertion-sort",
       "sourceDeckTitle": "插入排序",
@@ -232,27 +159,27 @@
         {
           "slideId": "insertion-teaching-24",
           "page": 10,
-          "inputPath": "Slide_Examples/Sorting/insertion-sort-sample-input.txt"
+          "inputPath": "Sorting/insertion_sort_slides-sample_input.txt"
         },
         {
           "slideId": "insertion-teaching-33",
           "page": 13,
-          "inputPath": "Slide_Examples/Sorting/insertion-sort-input-02.txt"
+          "inputPath": "Sorting/insertion_sort_slides-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Sorting/insertion-sort-sample-input.txt",
+          "path": "Sorting/insertion_sort_slides-sample_input.txt",
           "sha256": "ec3c7d35c603118d68a25b2faffeec63a2f6f4bc6902c4eed2b15701babc52b6"
         },
         {
-          "path": "Slide_Examples/Sorting/insertion-sort-input-02.txt",
+          "path": "Sorting/insertion_sort_slides-input_02.txt",
           "sha256": "8cfedae878d576c520900cc4bea7fac280403a7d779406b8aca7042bb37224e8"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Sorting/heap-sort.cpp",
+      "path": "Sorting/heap_sort_slides.cpp",
       "title": "堆積排序",
       "sourceDeckId": "heap-sort",
       "sourceDeckTitle": "堆積排序",
@@ -261,27 +188,27 @@
         {
           "slideId": "heap-teaching-17",
           "page": 10,
-          "inputPath": "Slide_Examples/Sorting/heap-sort-sample-input.txt"
+          "inputPath": "Sorting/heap_sort_slides-sample_input.txt"
         },
         {
           "slideId": "heap-teaching-25",
           "page": 13,
-          "inputPath": "Slide_Examples/Sorting/heap-sort-input-02.txt"
+          "inputPath": "Sorting/heap_sort_slides-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Sorting/heap-sort-sample-input.txt",
+          "path": "Sorting/heap_sort_slides-sample_input.txt",
           "sha256": "30c26cff9d010e41932f5a1fbde9718cb683367e5e71c3ae042a7843d9a8f91b"
         },
         {
-          "path": "Slide_Examples/Sorting/heap-sort-input-02.txt",
+          "path": "Sorting/heap_sort_slides-input_02.txt",
           "sha256": "b52cd3df6802cecf32024c0ec86f54f85d966c4d912ad4eb3779ad34efb25e87"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Math/linear-sieve-detailed.cpp",
+      "path": "Math/linear_sieve_detailed.cpp",
       "title": "線性篩－逐步版",
       "sourceDeckId": "linear-sieve",
       "sourceDeckTitle": "線篩 (Linear-Sieve)",
@@ -290,18 +217,18 @@
         {
           "slideId": "linear-sieve-teaching-19",
           "page": 10,
-          "inputPath": "Slide_Examples/Math/linear-sieve-detailed-sample-input.txt"
+          "inputPath": "Math/linear_sieve_detailed-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Math/linear-sieve-detailed-sample-input.txt",
+          "path": "Math/linear_sieve_detailed-sample_input.txt",
           "sha256": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Math/linear-sieve-condensed.cpp",
+      "path": "Math/linear_sieve_condensed.cpp",
       "title": "線性篩－濃縮版",
       "sourceDeckId": "linear-sieve",
       "sourceDeckTitle": "線篩 (Linear-Sieve)",
@@ -310,18 +237,18 @@
         {
           "slideId": "linear-sieve-teaching-22",
           "page": 13,
-          "inputPath": "Slide_Examples/Math/linear-sieve-condensed-sample-input.txt"
+          "inputPath": "Math/linear_sieve_condensed-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Math/linear-sieve-condensed-sample-input.txt",
+          "path": "Math/linear_sieve_condensed-sample_input.txt",
           "sha256": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/max-heap-push-pop.cpp",
+      "path": "Data_Structure/max_heap_push_pop.cpp",
       "title": "堆積－插入與刪除",
       "sourceDeckId": "heap-teaching",
       "sourceDeckTitle": "堆積 (Heap)",
@@ -330,18 +257,18 @@
         {
           "slideId": "d8cb5a69-8eba-4da8-9208-2190bbb79f28",
           "page": 11,
-          "inputPath": "Slide_Examples/Data_Structure/max-heap-push-pop-sample-input.txt"
+          "inputPath": "Data_Structure/max_heap_push_pop-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/max-heap-push-pop-sample-input.txt",
+          "path": "Data_Structure/max_heap_push_pop-sample_input.txt",
           "sha256": "a346d2a4731d9339fc63f6394f822e8cdd610653f55a6177f522ad0bec49a7ad"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/max-heap-incremental-build.cpp",
+      "path": "Data_Structure/max_heap_incremental_build.cpp",
       "title": "堆積－逐筆建堆",
       "sourceDeckId": "heap-teaching",
       "sourceDeckTitle": "堆積 (Heap)",
@@ -350,18 +277,18 @@
         {
           "slideId": "5a0e4f26-556b-4d36-876f-e493beba18cb",
           "page": 14,
-          "inputPath": "Slide_Examples/Data_Structure/max-heap-incremental-build-sample-input.txt"
+          "inputPath": "Data_Structure/max_heap_incremental_build-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/max-heap-incremental-build-sample-input.txt",
+          "path": "Data_Structure/max_heap_incremental_build-sample_input.txt",
           "sha256": "a346d2a4731d9339fc63f6394f822e8cdd610653f55a6177f522ad0bec49a7ad"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/max-heap-bottom-up-build.cpp",
+      "path": "Data_Structure/max_heap_bottom_up_build.cpp",
       "title": "堆積－由下而上建堆",
       "sourceDeckId": "heap-teaching",
       "sourceDeckTitle": "堆積 (Heap)",
@@ -370,18 +297,18 @@
         {
           "slideId": "22eff962-012c-4a73-b762-2a0c7a947bb8",
           "page": 17,
-          "inputPath": "Slide_Examples/Data_Structure/max-heap-bottom-up-build-sample-input.txt"
+          "inputPath": "Data_Structure/max_heap_bottom_up_build-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/max-heap-bottom-up-build-sample-input.txt",
+          "path": "Data_Structure/max_heap_bottom_up_build-sample_input.txt",
           "sha256": "a346d2a4731d9339fc63f6394f822e8cdd610653f55a6177f522ad0bec49a7ad"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/bit-build.cpp",
+      "path": "Data_Structure/bit_build.cpp",
       "title": "BIT－一般建樹",
       "sourceDeckId": "binary-indexed-tree-teaching",
       "sourceDeckTitle": "Binary Indexed Tree",
@@ -390,18 +317,18 @@
         {
           "slideId": "51381dfe-2cec-4cd0-b551-df91db0d7a45",
           "page": 9,
-          "inputPath": "Slide_Examples/Data_Structure/bit-build-sample-input.txt"
+          "inputPath": "Data_Structure/bit_build-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/bit-build-sample-input.txt",
+          "path": "Data_Structure/bit_build-sample_input.txt",
           "sha256": "2ffc33a9eea817b44e7ce6a2a451ed6f3a7f4e147ab258b4c20f334efe18e21c"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/bit-linear-build.cpp",
+      "path": "Data_Structure/bit_linear_build.cpp",
       "title": "BIT－線性建樹",
       "sourceDeckId": "binary-indexed-tree-teaching",
       "sourceDeckTitle": "Binary Indexed Tree",
@@ -410,18 +337,18 @@
         {
           "slideId": "3ffef918-21e4-4414-88b9-db4ed9592247",
           "page": 13,
-          "inputPath": "Slide_Examples/Data_Structure/bit-linear-build-sample-input.txt"
+          "inputPath": "Data_Structure/bit_linear_build-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/bit-linear-build-sample-input.txt",
+          "path": "Data_Structure/bit_linear_build-sample_input.txt",
           "sha256": "05bd050d9ec72ff1f62cb9aa341f64e017c4bff1c070dee08acbb062650b509d"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/bit-range-query.cpp",
+      "path": "Data_Structure/bit_range_query.cpp",
       "title": "BIT－區間查詢",
       "sourceDeckId": "binary-indexed-tree-teaching",
       "sourceDeckTitle": "Binary Indexed Tree",
@@ -430,18 +357,18 @@
         {
           "slideId": "6cfe0248-7ea0-4ddc-a2e8-75bf30fa1e0e",
           "page": 18,
-          "inputPath": "Slide_Examples/Data_Structure/bit-range-query-sample-input.txt"
+          "inputPath": "Data_Structure/bit_range_query-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/bit-range-query-sample-input.txt",
+          "path": "Data_Structure/bit_range_query-sample_input.txt",
           "sha256": "732a814128584a65b812b1f83b005583db773fa956b7c1cb2023f531773cdd38"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/segment-tree-recursive-build.cpp",
+      "path": "Data_Structure/segment_tree_recursive_build.cpp",
       "title": "線段樹－遞迴建樹",
       "sourceDeckId": "segment-tree-teaching",
       "sourceDeckTitle": "線段樹 (Segment Tree)",
@@ -450,18 +377,18 @@
         {
           "slideId": "949c4def-848e-4108-ab02-ec3668728ee4",
           "page": 10,
-          "inputPath": "Slide_Examples/Data_Structure/segment-tree-recursive-build-sample-input.txt"
+          "inputPath": "Data_Structure/segment_tree_recursive_build-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/segment-tree-recursive-build-sample-input.txt",
+          "path": "Data_Structure/segment_tree_recursive_build-sample_input.txt",
           "sha256": "df297b5fc75833f4540c3e8a1d48bf3d1cbe39720952b6867470e2d313f62002"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/segment-tree-recursive-lazy.cpp",
+      "path": "Data_Structure/segment_tree_recursive_lazy.cpp",
       "title": "線段樹－遞迴區間操作",
       "sourceDeckId": "segment-tree-teaching",
       "sourceDeckTitle": "線段樹 (Segment Tree)",
@@ -470,18 +397,18 @@
         {
           "slideId": "76f3ec41-66ed-4cce-8aac-5353ed18dc88",
           "page": 18,
-          "inputPath": "Slide_Examples/Data_Structure/segment-tree-recursive-lazy-sample-input.txt"
+          "inputPath": "Data_Structure/segment_tree_recursive_lazy-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/segment-tree-recursive-lazy-sample-input.txt",
+          "path": "Data_Structure/segment_tree_recursive_lazy-sample_input.txt",
           "sha256": "369e5dc5f272f99351729e034ccd323689c561f14b5f587f58dfc4236945fa53"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/segment-tree-iterative-build.cpp",
+      "path": "Data_Structure/segment_tree_iterative_build.cpp",
       "title": "線段樹－迭代建樹",
       "sourceDeckId": "segment-tree-teaching",
       "sourceDeckTitle": "線段樹 (Segment Tree)",
@@ -490,18 +417,18 @@
         {
           "slideId": "c65e4ee7-8308-4033-be40-906ff9c296f0",
           "page": 23,
-          "inputPath": "Slide_Examples/Data_Structure/segment-tree-iterative-build-sample-input.txt"
+          "inputPath": "Data_Structure/segment_tree_iterative_build-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/segment-tree-iterative-build-sample-input.txt",
+          "path": "Data_Structure/segment_tree_iterative_build-sample_input.txt",
           "sha256": "df297b5fc75833f4540c3e8a1d48bf3d1cbe39720952b6867470e2d313f62002"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Data_Structure/segment-tree-iterative-lazy.cpp",
+      "path": "Data_Structure/segment_tree_iterative_lazy.cpp",
       "title": "線段樹－迭代區間操作",
       "sourceDeckId": "segment-tree-teaching",
       "sourceDeckTitle": "線段樹 (Segment Tree)",
@@ -510,18 +437,18 @@
         {
           "slideId": "a54d09a3-5d8c-473a-8ad3-f81d1f0fee63",
           "page": 26,
-          "inputPath": "Slide_Examples/Data_Structure/segment-tree-iterative-lazy-sample-input.txt"
+          "inputPath": "Data_Structure/segment_tree_iterative_lazy-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Data_Structure/segment-tree-iterative-lazy-sample-input.txt",
+          "path": "Data_Structure/segment_tree_iterative_lazy-sample_input.txt",
           "sha256": "369e5dc5f272f99351729e034ccd323689c561f14b5f587f58dfc4236945fa53"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Backtracking/hanoi.cpp",
+      "path": "Backtracking/hanoi_slides.cpp",
       "title": "河內塔",
       "sourceDeckId": "hanoi-teaching",
       "sourceDeckTitle": "河內塔 (hanoi tower)",
@@ -530,18 +457,18 @@
         {
           "slideId": "24cbe5b0-08b7-438a-83f2-dddabc6e57c7",
           "page": 8,
-          "inputPath": "Slide_Examples/Backtracking/hanoi-sample-input.txt"
+          "inputPath": "Backtracking/hanoi_slides-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Backtracking/hanoi-sample-input.txt",
+          "path": "Backtracking/hanoi_slides-sample_input.txt",
           "sha256": "7de1555df0c2700329e815b93b32c571c3ea54dc967b89e81ab73b9972b72d1d"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Backtracking/eight-queens-loop.cpp",
+      "path": "Backtracking/eight_queens_loop.cpp",
       "title": "八皇后－一般迴圈",
       "sourceDeckId": "eight-queens-teaching",
       "sourceDeckTitle": "八皇后問題 (8queen)",
@@ -550,18 +477,18 @@
         {
           "slideId": "01b3a3d6-557b-442d-99d5-18c5293d2c3c",
           "page": 9,
-          "inputPath": "Slide_Examples/Backtracking/eight-queens-loop-sample-input.txt"
+          "inputPath": "Backtracking/eight_queens_loop-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Backtracking/eight-queens-loop-sample-input.txt",
+          "path": "Backtracking/eight_queens_loop-sample_input.txt",
           "sha256": "7de1555df0c2700329e815b93b32c571c3ea54dc967b89e81ab73b9972b72d1d"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Backtracking/eight-queens-array-recursion.cpp",
+      "path": "Backtracking/eight_queens_array_recursion.cpp",
       "title": "八皇后－陣列遞迴",
       "sourceDeckId": "eight-queens-teaching",
       "sourceDeckTitle": "八皇后問題 (8queen)",
@@ -570,18 +497,18 @@
         {
           "slideId": "76a59dd3-b8e5-4a55-9671-b2c9f90e9096",
           "page": 15,
-          "inputPath": "Slide_Examples/Backtracking/eight-queens-array-recursion-sample-input.txt"
+          "inputPath": "Backtracking/eight_queens_array_recursion-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Backtracking/eight-queens-array-recursion-sample-input.txt",
+          "path": "Backtracking/eight_queens_array_recursion-sample_input.txt",
           "sha256": "7de1555df0c2700329e815b93b32c571c3ea54dc967b89e81ab73b9972b72d1d"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Backtracking/eight-queens-bitmask.cpp",
+      "path": "Backtracking/eight_queens_bitmask.cpp",
       "title": "八皇后－位元運算",
       "sourceDeckId": "eight-queens-teaching",
       "sourceDeckTitle": "八皇后問題 (8queen)",
@@ -590,18 +517,18 @@
         {
           "slideId": "c5bc5221-8cab-42a9-b995-19a33b331492",
           "page": 21,
-          "inputPath": "Slide_Examples/Backtracking/eight-queens-bitmask-sample-input.txt"
+          "inputPath": "Backtracking/eight_queens_bitmask-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Backtracking/eight-queens-bitmask-sample-input.txt",
+          "path": "Backtracking/eight_queens_bitmask-sample_input.txt",
           "sha256": "7de1555df0c2700329e815b93b32c571c3ea54dc967b89e81ab73b9972b72d1d"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Backtracking/fibonacci-recursive.cpp",
+      "path": "Backtracking/fibonacci_recursive.cpp",
       "title": "費式數列－遞迴",
       "sourceDeckId": "fibonacci-teaching",
       "sourceDeckTitle": "費式數列遞迴",
@@ -610,18 +537,18 @@
         {
           "slideId": "193927ee-af90-42a0-ac16-e3563171e552",
           "page": 5,
-          "inputPath": "Slide_Examples/Backtracking/fibonacci-recursive-sample-input.txt"
+          "inputPath": "Backtracking/fibonacci_recursive-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Backtracking/fibonacci-recursive-sample-input.txt",
+          "path": "Backtracking/fibonacci_recursive-sample_input.txt",
           "sha256": "f0b5c2c2211c8d67ed15e75e656c7862d086e9245420892a7de62cd9ec582a06"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Backtracking/fibonacci-array.cpp",
+      "path": "Backtracking/fibonacci_array.cpp",
       "title": "費式數列－陣列",
       "sourceDeckId": "fibonacci-teaching",
       "sourceDeckTitle": "費式數列遞迴",
@@ -630,18 +557,18 @@
         {
           "slideId": "c3629930-a160-4fa4-831f-8cd14ab8e373",
           "page": 9,
-          "inputPath": "Slide_Examples/Backtracking/fibonacci-array-sample-input.txt"
+          "inputPath": "Backtracking/fibonacci_array-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Backtracking/fibonacci-array-sample-input.txt",
+          "path": "Backtracking/fibonacci_array-sample_input.txt",
           "sha256": "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Math/prefix-sum-1d.cpp",
+      "path": "Math/prefix_sum_1d.cpp",
       "title": "一維前綴和",
       "sourceDeckId": "prefix-sum",
       "sourceDeckTitle": "前綴和 (Prefix Sum)",
@@ -650,18 +577,18 @@
         {
           "slideId": "a7744971-5657-44a8-b6a2-854e679a19a1",
           "page": 5,
-          "inputPath": "Slide_Examples/Math/prefix-sum-1d-sample-input.txt"
+          "inputPath": "Math/prefix_sum_1d-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Math/prefix-sum-1d-sample-input.txt",
+          "path": "Math/prefix_sum_1d-sample_input.txt",
           "sha256": "732a814128584a65b812b1f83b005583db773fa956b7c1cb2023f531773cdd38"
         }
       ]
     },
     {
-      "path": "Slide_Examples/Math/prefix-sum-2d.cpp",
+      "path": "Math/prefix_sum_2d.cpp",
       "title": "二維前綴和",
       "sourceDeckId": "prefix-sum",
       "sourceDeckTitle": "前綴和 (Prefix Sum)",
@@ -670,18 +597,18 @@
         {
           "slideId": "0f62b2f3-6a26-4900-a1a0-308020e49dfc",
           "page": 10,
-          "inputPath": "Slide_Examples/Math/prefix-sum-2d-sample-input.txt"
+          "inputPath": "Math/prefix_sum_2d-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/Math/prefix-sum-2d-sample-input.txt",
+          "path": "Math/prefix_sum_2d-sample_input.txt",
           "sha256": "1535e7a685747d6414c767eff86047f66efd45230f2712d72890bd3716dcbfc6"
         }
       ]
     },
     {
-      "path": "Slide_Examples/DP/lcs-table.cpp",
+      "path": "DP/lcs_table.cpp",
       "title": "LCS－建表",
       "sourceDeckId": "lcs-teaching",
       "sourceDeckTitle": "最長共同子序列 (LCS)",
@@ -690,18 +617,18 @@
         {
           "slideId": "lcs-slide-09",
           "page": 9,
-          "inputPath": "Slide_Examples/DP/lcs-table-sample-input.txt"
+          "inputPath": "DP/lcs_table-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/DP/lcs-table-sample-input.txt",
+          "path": "DP/lcs_table-sample_input.txt",
           "sha256": "c6be5197ef7dd61aa669e4d06aea6d35d39eec818d3dde15595f3bf5611153ba"
         }
       ]
     },
     {
-      "path": "Slide_Examples/DP/lcs-backtracking.cpp",
+      "path": "DP/lcs_backtracking.cpp",
       "title": "LCS－回溯",
       "sourceDeckId": "lcs-teaching",
       "sourceDeckTitle": "最長共同子序列 (LCS)",
@@ -710,12 +637,12 @@
         {
           "slideId": "lcs-slide-12",
           "page": 12,
-          "inputPath": "Slide_Examples/DP/lcs-backtracking-sample-input.txt"
+          "inputPath": "DP/lcs_backtracking-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Slide_Examples/DP/lcs-backtracking-sample-input.txt",
+          "path": "DP/lcs_backtracking-sample_input.txt",
           "sha256": "c6be5197ef7dd61aa669e4d06aea6d35d39eec818d3dde15595f3bf5611153ba"
         }
       ]

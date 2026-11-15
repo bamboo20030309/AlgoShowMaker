@@ -211,7 +211,7 @@ int main(){
       'value-dependent paint changes on commit even when display text stays x');
 
     // Reproduce the user's recursion scene, including disabled declarations.
-    const source = fs.readFileSync(path.join(root, 'algorithm_sample/Backtracking/8queen-array-teaching.cpp'), 'utf8');
+    const source = fs.readFileSync(path.join(root, 'algorithm_sample/Backtracking/8queen_array_teaching.cpp'), 'utf8');
     const recursive = await run(source, 4);
     assert.match(recursive.output, /Total Solutions: 2/);
     assert.ok(recursive.paints.some(item => item.value === '0'));

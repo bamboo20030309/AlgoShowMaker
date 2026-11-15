@@ -1,47 +1,57 @@
-# 投影片程式碼範例集
+# 演算法範例集：投影片程式來源
 
-在 algorithm.html 的「演算法範例集 → 投影片範例」載入。點程式名稱載入原始碼；點其下方測資會同時載入程式與輸入，不自動執行。載入後可修改，重新整理會沿用工作區本機草稿。
+投影片中的 36 個動畫整理為 29 份程式、36 份輸入，直接放入既有英文分類資料夾，不再使用 `Slide_Examples`。程式與繪圖指令內容保留。
 
-目前整理15份公開範例投影片中的36個動畫，共29份不同程式碼、36組測資。同一份程式碼只存一次，保留每頁對應輸入。保留繪圖指令與程式內的 @asm-view 設定；不複製完整 Trace。既有其他範例保留。
+選單直接顯示英文檔名；`.slide-samples.json` 只記錄來源投影片、頁碼、程式與輸入雜湊，不出現在選單。若檔名與既有程式衝突，以 `_slides` 區別，保留原檔。
 
-檔案位於 algo-vis-backend/algorithm_sample/Slide_Examples/。所有檔名使用英文，選單以中文名稱顯示。.manifest.json 記錄原投影片、頁碼、來源程式雜湊與測資對應，不在選單中顯示。
+## 配對規則
 
-| 名稱 | 程式檔（相對於 Slide_Examples） | 測資數 |
-|---|---|---:|
-| 快速排序 | Sorting/quick-sort.cpp | 2 |
-| 合併排序－遞迴版 | Sorting/merge-sort-recursive.cpp | 2 |
-| 合併排序－倍增版 | Sorting/merge-sort-iterative.cpp | 2 |
-| 冒泡排序 | Sorting/bubble-sort.cpp | 2 |
-| 選擇排序 | Sorting/selection-sort.cpp | 2 |
-| 插入排序 | Sorting/insertion-sort.cpp | 2 |
-| 堆積排序 | Sorting/heap-sort.cpp | 2 |
-| 線性篩－逐步版 | Math/linear-sieve-detailed.cpp | 1 |
-| 線性篩－濃縮版 | Math/linear-sieve-condensed.cpp | 1 |
-| 堆積－插入與刪除 | Data_Structure/max-heap-push-pop.cpp | 1 |
-| 堆積－逐筆建堆 | Data_Structure/max-heap-incremental-build.cpp | 1 |
-| 堆積－由下而上建堆 | Data_Structure/max-heap-bottom-up-build.cpp | 1 |
-| BIT－一般建樹 | Data_Structure/bit-build.cpp | 1 |
-| BIT－線性建樹 | Data_Structure/bit-linear-build.cpp | 1 |
-| BIT－區間查詢 | Data_Structure/bit-range-query.cpp | 1 |
-| 線段樹－遞迴建樹 | Data_Structure/segment-tree-recursive-build.cpp | 1 |
-| 線段樹－遞迴區間操作 | Data_Structure/segment-tree-recursive-lazy.cpp | 1 |
-| 線段樹－迭代建樹 | Data_Structure/segment-tree-iterative-build.cpp | 1 |
-| 線段樹－迭代區間操作 | Data_Structure/segment-tree-iterative-lazy.cpp | 1 |
-| 河內塔 | Backtracking/hanoi.cpp | 1 |
-| 八皇后－一般迴圈 | Backtracking/eight-queens-loop.cpp | 1 |
-| 八皇后－陣列遞迴 | Backtracking/eight-queens-array-recursion.cpp | 1 |
-| 八皇后－位元運算 | Backtracking/eight-queens-bitmask.cpp | 1 |
-| 費式數列－遞迴 | Backtracking/fibonacci-recursive.cpp | 1 |
-| 費式數列－陣列 | Backtracking/fibonacci-array.cpp | 1 |
-| 一維前綴和 | Math/prefix-sum-1d.cpp | 1 |
-| 二維前綴和 | Math/prefix-sum-2d.cpp | 1 |
-| LCS－建表 | DP/lcs-table.cpp | 1 |
-| LCS－回溯 | DP/lcs-backtracking.cpp | 1 |
+程式檔名使用英文字母、數字與底線，名稱內不使用 `-`。輸入檔第一個 `-` 前的文字，必須與程式檔名去除副檔名後完全相同，大小寫也必須一致。只比同一資料夾的檔案。
+
+- `8queen.cpp` 對應 `8queen-sample_input.txt`、`8queen-input_02.txt`。
+- `8queen_recursion-sample_input.txt` 只對應 `8queen_recursion.cpp`。
+- `8queen_extra-sample_input.txt`、`8Queen-sample_input.txt` 與沒有 `-` 的 `8queen.txt` 都不會配給 `8queen.cpp`。
+
+## 投影片來源程式
+
+| 內容 | 程式檔（相對於 algorithm_sample） | 輸入數 |
+| --- | --- | --- |
+| 快速排序 | `Sorting/quick_sort_slides.cpp` | 2 |
+| 合併排序－遞迴版 | `Sorting/merge_sort_recursive.cpp` | 2 |
+| 合併排序－倍增版 | `Sorting/merge_sort_iterative.cpp` | 2 |
+| 冒泡排序 | `Sorting/bubble_sort_slides.cpp` | 2 |
+| 選擇排序 | `Sorting/selection_sort_slides.cpp` | 2 |
+| 插入排序 | `Sorting/insertion_sort_slides.cpp` | 2 |
+| 堆積排序 | `Sorting/heap_sort_slides.cpp` | 2 |
+| 線性篩－逐步版 | `Math/linear_sieve_detailed.cpp` | 1 |
+| 線性篩－濃縮版 | `Math/linear_sieve_condensed.cpp` | 1 |
+| 堆積－插入與刪除 | `Data_Structure/max_heap_push_pop.cpp` | 1 |
+| 堆積－逐筆建堆 | `Data_Structure/max_heap_incremental_build.cpp` | 1 |
+| 堆積－由下而上建堆 | `Data_Structure/max_heap_bottom_up_build.cpp` | 1 |
+| BIT－一般建樹 | `Data_Structure/bit_build.cpp` | 1 |
+| BIT－線性建樹 | `Data_Structure/bit_linear_build.cpp` | 1 |
+| BIT－區間查詢 | `Data_Structure/bit_range_query.cpp` | 1 |
+| 線段樹－遞迴建樹 | `Data_Structure/segment_tree_recursive_build.cpp` | 1 |
+| 線段樹－遞迴區間操作 | `Data_Structure/segment_tree_recursive_lazy.cpp` | 1 |
+| 線段樹－迭代建樹 | `Data_Structure/segment_tree_iterative_build.cpp` | 1 |
+| 線段樹－迭代區間操作 | `Data_Structure/segment_tree_iterative_lazy.cpp` | 1 |
+| 河內塔 | `Backtracking/hanoi_slides.cpp` | 1 |
+| 八皇后－一般迴圈 | `Backtracking/eight_queens_loop.cpp` | 1 |
+| 八皇后－陣列遞迴 | `Backtracking/eight_queens_array_recursion.cpp` | 1 |
+| 八皇后－位元運算 | `Backtracking/eight_queens_bitmask.cpp` | 1 |
+| 費式數列－遞迴 | `Backtracking/fibonacci_recursive.cpp` | 1 |
+| 費式數列－陣列 | `Backtracking/fibonacci_array.cpp` | 1 |
+| 一維前綴和 | `Math/prefix_sum_1d.cpp` | 1 |
+| 二維前綴和 | `Math/prefix_sum_2d.cpp` | 1 |
+| LCS－建表 | `DP/lcs_table.cpp` | 1 |
+| LCS－回溯 | `DP/lcs_backtracking.cpp` | 1 |
 
 ## 更新來源
 
-後續投影片程式改版後，在 algo-vis-backend 執行：
+在 `algo-vis-backend` 執行：
 
-    node scripts/build/export-slide-code-samples.js
+```bash
+node scripts/build/export-slide-code-samples.js
+```
 
-此指令依 public/guest-decks.json 目前發布的投影片重新整理程式與輸入，保留英文檔名及中文顯示名稱；不編譯演算法、不下載 Trace、不更改投影片。新增演算法或程式版本時，先在腳本補上明確名稱。
+此指令依 `public/guest-decks.json` 的來源重新匯出程式與輸入，維持英文檔名及精確前綴；不編譯、不執行動畫、不更改投影片。

@@ -3619,12 +3619,8 @@ app.get('/api/samples', (req, res) => {
         return res.json([]);
       }
 
-      // Optional names are presentation metadata; paths remain English and
-      // continue to match the code/input pairing contract.
-      const manifestFile = path.join(SAMPLES_DIR, 'Slide_Examples', '.manifest.json');
-      const labels = fs.existsSync(manifestFile)
-        ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')).labels || {} : {};
-      const tree = getDirectoryTree(SAMPLES_DIR, SAMPLES_DIR, labels);
+      // Show the actual English filenames; hidden export metadata stays private.
+      const tree = getDirectoryTree(SAMPLES_DIR, SAMPLES_DIR);
       res.json(tree);
     } catch (err) {
       console.error("Error scanning directory:", err);

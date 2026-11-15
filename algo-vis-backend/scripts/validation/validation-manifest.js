@@ -9,7 +9,7 @@ const animationCases = [
   ...['bubble', 'insertion', 'selection', 'heap', 'quick-recursion'].map(name => ({ name, fixture: `tests/fixtures/${name}.cpp`, input: '4\n4 1 3 2\n' })),
   { name: 'merge-recursive', playbackRate: 4, fixture: 'algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', input: '4\n4 1 3 2\n', expectedState: { variable: 'num', items: [1,2,3,4] } },
   { name: 'merge-bottom-up', playbackRate: 4, fixture: 'algorithm_sample/Sorting/merge_sort_bottom_up.cpp', input: '4\n4 1 3 2\n', expectedOutput: '1 2 3 4' },
-  { name: 'queens-array', playbackRate: 4, frameLimit: 12, fixture: 'algorithm_sample/Backtracking/8queen-array-teaching.cpp', input: '4', expectedOutput: 'Total Solutions: 2' },
+  { name: 'queens-array', playbackRate: 4, frameLimit: 12, fixture: 'algorithm_sample/Backtracking/8queen_array_teaching.cpp', input: '4', expectedOutput: 'Total Solutions: 2' },
   { name: 'bit-query', playbackRate: 4, fixture: 'algorithm_sample/Tree/Binary_Indexed_Tree_Range_Query.cpp', input: '4\n4 1 3 2\n2 4\n', expectedOutput: 'sum of L to R = 6' },
   { name: 'segment-query', playbackRate: 4, fixture: 'algorithm_sample/Tree/Segment_Tree_easy.cpp', input: '4 1\n4 1 3 2\n2 4\n', expectedOutput: '6' },
   { name: 'lcs-matrix', playbackRate: 4, fixture: 'algorithm_sample/DP/LCS.cpp', input: 'AB\nAC\n', expectedOutput: '1 1 1 1 1 A' },
