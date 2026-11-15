@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const baseUrl = process.env.ASM_TEST_BASE_URL || 'http://localhost:3000';
-const sourcePath = path.join(__dirname, '../algorithm_sample/Backtracking/hanoi.cpp');
+const sourcePath = path.join(__dirname, 'fixtures/legacy_hanoi.cpp');
 
 async function post(endpoint, body) {
   const response = await fetch(`${baseUrl}${endpoint}`, {

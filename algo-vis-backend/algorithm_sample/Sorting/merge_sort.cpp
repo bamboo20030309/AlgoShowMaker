@@ -1,231 +1,128 @@
-/*
- * 範例：合併排序
- *
- * 用途與核心步驟：遞迴切分區間至單一元素，再以雙指標合併兩個已排序子區間；畫面同時追蹤遞迴區段與合併結果。
- * 輸入、輸出與複雜度：輸入長度 n 的陣列；輸出遞增排序陣列。時間 O(n log n)、額外空間 O(n)，一般實作可保持穩定。
- *
- * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
- * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
- */
-
 #include <bits/stdc++.h>
-#include "AV.hpp"
 using namespace std;
 
-//draw{
-AV av;
-vector<int> arr_global;
-int max_d = 0;
+// @layout linear as merge_scene
 
-// 動態動畫狀態變數
-int _draw_depth = 0;
-stack<string> _draw_pid_stack; // 記錄父節點 ID，用來連線
+// @layout recursion as split_tree in merge_scene
+// @layout split_tree branch-previews off
+// @layout split_tree reserve on
+// @layout split_tree level-gap 60
 
-// 計算位置的輔助函式
-// ─────────────────────────────────────────────────────────────────────────────
-// 演算法與視覺化輔助程序：前者維護核心不變條件，後者只建立展示資料。
-// ─────────────────────────────────────────────────────────────────────────────
+// @layout recursion as merge_tree in merge_scene
+// @layout merge_tree direction bottom-up
+// @layout merge_tree grow-from leaves
+// @layout merge_tree reserve on
+// @layout merge_tree level-gap 60
+// @layout merge_tree arrow-direction down
 
-Pos get_node_pos(int L, int R, int data_size, int y_level) {
-    double slot_w = 60.0; 
-    double cell_w = 40.0; 
-    double center_x = 550 + ((L + R) / 2.0 - (arr_global.size()-1) / 2.0) * slot_w;
-    double draw_x = center_x - (data_size * cell_w / 2.0);
-    double draw_y = 100 + y_level * 100;
-    return Pos(draw_x, draw_y);
-}
-//}
+// @place merge_tree.top-left at split_tree.bottom-left offset(0,40)
 
-int get_depth(int n) { int d = 0, s = 1; while (s < n) { s *= 2; d++; } return d; }
 
-void merge(int L, int mid, int R) {
-    //draw{
-    int depth = _draw_depth;
-    string my_id = "m_" + to_string(L) + "_" + to_string(R) + "_" + to_string(depth);
-    string left_id = "m_" + to_string(L) + "_" + to_string(mid) + "_" + to_string(depth + 1);
-    string right_id = "m_" + to_string(mid + 1) + "_" + to_string(R) + "_" + to_string(depth + 1);
-    //}
+// @defaults
+// @camera auto
+// @enddefaults
 
-    vector<int> merged_data(R - L + 1, 0);
+void merge_sort(vector<int>& num, int L, int R) {
+    // @frame num with range(L,R) in split_tree
+    // @text "分裂區間 [${L}{：:到}${R}]" at num.bottom
+    // @keep last as "split" in split_tree
 
-    //draw{
-    int y_level = 2 * max_d - depth + 1;
-    Pos my_pos = get_node_pos(L, R, merged_data.size(), y_level);
-    //}
-
-    vector<int> l_v(arr_global.begin() + L, arr_global.begin() + mid + 1);
-    vector<int> r_v(arr_global.begin() + mid + 1, arr_global.begin() + R + 1);
-
-    int i = 0, j = 0, k = 0;
-
-    //draw{
-    auto draw_merging_step = [&](string msg, int k_idx, int l_idx, int r_idx) {
-        av.start_frame_draw();
-        av.accu_draw(); 
-
-        vector<array_style> m_styles;
-        if (k_idx > 0) m_styles.push_back({{"mark"}, AV::AtoB(0, k_idx - 1)}); 
-        m_styles.push_back({{"point"}, {k_idx}});                             
-        m_styles.push_back({{"highlight"}, {k_idx}});                         
-        av.frame_draw(my_id, my_pos, merged_data, m_styles);
-
-        av.arrow(Pos(left_id, "bottom"), Pos(my_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
-        av.arrow(Pos(right_id, "bottom"), Pos(my_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
-
-        Pos l_pos = get_node_pos(L, mid, l_v.size(), 2 * max_d - (depth + 1) + 1);
-        vector<array_style> l_styles;
-        if (l_idx == -1) l_styles.push_back({{"background", "#ccc"}, AV::AtoB(0, (int)l_v.size() - 1)});
-        else {
-            if (l_idx > 0) l_styles.push_back({{"background", "#ccc"}, AV::AtoB(0, l_idx - 1)});
-            l_styles.push_back({{"highlight"}, {l_idx}});
-        }
-        av.frame_draw(left_id, l_pos, l_v, l_styles);
-
-        Pos r_pos = get_node_pos(mid + 1, R, r_v.size(), 2 * max_d - (depth + 1) + 1);
-        vector<array_style> r_styles;
-        if (r_idx == -1) r_styles.push_back({{"background", "#ccc"}, AV::AtoB(0, (int)r_v.size() - 1)});
-        else {
-            if (r_idx > 0) r_styles.push_back({{"background", "#ccc"}, AV::AtoB(0, r_idx - 1)});
-            r_styles.push_back({{"highlight"}, {r_idx}});
-        }
-        av.frame_draw(right_id, r_pos, r_v, r_styles);
-
-        av.colored_text({{msg}}, Pos(my_id, "bottom", 0, 20));
-        av.camera(Pos(my_id, "top"), 1.2); 
-        av.end_frame_draw();
-    };
-    //}
-
-    while (i < l_v.size() && j < r_v.size()) {
-        if (l_v[i] <= r_v[j]) {
-            //draw{
-            draw_merging_step("左側小取左", k, i, j);
-            //}
-            merged_data[k] = l_v[i++];
-        } else {
-            //draw{
-            draw_merging_step("右側小取右", k, i, j);
-            //}
-            merged_data[k] = r_v[j++];
-        }
-        k++;
-    }
-    while (i < l_v.size()) {
-        //draw{
-        draw_merging_step("補齊左側", k, i, -1);
-        //}
-        merged_data[k++] = l_v[i++];
-    }
-    while (j < r_v.size()) {
-        //draw{
-        draw_merging_step("補齊右側", k, -1, j);
-        //}
-        merged_data[k++] = r_v[j++];
-    }
-
-    for (int idx = 0; idx < k; idx++) arr_global[L + idx] = merged_data[idx];
-    
-    //draw{
-    av.accu_store(my_id, my_pos, merged_data, {{{"background", "white"}, AV::AtoB(0, (int)merged_data.size() - 1)}});
-    av.accu_store_arrow(Pos(left_id, "bottom"), Pos(my_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
-    av.accu_store_arrow(Pos(right_id, "bottom"), Pos(my_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
-
-    Pos l_pos_fin = get_node_pos(L, mid, l_v.size(), 2 * max_d - (depth + 1) + 1);
-    Pos r_pos_fin = get_node_pos(mid + 1, R, r_v.size(), 2 * max_d - (depth + 1) + 1);
-    av.accu_store(left_id, l_pos_fin, l_v, {{{"background", "#ccc"}, AV::AtoB(0, (int)l_v.size() - 1)}});
-    av.accu_store(right_id, r_pos_fin, r_v, {{{"background", "#ccc"}, AV::AtoB(0, (int)r_v.size() - 1)}});
-
-    av.start_frame_draw();
-    av.accu_draw();
-    av.colored_text({{"區間合併完成"}}, Pos(my_id, "bottom", 0, 20));
-    av.camera(Pos(my_id, "top"), 1.2); 
-    av.end_frame_draw();
-    //}
-}
-
-void merge_sort(int L, int R) {
-    //draw{
-    int depth = _draw_depth;
-    string my_id = "s_" + to_string(L) + "_" + to_string(R) + "_" + to_string(depth);
-    vector<int> current(arr_global.begin() + L, arr_global.begin() + R + 1);
-    Pos my_pos = get_node_pos(L, R, current.size(), depth);
-
-    string msg = _draw_pid_stack.empty() ? "開始分裂" : "向下分裂";
-    
-    av.accu_store(my_id, my_pos, current, {{{"background", "white"}, AV::AtoB(0, (int)current.size() - 1)}});
-    if (!_draw_pid_stack.empty()) {
-        av.accu_store_arrow(Pos(_draw_pid_stack.top(), "bottom"), Pos(my_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
-    }
-
-    av.start_frame_draw();
-    av.accu_draw();
-    av.colored_text({{msg}}, Pos(my_id, "bottom", 0, 20));
-    av.auto_camera();
-    av.end_frame_draw();
-    //}
-
-    if (L >= R) {
-        //draw{
-        string m_id = "m_" + to_string(L) + "_" + to_string(R) + "_" + to_string(depth);
-        Pos m_pos = get_node_pos(L, R, current.size(), 2 * max_d - depth + 1);
-        av.accu_store(m_id, m_pos, current, {{{"background", "white"}, {0}}});
-        av.accu_store_arrow(Pos(my_id, "bottom"), Pos(m_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
-        av.start_frame_draw();
-        av.accu_draw();
-        av.colored_text({{"到底就停"}}, Pos(m_id, "bottom", 0, 20));
-        av.auto_camera();
-        av.end_frame_draw();
-        //}
+    if (L == R) {
+        // 葉節點在 split 與 merge 兩棵樹各畫一次。
+        // @frame num as merged with range(L,R) in merge_tree
+        // @style num[L] mark
+        // @arrow from split_tree.current.bottom
+        //        to merge_tree.current.top
+        //        in merge_scene
+        // @keep last as "merge" in merge_tree
         return;
     }
 
     int mid = L + (R - L) / 2;
-    
-    //draw{
-    _draw_depth++;
-    _draw_pid_stack.push(my_id);
-    //}
-    
-    merge_sort(L, mid);
-    merge_sort(mid + 1, R);
-    
-    //draw{
-    _draw_pid_stack.pop();
-    _draw_depth--;
-    //}
-    
-    merge(L, mid, R);
-}
+    merge_sort(num, L, mid);
+    merge_sort(num, mid + 1, R);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
-// ─────────────────────────────────────────────────────────────────────────────
+    vector<int> merged;
+    int i = L, j = mid + 1;
+    // @frame merged as merged in merge_tree
+    // @pointer i at merge_tree.children[0]
+    // @pointer j at merge_tree.children[1]
+    // @camera focus merged offset(0,-40)
+    // @text "合併左右子樹" at merged.bottom
+    while (i <= mid && j <= R) {
+        if (num[i] <= num[j]) {
+            merged.push_back(num[i++]);
+        } else {
+            merged.push_back(num[j++]);
+        }
+
+        // @frame merged as merged in merge_tree
+        // @pointer i at merge_tree.children[0]
+        // @pointer j at merge_tree.children[1]
+        // @style merged[merged.size()-1] highlight
+        // @style merged[0:merged.size()-1] mark
+        // @camera focus merged offset(0,-40)
+        // @text "比較兩側開頭，將較小值放入結果" at merged.bottom
+    }
+    while (i <= mid) {
+        merged.push_back(num[i++]);
+        // @frame merged as merged in merge_tree
+        // @pointer i at merge_tree.children[0]
+        // @pointer j at merge_tree.children[1]
+        // @style merged[merged.size()-1] highlight
+        // @style merged[0:merged.size()-1] mark
+        // @camera focus merged offset(0,-40)
+        // @text "補上左側剩餘元素" at merged.bottom
+    }
+    while (j <= R) {
+        merged.push_back(num[j++]);
+        // @frame merged as merged in merge_tree
+        // @pointer i at merge_tree.children[0]
+        // @pointer j at merge_tree.children[1]
+        // @style merged[merged.size()-1] highlight
+        // @style merged[0:merged.size()-1] mark
+        // @camera focus merged offset(0,-40)
+        // @text "補上右側剩餘元素" at merged.bottom
+    }
+
+    copy(merged.begin(), merged.end(), num.begin() + L);
+
+    // @frame num as merged with range(L,R) in merge_tree
+    // @text "區間 [${L}{：:到}${R}] 合併完成" at num.bottom
+    // @style num[L:R] mark
+    // @keep last as "merge" in merge_tree
+}
 
 int main() {
-    int n; cin >> n;
-    arr_global.resize(n);
-    for (int i = 0; i < n; i++) cin >> arr_global[i];
-    max_d = get_depth(arr_global.size());
-    
-    //draw{
-    av.start_draw();
-    av.start_frame_draw();
-    av.frame_draw("num", Pos(390, 100), arr_global);
-    av.colored_text({{"Merge Sort (合併排序)\n透過遞迴分裂陣列，再將有序的子陣列合併起來來排序"}}, Pos("num", "bottom", 0, 20));
-    av.auto_camera(); 
-    av.end_frame_draw();
-    //}
-    
-    merge_sort(0, arr_global.size() - 1);
-    
-    //draw{
-    av.start_frame_draw();
-    av.accu_draw();
-    string root_m_id = "m_0_" + to_string((int)arr_global.size()-1) + "_0";
-    av.colored_text({{"Merge Sort 排序完成！"}}, Pos(root_m_id, "bottom", 0, 20));
-    av.auto_camera(); 
-    av.end_frame_draw();
-    av.end_draw();
-    //}
+    int n;
+    cin >> n;
+    vector<int> num(n);
+    for (int& value : num) cin >> value;
+
+    // @frame num
+    // @place num.top-left at split_tree.root.top-left
+    // @text "這是 Merge Sort 的範例" at num.bottom
+
+    merge_sort(num, 0, n - 1);
+
+    // @frame
+    // @text "Merge Sort 完成" at merge_tree.root.bottom
+
     return 0;
 }
+
+/* @asm-view
+{
+  "version": 1,
+  "rules": [],
+  "skins": {},
+  "studio": {
+    "eventSettings": {
+      "autoFixedEnabled": false,
+      "autoLoopBoundaryEnabled": false,
+      "readHighlightEnabled": false,
+      "readHighlightColor": "red"
+    }
+  }
+}
+@asm-view */

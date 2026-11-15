@@ -1,158 +1,110 @@
-/*
- * 範例：Euler 線性篩
- *
- * 用途與核心步驟：由小到大維護質數表，讓每個合數只由其最小質因數標記一次，並在整除時停止內層迴圈。
- * 輸入、輸出與複雜度：輸入上界 n；輸出不大於 n 的質數。時間 O(n)、空間 O(n)。
- *
- * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
- * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
- */
-
-//Euler's_Sieve Sample
+// Euler's_Sieve Sample
 #include <bits/stdc++.h>
-#include "AV.hpp"
 using namespace std;
-AV av;
 
-int n=100;
-vector<int> isprime(n+5,1);
+// @preset sieve_view
+// @object isprime with range(1,n), columns(10), labels(index)
+// @object prime with columns(10), labels(value)
+// @place prime.top-left at isprime.bottom-left offset(0,60)
+// @style isprime[1:n] focus when value == 1
+// @endpreset
+
+// @preset sieve_view_i
+// @object isprime with range(1,n), columns(10), labels(index)
+// @object prime with columns(10), labels(value)
+// @pointer i at isprime
+// @place prime.top-left at isprime.bottom-left offset(0,60)
+// @style isprime[1:n] focus when value == 1
+// @style prime[0:iteration.last(j)] focus when i * value <= n
+// @endpreset
+
+// @preset camera
+// @camera focus isprime offset(0,40) zoom(1.1)
+// @endpreset
+
+int n = 100;
+vector<int> isprime(n + 5, 1);
 vector<int> prime;
-//draw{
-int _draw_itemsPerRow = 10;
-vector<int> _draw_focus;
-//}
-// ─────────────────────────────────────────────────────────────────────────────
-// 演算法與視覺化輔助程序：前者維護核心不變條件，後者只建立展示資料。
-// ─────────────────────────────────────────────────────────────────────────────
 
 void prime_table() {
-    
-    isprime[0]=isprime[1]=0;
-    //draw{
-    _draw_focus.erase(find(_draw_focus.begin(), _draw_focus.end(), 1));
-    av.start_frame_draw();
-    av.frame_draw(  "prime" , Pos(0,560),     prime, {},                                                                    {0}  , "normal", _draw_itemsPerRow, 0);
-    av.frame_draw("isprime" , Pos(0,90),   isprime, {{{"highlight"},{1}}, {{"focus"},_draw_focus}, {{"background"},{1}} }, {1,n}, "normal", _draw_itemsPerRow, 2);
-    av.colored_text({{"首先因為 "},{"1不是{質:直}數","rgba(241, 255, 47, 0.44)"},{" 所以先刪掉"}}, Pos("isprime", "top", 0, -20));
-    av.camera(Pos("isprime", "center", 0, 60), 1.1);
-    av.end_frame_draw();
-    //}
-    for(int i=2;i<=n;i++){
-        
-        if(isprime[i])prime.push_back(i);
-        //draw{
-        int k=0,_k=0;
-        vector<int> _key_frame_highlight = {i};
-        vector<int> _key_frame_modify = {};
-        vector<int> _key_frame_focus;
-        vector<int> _key_frame_text;
-        for(auto&v:prime){
-            if(i*v>n)break;
-            _key_frame_highlight.push_back(i*v);
-            _key_frame_modify.push_back(i*v);
-            _key_frame_focus.push_back(_k++);
-            _key_frame_text.push_back(v);
-            if(i%v==0)break;
-        }
-        if(i==8)av.faston();
-        if(i==20)av.skip();
-        av.start_frame_draw();
-        av.frame_draw    (  "prime" , Pos(0,560),     prime, {},                                                                                                                                                      {0}  , "normal", _draw_itemsPerRow, 0);
-        av.frame_draw    ("isprime" , Pos(0,90),   isprime, {{{"highlight"},{i}},                  {{"focus"},_draw_focus},       {{"point"},{i}}, {{"mark"},AV::AtoB(0,i-1)} },                                     {1,n}, "normal", _draw_itemsPerRow, 2);
-        
-        if(isprime[i])av.colored_text( {{"因為 "},{"{isprime}["+to_string(i)+"]{=true:是直數}","rgba(47, 255, 82, 0.44)"},{" 所以將其放入 prime" }} , Pos("isprime", "top", 0, -20));
-        else          av.colored_text( {{"因為 "},{"{isprime}["+to_string(i)+"]{=false:不是直數}","rgba(234, 64, 64, 0.44)"}, {" 所以不放入 prime 裡"}}, Pos("isprime", "top", 0, -20));
-        
-        av.key_frame_draw(  "prime" , Pos(0,560),     prime, {{{"highlight"},_key_frame_focus},     {{"focus"},_key_frame_focus} },                                                                                   {0}  , "normal", _draw_itemsPerRow, 0);
-        av.key_frame_draw("isprime" , Pos(0,90),   isprime, {{{"highlight"},_key_frame_highlight}, {{"focus"},_draw_focus},       {{"point"},{i}}, {{"mark"},AV::AtoB(0,i-1)}, {{"background"},_key_frame_modify} }, {1,n}, "normal", _draw_itemsPerRow, 2);       
-        string _key_text = AV::array_to_string(_key_frame_text);
-        if(i==20)          av.key_colored_text( {{"因為 "},{"{isprime}["+to_string(i)+"]{=false:不是直數}","rgba(234, 64, 64, 0.44)"},{" {所以}不放入 prime 裡\n並且一口氣殺掉 "+to_string(i)+"{×:乘}"+_key_text+" {這幾個} 後面都照此邏輯刪除 快轉"}}, Pos("isprime", "top", 0, -20));
-        else if(isprime[i])av.key_colored_text( {{"因為 "},{"{isprime}["+to_string(i)+"]{=true:是直數}","rgba(47, 255, 82, 0.44)"},{" {所以}將其放入 prime\n並且一口氣殺掉"+to_string(i)+"{×:乘}"+_key_text+" {這幾個}" }}   , Pos("isprime", "top", 0, -20));
-        else               av.key_colored_text( {{"因為 "},{"{isprime}["+to_string(i)+"]{=false:不是直數}","rgba(234, 64, 64, 0.44)"},{" {所以}不放入 prime 裡\n並且一口氣殺掉 "+to_string(i)+"{×:乘}"+_key_text+" {這幾個}"}}, Pos("isprime", "top", 0, -20));
-        
-        int _tmp_k=0;
-        for(auto&v:prime){
-            if(i*v>n)break;
-            av.key_arrow(Pos("prime",_tmp_k), Pos("isprime",i*v-1), {{"color","rgba(51, 168, 51, 0.7)"}, {"width","3"}});
-            _tmp_k++;
-            if(i%v==0)break;
-        }
-        av.camera(Pos("isprime", "center", 0, 60), 1.1);
-        av.end_frame_draw();
-        //}
-        for(auto&v:prime){
-            //draw{
-            if(i*v>n) {
-                av.start_frame_draw();
-                av.frame_draw(  "prime" , Pos(0,560),     prime, {{{"highlight"},{k}},     {{"focus"},_key_frame_focus}},                                                                  {0}  , "normal", _draw_itemsPerRow, 0);
-                av.frame_draw("isprime" , Pos(0,90),   isprime, {{{"highlight"},{i,i*prime[k]}}, {{"focus"},_draw_focus}, {{"point"},{i}}, {{"mark"},AV::AtoB(0,i-1)}, {{"background","rgba(255, 82, 82, 0.44)"},{i*prime[k]}} }, {1,n}, "normal", _draw_itemsPerRow, 2);
-                av.colored_text({{"因為 "},{to_string(i)+"{×:乘}"+to_string(v)+"="+to_string(i*v)+" 已經超過 "+to_string(n),"rgba(241, 255, 47, 0.44)"},{"\n所以後面省略"}}, Pos("isprime", "top", 0, -20));
-                av.camera(Pos("isprime", "center", 0, 60), 1.1);
-                av.end_frame_draw();
-            }
-            //}
-            if(i*v>n)break;
-            isprime[i*v]=0;
-            //draw{
-            auto p = find(_draw_focus.begin(), _draw_focus.end(), i*v);
-            if(p!=_draw_focus.end()) _draw_focus.erase(p);
-            av.start_frame_draw();
-            av.frame_draw(  "prime" , Pos(0,560),     prime, {{{"highlight"},{k}},     {{"focus"},_key_frame_focus}},                                                                  {0}  , "normal", _draw_itemsPerRow, 0);
-            av.frame_draw("isprime" , Pos(0,90),   isprime, {{{"highlight"},{i,i*v}}, {{"focus"},_draw_focus}, {{"point"},{i}}, {{"mark"},AV::AtoB(0,i-1)}, {{"background"},{i*v}} }, {1,n}, "normal", _draw_itemsPerRow, 2);
-            av.arrow(Pos("isprime",i-1), Pos("prime",k), {{"color","rgba(13, 102, 13, 0.8)"}, {"label","×"}, {"width","3"}});
-            av.arrow(Pos("prime",k), Pos("isprime",i*v-1), {{"color","rgba(51, 168, 51, 0.7)"}, {"label","="}, {"width","3"}});
-            av.text("因為 "+to_string(i)+"{×:乘}"+to_string(v)+"="+to_string(i*v)+"\n所以殺掉 "+to_string(i*v), Pos("isprime", "top", 0, -20));
-            av.camera(Pos("isprime", "center", 0, 60), 1.1);
-            av.end_frame_draw();
-            k++;
-            if(i%v==0 && k!=prime.size()) {
-                av.start_frame_draw();
-                av.frame_draw(  "prime" , Pos(0,560),     prime, {{{"highlight"},{k}},     {{"focus"},_key_frame_focus}},                                                                  {0}  , "normal", _draw_itemsPerRow, 0);
-                av.frame_draw("isprime" , Pos(0,90),   isprime, {{{"highlight"},{i,i*prime[k]}}, {{"focus"},_draw_focus}, {{"point"},{i}}, {{"mark"},AV::AtoB(0,i-1)}, {{"background","rgba(255, 82, 82, 0.44)"},{i*prime[k]}} }, {1,n}, "normal", _draw_itemsPerRow, 2);
-                av.arrow(Pos("isprime",i-1), Pos("prime",k), {{"color","rgba(255, 0, 0, 0.7)"}, {"label","×"}, {"width","3"}});
-                if(i*prime[k]<n){
-                    av.arrow(Pos("prime",k), Pos("isprime",i*prime[k]-1), {{"color","rgba(255, 62, 62, 0.7)"}, {"label","="}, {"width","3"}});
-                }
-                av.colored_text({{"因為 "},{to_string(i)+"{%:能夠整除}"+to_string(v)+"=0","rgba(241, 255, 47, 0.44)"},{"\n所以後面的留{著:ㄓㄜ˙}給其他人殺"}}, Pos("isprime", "top", 0, -20));
-                av.camera(Pos("isprime", "center", 0, 60), 1.1);
-                av.end_frame_draw();
-            }
-            //}
-            if(i%v==0)break;
-        }
-    }
-} 
-// ─────────────────────────────────────────────────────────────────────────────
-// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
-// ─────────────────────────────────────────────────────────────────────────────
+    isprime[0] = isprime[1] = 0;
 
-int main(){
-    cin>>n;
-    //draw{
-    _draw_itemsPerRow = sqrt(n);
-    for(int i=1;i<=n;i++) _draw_focus.push_back(i);
-    av.start_draw();
-    av.start_frame_draw();
-    av.frame_draw(  "prime" , Pos(0,560),     prime, {},                        {0}  , "normal", _draw_itemsPerRow, 0);
-    av.frame_draw("isprime" , Pos(0,90),   isprime, {{{"focus"},_draw_focus}}, {1,n}, "normal", _draw_itemsPerRow, 2);
-    av.text("這是線篩{的演算法視覺化範例}", Pos("isprime", "top", 0, -20));
-    av.camera(Pos("isprime", "center", 0, 60), 1.1);
-    av.end_frame_draw();
-    //}
+    // @frame use sieve_view,camera
+    // @style isprime[1] highlight
+    // @style isprime[1] background rgba(223,127,255)
+    // @text "首先因為 1 不是{質:直}數 所以先刪掉" at isprime.top offset(0,-20)
+
+    for (int i = 2; i <= n; i++) {
+        if (isprime[i]) prime.push_back(i);
+
+        // @frame use sieve_view_i,camera when i<=7
+        // @text "因為 {isprime[${i}]=true:${i}是直樹}\n所以將其放入 prime" at isprime.top offset(0,-20) when isprime[i]==1
+        // @text "因為 {isprime[${i}]=false:${i}不是直樹}\n所以不將其放入 prime" at isprime.top offset(0,-20) when isprime[i]==0
+
+        for (int j = 0; j < prime.size(); j++) {
+            // @frame use sieve_view_i,camera when i*prime[j]<=n and i<=7
+            // @style isprime[i,i*prime[j]] highlight
+            // @style prime[j] highlight
+            // @arrow from isprime[i] to prime[j] color rgba(13, 102, 13, 0.8) width 3
+            // @arrow from prime[j] to isprime[i*prime[j]] color rgba(51, 168, 51, 0.7) width 3
+            // @text "因為 ${i}{×:乘}${prime[j]}{=:等於}${i*prime[j]}\n所以殺掉 ${i*prime[j]}" at isprime.top offset(0,-20)
+
+            if (i * prime[j] > n) break;
+            isprime[i * prime[j]] = 0;
+
+            // @frame use sieve_view_i,camera when i%prime[j]==0 and j<prime.size()-1 and i<=7
+            // @style isprime[i,i*prime[j+1]] highlight
+            // @style prime[j+1] highlight
+            // @style isprime[i*prime[j+1]] background AV_red
+            // @arrow from isprime[i] to prime[j+1] color rgba(255, 0, 0, 0.7) width 3
+            // @arrow from prime[j+1] to isprime[i*prime[j+1]] color rgba(255, 62, 62, 0.7) width 3
+            // @text "因為 ${i}{%:除}${prime[j]}{=:等於}0\n所以後面留著給其他人殺" at isprime.top offset(0,-20)
+
+            if (i % prime[j] == 0) break;
+        }
+        // 濃縮幀
+        // @frame use sieve_view_i,camera when i>7
+        // @events animate off
+        // @style isprime[i] highlight
+        // @for j
+        //     @style isprime[i*prime[j]] highlight when i*prime[j]<=n
+        //     @arrow from prime[j] to isprime[i*prime[j]] color rgba(51, 168, 51, 0.7) width 3 when i*prime[j]<=n 
+        // @endfor
+        // @text "一次殺掉這幾個" at isprime.top offset(0,-20)
+
+        
+    }
+}
+
+int main() {
+    cin >> n;
+
+    // @frame use sieve_view,camera
+    // @text "這是線篩的演算法視覺化範例\n是一種只需要線性時間就能完成的{質:直}數篩選法" at isprime.top offset(0,-20)
 
     prime_table();
 
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw(  "prime" , Pos(0,560),     prime, {},                        {0}  , "normal", _draw_itemsPerRow, 0);
-    av.frame_draw("isprime" , Pos(0,90),   isprime, {{{"focus"},_draw_focus}}, {1,n}, "normal", _draw_itemsPerRow, 2);
-    av.text("最後就完成了", Pos("isprime", "top", 0, -20));
-    av.key_frame_draw(  "prime" , Pos(0,560),     prime, {},                        {0}  , "normal", _draw_itemsPerRow, 0);
-    av.key_frame_draw("isprime" , Pos(0,90),   isprime, {{{"focus"},_draw_focus}}, {1,n}, "normal", _draw_itemsPerRow, 2);
-    av.key_text("最後就完成了", Pos("isprime", "top", 0, -20));
-    av.camera(Pos("isprime", "center", 0, 60), 1.1);
-    av.end_frame_draw();
-    av.end_draw();
-    //}
+    // @frame use sieve_view,camera
+    // @text "線篩完成" at isprime.top offset(0,-20)
+
     return 0;
 }
+
+/* @asm-view
+{
+  "version": 1,
+  "rules": [],
+  "skins": {},
+  "studio": {
+    "eventInstructionStates": {
+      "assign:prime_table:isprime[i*v]=0": false,
+      "assign:prime_table:isprime[1]=0": false,
+      "scope-exit:prime_table:i": false,
+      "assign:prime_table:isprime[i*prime[j]]=0": false,
+      "assign:prime_table:isprime[1] = 0": false,
+      "assign:prime_table:isprime[i * prime[j]] = 0": false
+    },
+    "codePanelFontSize": 14
+  }
+}
+@asm-view */

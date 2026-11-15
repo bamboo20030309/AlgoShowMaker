@@ -1,293 +1,217 @@
-/*
- * 範例：八皇后回溯
- *
- * 用途與核心步驟：逐列放置皇后，以三組位元遮罩快速排除同欄與兩條對角線的衝突，找到完整排列時保存答案。
- * 輸入、輸出與複雜度：輸入棋盤邊長 n；輸出合法排列。最壞時間 O(n!)、遞迴空間 O(n)，輸出棋盤時每解另需 O(n^2)。
- *
- * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
- * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
- */
-
 #include <bits/stdc++.h>
-#include "AV.hpp"
 using namespace std;
 
-AV av;
 int N;
 int ans = 0;
-vector<int> board; // 全域 board
-//draw{
-// 將 bitmask board 轉為帶有皇后的 string 矩陣
-// ─────────────────────────────────────────────────────────────────────────────
-// 演算法與視覺化輔助程序：前者維護核心不變條件，後者只建立展示資料。
-// ─────────────────────────────────────────────────────────────────────────────
+vector<int> board;
 
-vector<vector<string>> to_queen_board(const vector<int>& b, int n) {
-    vector<vector<string>> res;
-    for (int i = 0; i < n; ++i) {
-        vector<string> row;
-        for (int j = n - 1; j >= 0; --j) {
-            if ((b[i] >> j) & 1) row.push_back("♛");
-            else row.push_back("");
-        }
-        res.push_back(row);
-    }
-    return res;
-}
-//}
+// @layout recursion as "queen_tree"
+// @layout queen_tree branch-previews off
+
+// keep 只保留棋盤和皇后，不保留教學箭頭或右側陣列。
+// @preset queen_board_base_view
+// @object bits(board, N) as chess_board render matrix with labels(none), display("${value == 1 ? '♕' : ''}") in queen_tree
+// @style board background grey when value == 1
+// @endpreset
+
+// 繪圖集中於此：Q、L/M/R、合併 P 共用每格的 bit。
+// @preset queen_scene_view
+// @let bit = 1 << (N - 1 - column)
+// @let queen = value == 1 ? '♕' : ''
+// @let q_left = row == attack_row && (maskL & bit)
+// @let q_down = row == attack_row && (maskM & bit)
+// @let q_right = row == attack_row && (maskR & bit)
+// @object bits(board, N) as chess_board render matrix with labels(none), display("${queen}${value == 1 ? '' : row == attack_row ? ((directions >= 1 && q_left) || (directions >= 2 && q_down) || (directions >= 3 && q_right) ? 1 : 0) : '　'}") in queen_tree
+// @object bits(maskL, N) as mask_L render matrix with labels(none), display("${value ? '↙' : '　'}")
+// @object bits(maskM, N) as mask_M render matrix with labels(none), display("${value ? '↓' : '　'}")
+// @object bits(maskR, N) as mask_R render matrix with labels(none), display("${value ? '↘' : '　'}")
+// @style board background grey when value == 1
+// @style board background AV_red when (directions >= 1 && q_left) || (directions >= 2 && q_down) || (directions >= 3 && q_right)
+// @style maskL, maskM, maskR background AV_red when value == 1
+// @place mask_L.top-left at chess_board.top-right offset(40,0)
+// @place mask_M.top-left at mask_L.bottom-left offset(0,20)
+// @place mask_R.top-left at mask_M.bottom-left offset(0,20)
+// @endpreset
+
+// P 只在合併攻擊遮罩與計算候選位置時顯示。
+// @preset union_view
+// @object bits(maskP, N) as mask_union render matrix with labels(none), display("${value}")
+// @style maskP background AV_red when value == 1
+// @place mask_union.top-left at mask_R.bottom-left offset(0,20)
+// @endpreset
+
+// @preset lowbit_view
+// @object bits(p, N) with labels(none), display("${value}")
+// @style p background AV_red when value == 1
+// @place p.bottom-left at mask_L.top-left offset(0,-20)
+// @endpreset
+
+// 取反後，紅色受攻擊格為 0，綠色可選格為 1。
+// @preset p_board_view
+// @object bits(board, N) as chess_board render matrix with labels(none), display("${queen}${value == 1 ? '' : row == attack_row ? (P & bit ? 1 : 0) : '　'}") in queen_tree
+// @style board background AV_green when row == n && (P & bit)
+// @style maskP background white when value == 0
+// @style maskP background AV_green when value == 1
+// @endpreset
+
+// 各階段只指定資料，繪圖寫法不再重複。
+// @preset current_masks
+// @let maskL = L
+// @let maskM = M
+// @let maskR = R
+// @let attack_row = n
+// @let unionL = L
+// @let unionM = M
+// @let unionR = R
+// @let maskP = L | M | R
+// @endpreset
+
+// 計算完成後，右側直接展示真正的 P，不用繪圖別名遮蔽它。
+// @preset p_masks
+// @let maskL = L
+// @let maskM = M
+// @let maskR = R
+// @let attack_row = n
+// @let maskP = P
+// @endpreset
+
+// @preset nextL_masks
+// @let maskL = nextL
+// @let maskM = M
+// @let maskR = R
+// @let attack_row = n + 1
+// @let directions = 1
+// @let unionL = L
+// @let unionM = M
+// @let unionR = R
+// @let maskP = L | M | R
+// @endpreset
+
+// @preset nextM_masks
+// @let maskL = nextL
+// @let maskM = nextM
+// @let maskR = R
+// @let attack_row = n + 1
+// @let directions = 2
+// @let unionL = L
+// @let unionM = M
+// @let unionR = R
+// @let maskP = L | M | R
+// @endpreset
+
+// @preset nextR_masks
+// @let maskL = nextL
+// @let maskM = nextM
+// @let maskR = nextR
+// @let attack_row = n + 1
+// @let directions = 3
+// @let unionL = L
+// @let unionM = M
+// @let unionR = R
+// @let maskP = L | M | R
+// @endpreset
+
+// @preset nextR_merged_masks
+// @let maskL = nextL
+// @let maskM = nextM
+// @let maskR = nextR
+// @let attack_row = n + 1
+// @let directions = 3
+// @let unionL = nextL
+// @let unionM = nextM
+// @let unionR = nextR
+// @endpreset
+
+// @defaults
+// @camera focus board
+// @enddefaults
+
 void dfs(int n, int L, int M, int R) {
-    //draw{
-    // --- 1. 計算所有皇後的攻擊範圍 ---
-    vector<pair<int, int>> attacked_cells;
-    vector<pair<int, int>> queens;
-    
-    // 找出目前已經放置的皇后位置 (前 n 列)
-    for (int i = 0; i < n; i++) {
-        for (int b = 0; b < N; b++) {
-            if ((board[i] >> b) & 1) {
-                // 對應到 2D array 的欄位索引：你的 to_2Darray 是由高位元到低位元，
-                // 所以第 b 個 bit 在 2D 陣列中的 col 索引是 N - 1 - b
-                queens.push_back({i, N - 1 - b}); 
-            }
-        }
-    }
-    
-    // 檢查整個棋盤，找出被攻擊的格子
-    for (int r = 0; r < N; r++) {
-        for (int c = 0; c < N; c++) {
-            bool is_attacked = false;
-            bool is_queen = false;
-            
-            for (auto q : queens) {
-                if (q.first == r && q.second == c) {
-                    is_queen = true;
-                    break;
-                }
-                // 若與任何一個皇后同行、同欄、或同對角線，即為被攻擊
-                if (q.first == r || q.second == c || abs(q.first - r) == abs(q.second - c)) {
-                    is_attacked = true;
-                }
-            }
-            
-            // 把被攻擊且不是皇后本身的格子記錄下來
-            if (is_attacked && !is_queen) {
-                attacked_cells.push_back({r, c});
-            }
-        }
-    }
-    
-    // 設定樣式：背景顏色使用半透明紅色 (攻擊) 與 深灰色 (皇后)
-    vector<array2D_style> attack_style = {
-        {{"background", "#ef9a9a"}, attacked_cells},
-        {{"background", "#6d6d6dff"}, queens}
-    };
-
-    av.start_frame_draw();
-    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(board, N), attack_style, {}, "normal");
-    //}
+    // @keep board as "Q" in queen_tree use queen_board_base_view
+    // @frame use current_masks, queen_scene_view
+    // @let directions = 0
+    // @text "{dfs(${n})}：已放置 ${n} 個皇后，嘗試在第 ${n} 列放置下一個皇后" at chess_board.top when n < N
+    // @text "已放置 N 個互不攻擊的皇后，找到一組解" at chess_board.top when n == N
 
     if (n == N) {
         ans++;
-        //draw{
-        // 找到解的時候，用關鍵幀 (key_frame) 存起來，方便跳轉
-        av.key_frame_draw("chess_board", Pos(0, 0), to_queen_board(board, N), attack_style, {}, "normal");
-        av.auto_camera();
-        av.end_frame_draw();
-        //}
         return;
     }
 
-    int P = ((1<<N)-1) & ~(L|M|R);
-
-    //draw{
-    av.auto_camera();
-    if (P == 0 && n < N) {
-        av.colored_text({
-            {{"{沒路了，}回溯{尋找其他解。}"}},
-        }, Pos("chess_board", "top", 0, -20));
-    }
-    
-    if (n != N) av.end_frame_draw();
-    //}
+    // 一次計算目前列的可選位置，Q 與 P 同幀顯示結果。
+    int P = ((1 << N) - 1) & ~(L | M | R);
+    // @frame use p_masks, queen_scene_view, union_view, p_board_view
+    // @let directions = 3
+    // @text "{L | M | R: 目前} 的 1 表示受攻擊、不能放皇后。\n取反後，未受攻擊的位置變成 1，成為可選位置；\n再與 {(1 << N) - 1:一轉轉N檢一} 做 {AND:且運算}，只保留棋盤的 N 個位元。" at chess_board.top
 
     while (P > 0) {
-        int p=P&-P; // 取得最右邊的 1
-        P^=p;
-        
-        board[n]=p; // 在第 n 列標記皇后的位置 (回溯前置)
-        dfs(n+1, (L|p)<<1, M|p, (R|p)>>1);
-        board[n]=0; // 回溯：還原狀態
+        int p = P & -P;
+        P ^= p;
+
+        // @code hide
+        int selected_column = N - 1 - __builtin_ctz(p);
+        // @endcode
+        board[n] = p;
+        // @frame use p_masks, queen_scene_view, union_view, p_board_view, lowbit_view
+        // @let directions = 3
+        // @style board[n][selected_column] highlight
+        // @text "透過 {p = P & -P:p等於P且負P}：取出最右側的 1，選擇第 ${selected_column} 欄\n利用 {P ^= p:P X OR 等於 p}：移除這個最小的 1 的位置，之後再嘗試其他位置" at chess_board.top
+
+        int nextL = L | p;
+        // @frame use nextL_masks, queen_scene_view, lowbit_view
+        // @style board[n][selected_column] highlight
+        // @text "{nextL = L | p:下一個L 等於 目前的L先 或 p後}：把新皇后的位置加入左斜線攻擊遮罩" at chess_board.top
+        nextL <<= 1;
+        // @frame use nextL_masks, queen_scene_view, lowbit_view
+        // @style board[n][selected_column] highlight
+        // @text "{nextL <<= 1:再左移一個位元}：因為進入下一列時，左斜線攻擊位置會往左移一欄" at chess_board.top
+
+        int nextM = M | p;
+        // @frame use nextM_masks, queen_scene_view, lowbit_view
+        // @style board[n][selected_column] highlight
+        // @text "{nextM = M | p:下一個M 等於 目前的M 或 p}：新皇后封鎖這一排，下一輪這排就不能再放了" at chess_board.top
+
+        int nextR = R | p;
+        // @frame use nextR_masks, queen_scene_view, lowbit_view
+        // @style board[n][selected_column] highlight
+        // @text "{nextR = R | p:下一個R 等於 目前的R先 或 p後}：把新皇后的位置加入右斜線攻擊遮罩" at chess_board.top
+        nextR >>= 1;
+        // @frame use nextR_masks, queen_scene_view, lowbit_view
+        // @style board[n][selected_column] highlight
+        // @text "{nextR >>= 1:再右移一個位元}：因為進入下一列時，右斜線攻擊位置會往右移一欄" at chess_board.top
+
+        // @frame use nextR_merged_masks, queen_scene_view
+        // @style board[n][selected_column] highlight
+        // @text "把 {nextL、nextM、nextR:新的下一列的攻擊範圍} 傳入 {dfs(n + 1):遞迴}，\n繼續搜尋下一列可放皇后的位置" at chess_board.top
+
+        dfs(n + 1, nextL, nextM, nextR);
+        board[n] = 0;
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
-// ─────────────────────────────────────────────────────────────────────────────
-
 int main() {
-    N = 8; cin>>N;
-    board.assign(N, 0); // 初始化全域 board
-    //draw{
-    av.start_draw();
-    
-    // 開場說明帧
-    av.start_frame_draw();
-    // 範例方案：[0, 4, 7, 5, 2, 6, 1, 3] 欄位
-    // 對應 bit (MSB 在左): bit 7, 3, 0, 2, 5, 1, 6, 4
-    vector<int> sample_sol = {128, 8, 1, 4, 32, 2, 64, 16};
-    vector<pair<int, int>> sample_attacked;
-    vector<pair<int, int>> sample_queens;
-    for(int i = 0; i < N; i++) {
-        for(int b = 0; b < N; b++) {
-            if((sample_sol[i] >> b) & 1) sample_queens.push_back({i, N - 1 - b});
-        }
-    }
-    for(int r = 0; r < N; r++) {
-        for(int c = 0; c < N; c++) {
-            bool is_q = false; bool is_at = false;
-            for(auto q : sample_queens) {
-                if(q.first == r && q.second == c) { is_q = true; break; }
-                if(q.first == r || q.second == c || abs(q.first - r) == abs(q.second - c)) is_at = true;
-            }
-            if(is_at && !is_q) sample_attacked.push_back({r, c});
-        }
-    }
-    vector<array2D_style> sample_style = {
-        {{"background", "#ef9a9a"}, sample_attacked},
-        {{"background", "#6d6d6dff"}, sample_queens}
-    };
-
-    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(sample_sol, N), sample_style, {}, "normal");
-    av.colored_text({
-        {{"八皇后問題 (位元運算版)\n","","","20"}},
-        {{"這是一個很經典的 回溯 (backtracking) 演算法問題\n給一個 8{*:乘}8 的棋盤，問你總共有多少種皇后的擺法可以讓任意兩個皇后都不會互相攻{擊:及}?"}}
-    }, Pos("chess_board","top",0, -20));
-    
-    av.auto_camera();
-    av.end_frame_draw();
-
-    // 第一幀：DFS 策略 (從上往下)
-    av.start_frame_draw();
-    // 範例：已放兩顆皇后 (0,0) 與 (1,4)
-    vector<int> partial_1 = {128, 8, 0, 0, 0, 0, 0, 0};
-    vector<pair<int, int>> q_1 = {{0, 0}, {1, 4}};
-    vector<pair<int, int>> att_1;
-    vector<pair<int, int>> legal_row2; // 第三列的合法位置
-    for(int r = 0; r < N; r++) {
-        for(int c = 0; c < N; c++) {
-            bool is_q = false; bool is_at = false;
-            for(auto& q : q_1) {
-                if(q.first == r && q.second == c) { is_q = true; break; }
-                if(q.first == r || q.second == c || abs(q.first - r) == abs(q.second - c)) is_at = true;
-            }
-            if(is_at && !is_q) att_1.push_back({r, c});
-            // 特別挑出第三列 (r=2) 且沒被攻擊的位置
-            if(r == 2 && !is_at) legal_row2.push_back({r, c});
-        }
-    }
-
-    // 樣式：紅色為攻擊，綠色為合法，深灰色為皇后
-    vector<array2D_style> style_1 = {
-        {{"background", "#ef9a9a"}, att_1},
-        {{"background", "rgba(76, 175, 80, 0.46)"}, legal_row2},
-        {{"background", "#6d6d6dff"}, q_1}
-    };
-
-    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(partial_1, N), style_1, {}, "normal");
-    av.colored_text({
-        {{"策略一：從上往下放","","","20"}},
-        {{"\n為什麼要按順序放？\n因為八皇后規定每一列 "}},
-        {{"必須且只能"},"rgba(252, 255, 64, 0.46)"},
-        {{" 放一個皇后。\n"}},
-        {{"這使得我們可以把問題簡化，不再是隨機亂放，而是從第一列放起，再放第二列...\n"}},
-        {{"如圖所示，當我們放好了前兩列，"}},
-        {{"第三列的合法位置"},"rgba(76, 175, 80, 0.46)"},
-        {{" 就已經被縮小了。\n"}},
-        {{"這種 "}},
-        {{"逐行推進"},"rgba(252, 255, 64, 0.46)"},
-        {{" 的 DFS 方式，讓我們只需關心 "}},
-        {{"上方已經放好的皇后"},"rgba(252, 255, 64, 0.46)"},
-        {{" ，且可以減少很多不必要的搜尋，\n"}},
-        {{"將當前皇后的影響力像影子一樣往下傳遞，這就是高效解法的第一步。"}}
-    }, Pos("chess_board","top",0, -20));
-    av.auto_camera();
-    av.end_frame_draw();
-
-    // 第二幀：位元運算與狀態壓縮
-    av.start_frame_draw();
-    // 圖解一列的狀態：假設某列放了皇后在位元 7 與 3 (10001000 = 136)
-    vector<int> bit_demo = {0, 0, 136, 0, 0, 0, 0, 0};
-    vector<pair<int, int>> q_2 = {{2, 0}, {2, 4}};
-    vector<pair<int, int>> att_2;
-    for(int r = 0; r < N; r++) {
-        for(int c = 0; c < N; c++) {
-            bool is_q = false; bool is_at = false;
-            for(auto& q : q_2) {
-                if(q.first == r && q.second == c) { is_q = true; break; }
-                if(q.first == r || q.second == c || abs(q.first - r) == abs(q.second - c)) is_at = true;
-            }
-            if(is_at && !is_q) att_2.push_back({r, c});
-        }
-    }
-    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(bit_demo, N), {
-        {{"background", "#ef9a9a"}, att_2},
-        {{"background", "#6d6d6dff"}, q_2}
-    }, {}, "normal");
-    av.colored_text({
-        {{"策略二：二進位狀態壓縮","","","20"}},
-        {{"\n為什麼可以用二進位？\n因為棋盤的狀態總共就只有兩種狀態分為 有放的 和 沒放的 。\n"}},
-        {{"我們用 1 代表有放皇后，0 代表沒放皇后。\n"}},
-        {{"用 "}},
-        {{"一個數字就可以描述一列"},"rgba(252, 255, 64, 0.46)"},
-        {{" 的狀態，這個動作就稱為 "}},
-        {{"狀態壓縮"},"rgba(252, 255, 64, 0.46)"},
-        {{" 。\n"}},
-        {{"例如：{10001000:這樣子} 代表這列的第 0 與 第 4 欄有皇后。\n"}},
-        {{"\n關鍵就在這裡：\n傳統碰撞檢查需要用迴圈掃描，但在二進位下，我們可以用位元運算 ( AND / OR / NOT )\n\n"}},
-        {{"這樣做不僅能夠讓程式寫起來更簡潔，而且還可以加速不少常數時間，\n"}},
-        {{"電腦本身對於這種位元運算非常直覺，計算速度非常快。"}}
-    }, Pos("chess_board","top",0, -20));
-    av.auto_camera();
-    av.end_frame_draw();
-
-    // 第三幀：魔法般的 L, M, R 遮罩
-    av.start_frame_draw();
-    // 範例：皇后在 (1, 4)
-    vector<int> lmr_demo = {0, 8, 0, 0, 0, 0, 0, 0};
-    vector<pair<int, int>> q_lmr = {{1, 4}};
-    vector<pair<int, int>> m_cells, l_cells, r_cells;
-    for(int r = 2; r < N; r++) {
-        m_cells.push_back({r, 4});                   // 直下
-        if(4-(r-1) >= 0) l_cells.push_back({r, 4-(r-1)}); // 左下
-        if(4+(r-1) < 8) r_cells.push_back({r, 4+(r-1)});  // 右下
-    }
-    vector<array2D_style> lmr_styles = {
-        {{"background", "#bbdefb"}, m_cells}, // Middle - 藍
-        {{"background", "rgba(76, 175, 80, 0.46)"}, l_cells}, // Left - 綠
-        {{"background", "#f8bbd0"}, r_cells},  // Right - 粉
-        {{"background", "#6d6d6dff"}, q_lmr}     // Queen - 深灰
-    };
-    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(lmr_demo, N), lmr_styles, {}, "normal");
-    av.colored_text({
-        {{"策略三：L, M, R 的極速碰撞檢查","","","20"}},
-        {{"\n接下來是這套演算法最精妙的地方：\n我們只用三個整數就能夠追蹤所有攻擊範圍\n"}},
-        {{"{1. }"}}, {{"M (Middle)"}, "#bbdefb"}, {{"：代表 "}}, {{"垂直"}, "#bbdefb"}, {{" 方向的攻擊範圍。\n"}},
-        {{"{2. }"}}, {{"L (Left)"}, "rgba(76, 175, 80, 0.46)"}, {{"：代表 "}}, {{"左下對角線"}, "rgba(76, 175, 80, 0.46)"}, {{" 的限制。往下傳遞時會將位元 " }}, {{"左移"}, "rgba(76, 175, 80, 0.46)"}, {{"。\n"}},
-        {{"{3. }"}}, {{"R (Right)"}, "#f8bbd0"}, {{"：代表 "}}, {{"右下對角線"}, "#f8bbd0"}, {{" 的限制。往下傳遞時會將位元 "}}, {{"右移"}, "#f8bbd0"}, {{"。\n"}},
-        {{"\n這三組限制會隨{著:ㄓㄜ˙}遞迴 "}}, {{"向下傳遞"}, "rgba(252, 255, 64, 0.46)"}, {{" 給下一列使用。\n"}},
-        {{"在每一列，我們只需執行 "}}, {{"( L | M | R )"}, "rgba(252, 255, 64, 0.46)"},
-        {{" 將所有 "}}, {{"攻擊範圍取聯集"}, "rgba(252, 255, 64, 0.46)"}, {{" ，\n就能瞬間找出所有受威脅的格子，一次搞定所有檢查！"}}
-    }, Pos("chess_board","top",0, -20));
-    av.auto_camera();
-    av.end_frame_draw();
-    //}
-    
+    N = 4;
+    cin >> N;
+    board.assign(N, 0);
     dfs(0, 0, 0, 0);
-    
-    //draw{
-    av.end_draw();
-    //}
-    
+
+    // @frame
+    // @text "完成八皇后問題的搜索" at queen_tree.top
+    // @camera auto
     cout << "Total Solutions: " << ans << endl;
     return 0;
 }
+
+/* @asm-view
+{
+  "version": 1,
+  "rules": [],
+  "skins": {},
+  "studio": {
+    "eventSettings": {
+      "autoFixedEnabled": false,
+      "autoLoopBoundaryEnabled": false
+    }
+  }
+}
+@asm-view */

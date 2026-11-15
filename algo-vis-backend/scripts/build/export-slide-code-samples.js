@@ -17,6 +17,7 @@ const definitions={
  'prefix-sum':[['prefix-sum-1d','一維前綴和'],['prefix-sum-2d','二維前綴和']],
  'lcs-teaching':[['lcs-table','LCS－建表'],['lcs-backtracking','LCS－回溯']]
 };
+const preferredPaths={"quick-sort":"Sorting/quick_sort.cpp","merge-sort-recursive":"Sorting/merge_sort.cpp","bubble-sort":"Sorting/bubble_sort.cpp","selection-sort":"Sorting/selection_sort.cpp","insertion-sort":"Sorting/insertion_sort.cpp","heap-sort":"Sorting/heap_sort.cpp","hanoi":"Backtracking/hanoi.cpp","eight-queens-bitmask":"Backtracking/8queen.cpp","linear-sieve-detailed":"Math/euler_sieve.cpp"};
 const canonical=text=>String(text||'').replace(/\r\n?/g,'\n');
 const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
 async function exportSlideSamples({root=backend}={}){
@@ -45,8 +46,8 @@ async function exportSlideSamples({root=backend}={}){
    let entry=byCode.get(deck.id+':'+hash);
    if(!entry){
     let stem=named[0].replace(/-/g,'_');
-    let file=directory+'/'+stem+'.cpp';
-    try{await fs.access(path.join(sampleRoot,file));if(!managed.has(file)){stem+='_slides';file=directory+'/'+stem+'.cpp';await fs.access(path.join(sampleRoot,file)).then(()=>{if(!managed.has(file))throw Error('Unmanaged filename collision: '+file);},error=>{if(error.code!=='ENOENT')throw error;});}}catch(error){if(error.code!=='ENOENT')throw error;}
+    let file=preferredPaths[named[0]]||directory+'/'+stem+'.cpp';
+    try{await fs.access(path.join(sampleRoot,file));if(!managed.has(file)&&!preferredPaths[named[0]])throw Error('Unmapped filename collision: '+file);}catch(error){if(error.code!=='ENOENT')throw error;}
     if(files.has(file))throw Error('Different programs share a filename: '+file);
     files.set(file,code);
     entry={path:file,title:named[1],sourceDeckId:deck.id,sourceDeckTitle:deck.title,codeSha256:hash,slides:[],inputs:[]};
@@ -62,7 +63,7 @@ async function exportSlideSamples({root=backend}={}){
    entry.slides.push({slideId:slide.id,page:page+1,inputPath:inputRecord.path});
   }
  }
- const manifest={schema:2,source:'public/guest-decks.json',deckCount:catalog.decks.length,animationCount,entries};
+ const manifest={schema:2,source:'public/guest-decks.json',deckCount:catalog.decks.length,animationCount,entries,legacyUnconverted:previous?.legacyUnconverted||[],retiredAliases:previous?.retiredAliases||[]};
  for(const[relative,content]of files){const target=path.join(sampleRoot,relative);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,content,'utf8');}
  await fs.writeFile(manifestPath,JSON.stringify(manifest,null,2)+'\n');
  return manifest;

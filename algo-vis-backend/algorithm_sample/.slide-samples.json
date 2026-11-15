@@ -5,7 +5,7 @@
   "animationCount": 36,
   "entries": [
     {
-      "path": "Sorting/quick_sort_slides.cpp",
+      "path": "Sorting/quick_sort.cpp",
       "title": "快速排序",
       "sourceDeckId": "quick-sort",
       "sourceDeckTitle": "快速排序",
@@ -14,27 +14,27 @@
         {
           "slideId": "quick-teaching-23",
           "page": 10,
-          "inputPath": "Sorting/quick_sort_slides-sample_input.txt"
+          "inputPath": "Sorting/quick_sort-sample_input.txt"
         },
         {
           "slideId": "quick-teaching-31",
           "page": 13,
-          "inputPath": "Sorting/quick_sort_slides-input_02.txt"
+          "inputPath": "Sorting/quick_sort-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Sorting/quick_sort_slides-sample_input.txt",
+          "path": "Sorting/quick_sort-sample_input.txt",
           "sha256": "b5f65b64e16c9095a1607fd1733c07c19b0ad9ec36be01efacb9639f915dcf4d"
         },
         {
-          "path": "Sorting/quick_sort_slides-input_02.txt",
+          "path": "Sorting/quick_sort-input_02.txt",
           "sha256": "4c18c2b02e72dcc28eff8f102da8d6ff3c164d5813b3c4b26771fc9dcb270920"
         }
       ]
     },
     {
-      "path": "Sorting/merge_sort_recursive.cpp",
+      "path": "Sorting/merge_sort.cpp",
       "title": "合併排序－遞迴版",
       "sourceDeckId": "merge-sort",
       "sourceDeckTitle": "合併排序",
@@ -43,21 +43,21 @@
         {
           "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5",
           "page": 11,
-          "inputPath": "Sorting/merge_sort_recursive-sample_input.txt"
+          "inputPath": "Sorting/merge_sort-sample_input.txt"
         },
         {
           "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f",
           "page": 15,
-          "inputPath": "Sorting/merge_sort_recursive-input_02.txt"
+          "inputPath": "Sorting/merge_sort-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Sorting/merge_sort_recursive-sample_input.txt",
+          "path": "Sorting/merge_sort-sample_input.txt",
           "sha256": "de58de78ff5b3955c361f22237f66c95aece69d658f76dac0239313e8776a154"
         },
         {
-          "path": "Sorting/merge_sort_recursive-input_02.txt",
+          "path": "Sorting/merge_sort-input_02.txt",
           "sha256": "2ad39e6837075fcb9ebbd61530bd389c30180abbbb114f2301f2f2639ad469bb"
         }
       ]
@@ -92,7 +92,7 @@
       ]
     },
     {
-      "path": "Sorting/bubble_sort_slides.cpp",
+      "path": "Sorting/bubble_sort.cpp",
       "title": "冒泡排序",
       "sourceDeckId": "bubble-sort",
       "sourceDeckTitle": "冒泡排序",
@@ -101,27 +101,27 @@
         {
           "slideId": "bubble-teaching-27",
           "page": 10,
-          "inputPath": "Sorting/bubble_sort_slides-sample_input.txt"
+          "inputPath": "Sorting/bubble_sort-sample_input.txt"
         },
         {
           "slideId": "bubble-teaching-36",
           "page": 13,
-          "inputPath": "Sorting/bubble_sort_slides-input_02.txt"
+          "inputPath": "Sorting/bubble_sort-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Sorting/bubble_sort_slides-sample_input.txt",
+          "path": "Sorting/bubble_sort-sample_input.txt",
           "sha256": "8802298f483aaceb38f99d33853822765b05a2f97bd73b54953bfc6ec0871144"
         },
         {
-          "path": "Sorting/bubble_sort_slides-input_02.txt",
+          "path": "Sorting/bubble_sort-input_02.txt",
           "sha256": "8cfedae878d576c520900cc4bea7fac280403a7d779406b8aca7042bb37224e8"
         }
       ]
     },
     {
-      "path": "Sorting/selection_sort_slides.cpp",
+      "path": "Sorting/selection_sort.cpp",
       "title": "選擇排序",
       "sourceDeckId": "selection-sort",
       "sourceDeckTitle": "選擇排序",
@@ -130,27 +130,27 @@
         {
           "slideId": "selection-teaching-24",
           "page": 10,
-          "inputPath": "Sorting/selection_sort_slides-sample_input.txt"
+          "inputPath": "Sorting/selection_sort-sample_input.txt"
         },
         {
           "slideId": "selection-teaching-33",
           "page": 13,
-          "inputPath": "Sorting/selection_sort_slides-input_02.txt"
+          "inputPath": "Sorting/selection_sort-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Sorting/selection_sort_slides-sample_input.txt",
+          "path": "Sorting/selection_sort-sample_input.txt",
           "sha256": "174d3bb693c6e4daacf4451611872ff74f9c3ae2fc848a597ffdffa745898115"
         },
         {
-          "path": "Sorting/selection_sort_slides-input_02.txt",
+          "path": "Sorting/selection_sort-input_02.txt",
           "sha256": "e62c4ac0856c1dd9a45e3e44772ba10cbdc494cab3f4211b397f88ea30b72226"
         }
       ]
     },
     {
-      "path": "Sorting/insertion_sort_slides.cpp",
+      "path": "Sorting/insertion_sort.cpp",
       "title": "插入排序",
       "sourceDeckId": "insertion-sort",
       "sourceDeckTitle": "插入排序",
@@ -159,27 +159,27 @@
         {
           "slideId": "insertion-teaching-24",
           "page": 10,
-          "inputPath": "Sorting/insertion_sort_slides-sample_input.txt"
+          "inputPath": "Sorting/insertion_sort-sample_input.txt"
         },
         {
           "slideId": "insertion-teaching-33",
           "page": 13,
-          "inputPath": "Sorting/insertion_sort_slides-input_02.txt"
+          "inputPath": "Sorting/insertion_sort-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Sorting/insertion_sort_slides-sample_input.txt",
+          "path": "Sorting/insertion_sort-sample_input.txt",
           "sha256": "ec3c7d35c603118d68a25b2faffeec63a2f6f4bc6902c4eed2b15701babc52b6"
         },
         {
-          "path": "Sorting/insertion_sort_slides-input_02.txt",
+          "path": "Sorting/insertion_sort-input_02.txt",
           "sha256": "8cfedae878d576c520900cc4bea7fac280403a7d779406b8aca7042bb37224e8"
         }
       ]
     },
     {
-      "path": "Sorting/heap_sort_slides.cpp",
+      "path": "Sorting/heap_sort.cpp",
       "title": "堆積排序",
       "sourceDeckId": "heap-sort",
       "sourceDeckTitle": "堆積排序",
@@ -188,27 +188,27 @@
         {
           "slideId": "heap-teaching-17",
           "page": 10,
-          "inputPath": "Sorting/heap_sort_slides-sample_input.txt"
+          "inputPath": "Sorting/heap_sort-sample_input.txt"
         },
         {
           "slideId": "heap-teaching-25",
           "page": 13,
-          "inputPath": "Sorting/heap_sort_slides-input_02.txt"
+          "inputPath": "Sorting/heap_sort-input_02.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Sorting/heap_sort_slides-sample_input.txt",
+          "path": "Sorting/heap_sort-sample_input.txt",
           "sha256": "30c26cff9d010e41932f5a1fbde9718cb683367e5e71c3ae042a7843d9a8f91b"
         },
         {
-          "path": "Sorting/heap_sort_slides-input_02.txt",
+          "path": "Sorting/heap_sort-input_02.txt",
           "sha256": "b52cd3df6802cecf32024c0ec86f54f85d966c4d912ad4eb3779ad34efb25e87"
         }
       ]
     },
     {
-      "path": "Math/linear_sieve_detailed.cpp",
+      "path": "Math/euler_sieve.cpp",
       "title": "線性篩－逐步版",
       "sourceDeckId": "linear-sieve",
       "sourceDeckTitle": "線篩 (Linear-Sieve)",
@@ -217,12 +217,12 @@
         {
           "slideId": "linear-sieve-teaching-19",
           "page": 10,
-          "inputPath": "Math/linear_sieve_detailed-sample_input.txt"
+          "inputPath": "Math/euler_sieve-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Math/linear_sieve_detailed-sample_input.txt",
+          "path": "Math/euler_sieve-sample_input.txt",
           "sha256": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306"
         }
       ]
@@ -448,7 +448,7 @@
       ]
     },
     {
-      "path": "Backtracking/hanoi_slides.cpp",
+      "path": "Backtracking/hanoi.cpp",
       "title": "河內塔",
       "sourceDeckId": "hanoi-teaching",
       "sourceDeckTitle": "河內塔 (hanoi tower)",
@@ -457,12 +457,12 @@
         {
           "slideId": "24cbe5b0-08b7-438a-83f2-dddabc6e57c7",
           "page": 8,
-          "inputPath": "Backtracking/hanoi_slides-sample_input.txt"
+          "inputPath": "Backtracking/hanoi-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Backtracking/hanoi_slides-sample_input.txt",
+          "path": "Backtracking/hanoi-sample_input.txt",
           "sha256": "7de1555df0c2700329e815b93b32c571c3ea54dc967b89e81ab73b9972b72d1d"
         }
       ]
@@ -508,7 +508,7 @@
       ]
     },
     {
-      "path": "Backtracking/eight_queens_bitmask.cpp",
+      "path": "Backtracking/8queen.cpp",
       "title": "八皇后－位元運算",
       "sourceDeckId": "eight-queens-teaching",
       "sourceDeckTitle": "八皇后問題 (8queen)",
@@ -517,12 +517,12 @@
         {
           "slideId": "c5bc5221-8cab-42a9-b995-19a33b331492",
           "page": 21,
-          "inputPath": "Backtracking/eight_queens_bitmask-sample_input.txt"
+          "inputPath": "Backtracking/8queen-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Backtracking/eight_queens_bitmask-sample_input.txt",
+          "path": "Backtracking/8queen-sample_input.txt",
           "sha256": "7de1555df0c2700329e815b93b32c571c3ea54dc967b89e81ab73b9972b72d1d"
         }
       ]
@@ -646,6 +646,50 @@
           "sha256": "c6be5197ef7dd61aa669e4d06aea6d35d39eec818d3dde15595f3bf5611153ba"
         }
       ]
+    }
+  ],
+  "legacyUnconverted": [
+    {
+      "from": "Basic/out_of_bounds.cpp",
+      "to": "Basic/old_out_of_bounds.cpp"
+    },
+    {
+      "from": "Data_Structure/UVA_514_Rails.cpp",
+      "to": "Data_Structure/old_UVA_514_Rails.cpp"
+    },
+    {
+      "from": "Graph/color_diffusion_problem.cpp",
+      "to": "Graph/old_color_diffusion_problem.cpp"
+    },
+    {
+      "from": "Math/extend_euclid.cpp",
+      "to": "Math/old_extend_euclid.cpp"
+    },
+    {
+      "from": "Math/Sieve_of_Eratosthenes.cpp",
+      "to": "Math/old_Sieve_of_Eratosthenes.cpp"
+    },
+    {
+      "from": "Tree/AVL_tree.cpp",
+      "to": "Tree/old_AVL_tree.cpp"
+    },
+    {
+      "from": "Tree/BST_tree.cpp",
+      "to": "Tree/old_BST_tree.cpp"
+    },
+    {
+      "from": "Tree/Pre_In_to_Post.cpp",
+      "to": "Tree/old_Pre_In_to_Post.cpp"
+    },
+    {
+      "from": "Tree/Tree_traversal.cpp",
+      "to": "Tree/old_Tree_traversal.cpp"
+    }
+  ],
+  "retiredAliases": [
+    {
+      "from": "Backtracking/8queen_tree.cpp",
+      "to": "Backtracking/8queen.cpp"
     }
   ]
 }

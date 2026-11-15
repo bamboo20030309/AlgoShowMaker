@@ -16,16 +16,17 @@ test('slide code samples expose named programs and matching inputs without compi
   for(const origin of entry.slides){const slide=slides.find(s=>s.id===origin.slideId);assert.ok(slide?.animation);assert.equal(code,canonical(slide.animation.code));const input=await fetch(base+'/api/samples?filename='+encodeURIComponent(origin.inputPath));assert.equal(input.status,200);assert.equal(canonical(await input.text()),canonical(slide.animation.input));animations++;}
   inputs+=entry.inputs.length;
  }
+ for(const legacy of manifest.legacyUnconverted){assert.ok(path.basename(legacy.to).startsWith('old_'));assert.ok(byPath.has(legacy.to));assert.ok(!byPath.has(legacy.from));}assert.equal(manifest.legacyUnconverted.length,9);assert.ok(!items.some(i=>i.name.endsWith('_slides.cpp')));
  assert.equal(animations,36);assert.equal(manifest.entries.length,29);assert.equal(inputs,36);
  const old=byPath.get('Sorting/quick_sort.cpp');assert.ok(old);assert.equal((await fetch(base+'/api/samples?filename='+encodeURIComponent(old.path))).status,200);
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));let compileRequests=0;page.on('request',request=>{if(['/compile','/api/compile/jobs'].includes(new URL(request.url()).pathname))compileRequests++;});
  await page.addInitScript(()=>{const key='asm_algorithm_draft_v2:page:%2Falgorithm.html:standalone';if(!sessionStorage.getItem(key))sessionStorage.setItem(key,JSON.stringify({version:2,code:'int main(){return 0;}',input:'',updatedAt:Date.now()}));});
  await page.goto(base+'/algorithm.html');await page.waitForFunction(()=>window.ace&&window.asmReplaceEditorCode);await page.evaluate(()=>window.ASMDefaultAlgorithm?.cancel?.('sample-library-test'));
  await page.click('#algoSamplesBtn');await page.getByText('Sorting',{exact:true}).click();
- const entry=manifest.entries.find(e=>e.path.endsWith('/merge_sort_recursive.cpp'));const wrapper=page.locator('.code-wrapper').filter({has:page.getByText(path.basename(entry.path),{exact:true})});await wrapper.locator('.code-file').click();
+ const entry=manifest.entries.find(e=>e.path.endsWith('/merge_sort.cpp'));const wrapper=page.locator('.code-wrapper').filter({has:page.getByText(path.basename(entry.path),{exact:true})});await wrapper.locator('.code-file').click();
  const expected=canonical(fs.readFileSync(path.join('algorithm_sample',entry.path),'utf8'));
  await page.waitForFunction(expected=>ace.edit('editor').getValue().replace(/\r\n?/g,'\n')===expected,expected);
- assert.equal(await wrapper.locator('.input-item').count(),2);await wrapper.locator('.input-item').filter({hasText:'input_02.txt'}).click();
+ const stem=path.basename(entry.path,'.cpp'),folder=path.dirname(entry.path);const matching=items.filter(i=>i.type==='file'&&i.name.endsWith('.txt')&&path.dirname(i.path)===folder&&i.name.split('-')[0]===stem);assert.equal(await wrapper.locator('.input-item').count(),matching.length);await wrapper.locator('.input-item').filter({hasText:'input_02.txt'}).click();
  const input=fs.readFileSync(path.join('algorithm_sample',entry.inputs[1].path),'utf8');await page.waitForFunction(input=>document.getElementById('inputArea').value===input,input);
  await page.reload();await page.waitForFunction(()=>window.ace&&window.asmReplaceEditorCode);await page.evaluate(()=>window.ASMDefaultAlgorithm?.cancel?.('sample-library-test'));
  await page.waitForFunction(expected=>ace.edit('editor').getValue().replace(/\r\n?/g,'\n')===expected,expected);assert.equal(await page.inputValue('#inputArea'),input);
