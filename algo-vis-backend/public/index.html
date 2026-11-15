@@ -11,7 +11,7 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=cards-4" />
+  <link rel="stylesheet" href="home.css?v=cards-5" />
   <link rel="stylesheet" href="brand.css?v=site-header-2" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <script src="ui-motion.js?v=1" defer></script>
@@ -62,7 +62,7 @@
           <span>返回投影片工作區</span>
         </a>
         <h1 id="galleryTitle">演算法投影片</h1>
-        <p class="gallery-intro">從分類挑選演算法，點開投影片即可觀賞，不需登入。</p>
+        <p class="gallery-intro">不需登入即可觀賞公開投影片</p>
         <!-- 與「我的投影片」相同的單一工具列：分類捷徑靠左，右側為份數與放大鏡搜尋（不含新增按鈕）。 -->
         <div class="library-toolbar">
           <nav id="galleryCategories" class="library-folder-nav" aria-label="演算法分類"></nav>
@@ -83,7 +83,7 @@
         <div class="auth-heading">
           <span class="eyebrow">個人工作區</span>
           <h1 id="authTitle">登入 AlgoShowMaker</h1>
-          <p id="authSubtitle">開啟你的投影片，繼續上次的編輯。</p>
+          <p id="authSubtitle">儲存或上傳你的動畫與投影片</p>
         </div>
 
         <div id="authTabs" class="auth-tabs" role="tablist" aria-label="登入方式">
@@ -99,7 +99,7 @@
             <label for="passwordInput">密碼</label>
             <div class="input-with-action">
               <input id="passwordInput" name="password" type="password" autocomplete="current-password" placeholder="至少 8 個字元" required />
-              <button id="togglePasswordBtn" class="input-icon-btn" type="button" aria-label="顯示密碼" title="顯示密碼">顯示</button>
+              <button id="togglePasswordBtn" class="input-icon-btn" type="button" aria-label="顯示密碼" title="顯示密碼" aria-pressed="false"><svg class="eye-icon eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10c2.3 3 5.4 4.5 9 4.5s6.7-1.5 9-4.5"/><path d="M5.6 13.1 4 15.4M9.4 14.3 8.8 17M14.6 14.3l.6 2.7M18.4 13.1l1.6 2.3"/></svg><svg class="eye-icon eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
             </div>
           </div>
 
@@ -248,7 +248,7 @@
   <script src="library-layout.js?v=3"></script>
   <script src="library-organizer.js?v=14"></script>
   <script src="home-thumbnail-cache.js?v=1"></script>
-  <script src="home.js?v=login-next-1"></script>
+  <script src="home.js?v=login-next-2"></script>
 </body>
 
 </html>

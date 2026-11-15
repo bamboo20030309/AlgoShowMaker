@@ -243,7 +243,7 @@
     passwordInput.placeholder = isReset ? '輸入新的密碼' : '至少 8 個字元';
 
     const copy = {
-      login: ['登入 AlgoShowMaker', '開啟你的投影片，繼續上次的編輯。', '登入'],
+      login: ['登入 AlgoShowMaker', '儲存或上傳你的動畫與投影片', '登入'],
       register: ['建立個人工作區', '註冊後，投影片會安全地存放在你的帳號中。', '建立帳號'],
       forgot: ['重設密碼', '輸入註冊 Email，我們會寄送重設連結。', '寄送重設連結'],
       reset: ['設定新密碼', '為你的 AlgoShowMaker 帳號設定新密碼。', '更新密碼']
@@ -329,7 +329,9 @@
   togglePasswordBtn.addEventListener('click', () => {
     const show = passwordInput.type === 'password';
     passwordInput.type = show ? 'text' : 'password';
-    togglePasswordBtn.textContent = show ? '隱藏' : '顯示';
+    // 閉眼＝密碼隱藏中，開眼＝密碼顯示中；文字說明放在 aria-label 與 title。
+    togglePasswordBtn.classList.toggle('is-revealed', show);
+    togglePasswordBtn.setAttribute('aria-pressed', String(show));
     togglePasswordBtn.setAttribute('aria-label', show ? '隱藏密碼' : '顯示密碼');
     togglePasswordBtn.title = show ? '隱藏密碼' : '顯示密碼';
   });

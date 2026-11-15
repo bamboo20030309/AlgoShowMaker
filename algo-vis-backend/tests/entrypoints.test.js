@@ -92,13 +92,13 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   }
   assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
-  assert.ok(legacy.includes('home.css?v=cards-4'));
+  assert.ok(legacy.includes('home.css?v=cards-5'));
   assert.ok(legacy.includes('brand.css?v=site-header-2'));
   assert.ok(legacy.includes('guest-gallery.js?v=8'));
   assert.ok(legacy.indexOf('library-ui.js?v=2') < legacy.indexOf('guest-gallery.js?v=8'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
   assert.ok(legacy.indexOf('library-layout.js?v=3') < legacy.indexOf('library-organizer.js?v=14'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=14') < legacy.indexOf('home.js?v=login-next-1'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=14') < legacy.indexOf('home.js?v=login-next-2'));
   assert.ok(legacy.indexOf('library-ui.js?v=2') < legacy.indexOf('library-organizer.js?v=14'));
   // Two entry modes share one navigation: slides (home) and code (algorithm page).
   const modeNav = page => page.match(/<nav class="mode-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] || '';
