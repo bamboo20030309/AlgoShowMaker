@@ -27,7 +27,11 @@ const fakeElement = () => {
 function context(mode = 'editor') {
   const listeners = new Map();
   const messages = [];
-  const input = { value: '' };
+  const input = { value: '', addEventListener() {}, dispatchEvent() {} };
+  // body 與 html 的 class 會在 runtime／editor 之間切換（同一個 iframe 展開成編輯頁）。
+  const classes = () => { const set = new Set(); return {
+    add: (...names) => names.forEach(name => set.add(name)), remove: (...names) => names.forEach(name => set.delete(name)),
+    contains: name => set.has(name), toggle: (name, on) => (on ?? !set.has(name)) ? set.add(name) : set.delete(name) }; };
   const c = vm.createContext({
     URLSearchParams, setTimeout() {}, clearTimeout() {},
     requestAnimationFrame(callback) { callback(); return 1; },
@@ -35,7 +39,7 @@ function context(mode = 'editor') {
     dispatchEvent(event) { listeners.get(event?.type)?.(event); },
     location: { origin: 'http://localhost:3000', search: `?asmEmbed=${mode}` },
     localStorage: { getItem: () => '' },
-    document: { addEventListener() {}, body: { classList: { add() {} } },
+    document: { addEventListener() {}, body: { classList: classes() }, documentElement: { classList: classes() },
       createElement: fakeElement, querySelector: () => null,
       getElementById: id => id === 'inputArea' ? input : null },
     addEventListener: (type, fn) => listeners.set(type, fn),

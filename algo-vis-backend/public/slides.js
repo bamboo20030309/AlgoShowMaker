@@ -906,6 +906,9 @@
 
   function updateProgressiveRebuildStatus(session, active = null) {
     if (progressiveRebuildSession !== session) return;
+    // 依序重建的某張完成後，側欄 RUN 與狀態跟著更新（重建期間顯示為執行中）。
+    const current = getSlide();
+    if (current?.kind === 'algorithm-animation') renderAlgorithmRunState(current);
     document.body.dataset.asmdeckRebuild = session.completed >= session.total ? 'ready' : 'loading';
     document.body.dataset.asmdeckRebuildProgress = `${session.completed}/${session.total}`;
     setCloudStatus(session.completed >= session.total ? 'saved' : 'loading', progressiveRebuildLabel(session, active));
@@ -7460,9 +7463,11 @@
     return { state: 'current' };
   }
 
+  // 只保存執行配方的投影片沒有動畫結果，mode 會正規化成 legacy；真正的舊版腳本動畫是帶 scriptContent 的。
   function slideIsRunnable(slide) {
-    return slide?.kind === 'algorithm-animation' && slide.animation?.mode === 'trace'
-      && Boolean(slide.animation?.code?.trim());
+    const animation = slide?.animation;
+    return slide?.kind === 'algorithm-animation' && Boolean(animation?.code?.trim())
+      && !(animation.mode !== 'trace' && animation.scriptContent?.trim());
   }
 
   function renderAlgorithmRunState(slide = getSlide()) {
