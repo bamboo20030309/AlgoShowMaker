@@ -138,8 +138,8 @@
   }
 
   // 組裝式過場，分兩段：
-  //   打開：畫布先從投影片上的位置移到右側定位，接著左側編輯區從左邊展開、右側分頁從上方落下；
-  //   返回：反過來，先收起左側與分頁，畫布再移回投影片。
+  //   打開：畫布從投影片上的位置移到右側定位，右側分頁在畫布就定位時剛好從上方落下完畢，接著左側編輯區從左邊展開；
+  //   返回：反過來，先收起左側，畫布開始移回投影片時分頁同時收起。
   // 畫布移動時框與內容分開處理：框（transform＋clip-path）從投影片的框連續變成編輯頁的框；
   // 內容由鏡頭覆寫逐幀決定，世界中心固定在框的中心，縮放倍率以等比（對數）連續插值，
   // 起點是投影片上實際的取景（打開前記下的 runtime 鏡頭），終點是編輯頁目前的鏡頭。
@@ -268,19 +268,22 @@
       if (window.updateTransform) window.updateTransform();
     };
 
+    // 時間軸（打開）：畫布 0→CANVAS；右側分頁在畫布就定位時剛好展開完畢；左側在畫布就定位後才展開。
+    // 返回完全倒過來：左側先收，畫布開始移動時分頁同時收起。
     const canvasDelay = opening ? 0 : ASSEMBLE_PANEL_MS;
-    const panelDelay = opening ? ASSEMBLE_CANVAS_MS : 0;
-    const panelOptions = { duration: ASSEMBLE_PANEL_MS, delay: panelDelay, easing: ASSEMBLE_EASING, fill: 'both' };
+    const sideDelay = opening ? ASSEMBLE_CANVAS_MS : 0;
+    const tabsDelay = opening ? Math.max(0, ASSEMBLE_CANVAS_MS - ASSEMBLE_PANEL_MS) : ASSEMBLE_PANEL_MS;
+    const panelOptions = delay => ({ duration: ASSEMBLE_PANEL_MS, delay, easing: ASSEMBLE_EASING, fill: 'both' });
     const pair = (start, end) => opening ? [start, end] : [end, start];
     const panels = [
-      [document.getElementById('codePanel'), pair({ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' })],
-      [document.getElementById('divider'), pair({ opacity: 0 }, { opacity: 1 })],
-      [document.getElementById('subTabs'), pair({ transform: 'translateY(-100%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 })]
+      [document.getElementById('codePanel'), pair({ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' }), sideDelay],
+      [document.getElementById('divider'), pair({ opacity: 0 }, { opacity: 1 }), sideDelay],
+      [document.getElementById('subTabs'), pair({ transform: 'translateY(-100%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }), tabsDelay]
     ].filter(([element]) => element);
     // 畫布的進度來源：空轉的動畫只提供套用 easing 後的進度，實際畫面由 paint 逐幀設定。
     const timing = canvas.animate([{ opacity: 1 }, { opacity: 1 }],
       { duration: ASSEMBLE_CANVAS_MS, delay: canvasDelay, easing: ASSEMBLE_EASING, fill: 'both' });
-    assemblyAnimations = [timing, ...panels.map(([element, frames]) => element.animate(frames, panelOptions))];
+    assemblyAnimations = [timing, ...panels.map(([element, frames, delay]) => element.animate(frames, panelOptions(delay)))];
     window.setViewportTransformOverride?.(override);
     paint();
     const tick = () => {
