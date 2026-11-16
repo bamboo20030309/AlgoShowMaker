@@ -51,6 +51,7 @@
 - 組裝式過場（`slides-embed.js` `playAssembly`），分兩段依序播放：
   - 打開：畫布先從投影片上的位置移到右側定位（420 ms），右側分頁從上方落下（300 ms），在畫布就定位時剛好展開完畢；之後左側編輯區從左邊展開（300 ms）。返回時順序相反：左側先收，畫布開始移回時分頁同時收起。
   - 過場中 iframe 頁面背景透明。
+  - 過場中 iframe 的 html／body 不捲動（內層仍不裁切）：移動中的畫布超出視窗時，傳統（非覆蓋式）捲軸會出現並佔掉約 15px，整個版面往左擠，終點就偏左一條捲軸寬。無頭瀏覽器用覆蓋式捲軸看不出來，在使用者的瀏覽器窗格量到。
   - 畫布的框與內容分開處理：框以 transform＋clip-path 連續變形；內容由 `canva.js` 新增的 `setViewportTransformOverride` 逐幀改寫畫面上的平移縮放（不改鏡頭狀態），世界中心固定在框的中心，縮放倍率以等比連續插值。
   - 起點／終點是投影片上實際的取景：父頁搬動 iframe 前送 `asm-embed-capture-runtime`，iframe 記下 runtime 鏡頭並先隱藏，避免搬動後以 runtime 版面在全頁大小閃一下。
   - 播放列在過場中一直顯示在框的上緣：以同寬同高的佔位元素保留版面（視窗較窄時播放列的最小寬度會撐寬畫布，只保留高度會讓 svg 變窄、鏡頭重新取景而跳動），播放列改為絕對定位，寬度跟著框重新排版，高度與按鈕大小從投影片上的大小連續變成編輯頁的大小。
@@ -78,8 +79,8 @@
 - `style.css`：程式碼編輯器（Ace）的捲軸改為深色細捲軸，程式碼頁與編輯動畫共用。
 
 ### 版本
-- `slides.js?v=slides-391`（runtime iframe `trace-runtime-143`）、`slides.css?v=animation-sidebar-3`；
-- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-4`、`canva.js?v=trace-26`、`trace-code-presenter.js?v=code-40`、`slides-embed.js?v=trace-29`、`trace-structure-lod.js?v=7`、`trace-editor.js?v=trace-45`。
+- `slides.js?v=slides-392`（runtime iframe `trace-runtime-144`）、`slides.css?v=animation-sidebar-3`；
+- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-5`、`canva.js?v=trace-26`、`trace-code-presenter.js?v=code-40`、`slides-embed.js?v=trace-29`、`trace-structure-lod.js?v=7`、`trace-editor.js?v=trace-45`。
 
 ## 驗證
 - 實機（隔離瀏覽器，公開範例 quick-sort）：
