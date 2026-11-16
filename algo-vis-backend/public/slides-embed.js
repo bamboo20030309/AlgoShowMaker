@@ -192,12 +192,17 @@
   }
 
   // 畫布左上角的程式碼框（HTML，不在鏡頭裡）：過場中要和內容一樣，從投影片上的位置與大小連續變到編輯頁。
+  // 對齊的是文字區（.asm-trace-code-page）而不是外框：外框的內距是固定像素，不跟字級等比，
+  // 用外框對齊會讓文字在到位前偏右、偏大，到位後才往左縮回。
   function visibleCodePanelRect() {
     const panel = document.getElementById('traceCodePanel');
     if (!panel || panel.hidden) return null;
-    const rect = panel.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0
-      ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+    const outer = panel.getBoundingClientRect();
+    const rect = (panel.querySelector('.asm-trace-code-page') || panel).getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? {
+      left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+      offset: { x: rect.left - outer.left, y: rect.top - outer.top }
+    } : null;
   }
 
   // 編輯頁打開完成時的基準鏡頭；返回時用它和現在的差（換幀、重新取景）推算投影片上的基準鏡頭。
@@ -328,7 +333,8 @@
       codeLocal.left -= target.left;
       codeLocal.top -= target.top;
       assemblyCodePanel = codePanel;
-      codePanel.style.transformOrigin = '0 0';
+      // 以文字區左上角為縮放原點：下面的 translate 就是文字區本身的位移。
+      codePanel.style.transformOrigin = `${codeLocal.offset.x}px ${codeLocal.offset.y}px`;
     }
 
     let progress = opening ? 0 : 1;
@@ -371,7 +377,7 @@
         assemblyControls.controls.style.transform = `translate(${current.x}px, ${current.y}px) scale(${size / current.k})`;
       }
       if (codeSlide) {
-        // 畫面上的目標框（以寬度決定縮放，文字等比），換回畫布內的座標再設定 transform。
+        // 畫面上的文字區目標（以寬度決定縮放，文字等比），換回畫布內的座標再設定 transform。
         const e = progress;
         const left = lerp(codeSlide.left, target.left + codeLocal.left, e);
         const top = lerp(codeSlide.top, target.top + codeLocal.top, e);

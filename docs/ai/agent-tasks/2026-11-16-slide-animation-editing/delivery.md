@@ -56,7 +56,7 @@
   - 播放列在過場中一直顯示在框的上緣：以同寬同高的佔位元素保留版面（視窗較窄時播放列的最小寬度會撐寬畫布，只保留高度會讓 svg 變窄、鏡頭重新取景而跳動），播放列改為絕對定位，寬度跟著框重新排版，高度與按鈕大小從投影片上的大小連續變成編輯頁的大小。
   - 量測不受過場縮放影響：`trace-code-presenter.js` 的 `safeInsetLeft`（自動取景替程式碼框留的左側空間）與字級用的畫布大小改用版面尺寸；之前過場的 transform 讓它們變動，鏡頭在過場中與結束後重新取景而瞬移。
   - 返回到位時畫布裡的東西也要和投影片完全一致：
-    - 程式碼框（HTML，不在鏡頭裡）在打開前記下投影片上的位置與大小，過場中和內容一樣連續移動與縮放；
+    - 程式碼框（HTML，不在鏡頭裡）在打開前記下投影片上的位置與大小，過場中和內容一樣連續移動與縮放；對齊的是文字區（`.asm-trace-code-page`），外框的固定內距不跟字級等比，用外框對齊會讓文字到位前偏右偏大、到位後往左縮；
     - 過場中 `#canvasWrapper`／`#arraySvg` 不裁切（外框仍由 clip-path 裁切），播放列縮成投影片高度後，上方空隙由格線與程式碼框補滿；
     - `trace-structure-lod.js` 在過場中不重新判斷細節：它用 `getScreenCTM` 量格子大小，會把過場縮放算進去而把數字收掉；
     - 回到投影片後，等格子裡的數字補完（`data-asm-lod-pending` 消失，最多 10 幀）才回報 `asm-animation-geometry-ready`，父頁收到後才顯示，不會看到一幀空格子；代價是回到投影片時動畫位置多空白約一兩幀。
@@ -78,8 +78,8 @@
 - `style.css`：程式碼編輯器（Ace）的捲軸改為深色細捲軸，程式碼頁與編輯動畫共用。
 
 ### 版本
-- `slides.js?v=slides-390`（runtime iframe `trace-runtime-142`）、`slides.css?v=animation-sidebar-3`；
-- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-4`、`canva.js?v=trace-26`、`trace-code-presenter.js?v=code-40`、`slides-embed.js?v=trace-28`、`trace-structure-lod.js?v=7`、`trace-editor.js?v=trace-45`。
+- `slides.js?v=slides-391`（runtime iframe `trace-runtime-143`）、`slides.css?v=animation-sidebar-3`；
+- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-4`、`canva.js?v=trace-26`、`trace-code-presenter.js?v=code-40`、`slides-embed.js?v=trace-29`、`trace-structure-lod.js?v=7`、`trace-editor.js?v=trace-45`。
 
 ## 驗證
 - 實機（隔離瀏覽器，公開範例 quick-sort）：
