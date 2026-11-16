@@ -53,6 +53,7 @@
   - 過場中 iframe 頁面背景透明。
   - 畫布的框與內容分開處理：框以 transform＋clip-path 連續變形；內容由 `canva.js` 新增的 `setViewportTransformOverride` 逐幀改寫畫面上的平移縮放（不改鏡頭狀態），世界中心固定在框的中心，縮放倍率以等比連續插值。
   - 起點／終點是投影片上實際的取景：父頁搬動 iframe 前送 `asm-embed-capture-runtime`，iframe 記下 runtime 鏡頭並先隱藏，避免搬動後以 runtime 版面在全頁大小閃一下。
+  - 播放列在過場中一直顯示在框的上緣：以同高的佔位元素保留版面，播放列改為絕對定位，寬度跟著框重新排版，高度與按鈕大小從投影片上的大小連續變成編輯頁的大小。
   - 返回的目標位置用打開時 iframe 與容器的相對位置換算（`algorithmFrameHomeRect`），不再用容器本身的框。
 - 返回（按鈕或 Esc）：
   - 先存回投影片；
@@ -66,8 +67,8 @@
 - `style.css`：程式碼編輯器（Ace）的捲軸改為深色細捲軸，程式碼頁與編輯動畫共用。
 
 ### 版本
-- `slides.js?v=slides-382`（runtime iframe `trace-runtime-134`）、`slides.css?v=animation-sidebar-3`；
-- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-3`、`canva.js?v=trace-25`、`slides-embed.js?v=trace-23`、`trace-editor.js?v=trace-45`。
+- `slides.js?v=slides-383`（runtime iframe `trace-runtime-135`）、`slides.css?v=animation-sidebar-3`；
+- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-3`、`canva.js?v=trace-25`、`slides-embed.js?v=trace-24`、`trace-editor.js?v=trace-45`。
 
 ## 驗證
 - 實機（隔離瀏覽器，公開範例 quick-sort）：

@@ -150,6 +150,7 @@
   const ASSEMBLE_EASING = 'cubic-bezier(.22, 1, .36, 1)';
   let assemblyAnimations = [];
   let assemblyFrame = null;
+  let assemblyControls = null;
   let runtimeSnapshot = null;
 
   function cameraWorldCenter(camera, width, height) {
@@ -183,6 +184,12 @@
       canvas.style.clipPath = '';
       canvas.style.transformOrigin = '';
     }
+    if (assemblyControls) {
+      assemblyControls.placeholder.remove();
+      ['position', 'left', 'top', 'width', 'transform', 'transformOrigin', 'zIndex', 'margin']
+        .forEach(name => { assemblyControls.controls.style[name] = ''; });
+      assemblyControls = null;
+    }
     window.setViewportTransformOverride?.(null);
     document.documentElement.classList.remove('asm-embed-assembling');
   }
@@ -201,7 +208,7 @@
     const opening = direction === 'open';
     const lerp = (a, b, e) => a + (b - a) * e;
 
-    // 框：可見範圍從 from 連續變成 target。k 讓可見範圍不超出畫布本身，播放列貼齊底部。
+    // 框：可見範圍從 from 連續變成 target。k 讓可見範圍不超出畫布本身，可見範圍貼齊上緣（播放列在上方）。
     const geometry = e => {
       const box = {
         left: lerp(from.left, target.left, e), top: lerp(from.top, target.top, e),
@@ -211,8 +218,8 @@
       const width = box.width / k;
       const height = box.height / k;
       const x = (target.width - width) / 2;
-      const y = target.height - height;
-      return { k, x, y, width, height, origin: { x: box.left - k * x, y: box.top - k * y } };
+      const y = 0;
+      return { k, x, y, width, height, box, origin: { x: box.left - k * x, y: box.top - k * y } };
     };
 
     // 內容：svg 在畫布中的位置用過場前的版面量，過場中不改變版面，不會觸發重新排版。
@@ -230,6 +237,20 @@
       scale: snapshot.scale * ratio,
       world: snapshot.world
     } : null;
+
+    // 播放列：一直貼在框的上緣，寬度跟著框重新排版（不是跟著縮放拉伸），
+    // 高度與按鈕大小從投影片上的大小連續變成編輯頁的大小。
+    // 以同高的佔位元素留在原位，播放列改成絕對定位，畫布版面與 svg 大小都不變。
+    const controls = canvas.querySelector(':scope > .controls');
+    if (controls && controls.offsetHeight > 0) {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'asm-assembly-controls-placeholder';
+      placeholder.style.cssText = `flex:0 0 auto;height:${controls.offsetHeight}px;`;
+      controls.before(placeholder);
+      Object.assign(controls.style, { position: 'absolute', left: '0px', top: '0px', margin: '0px', zIndex: '2', transformOrigin: '0 0' });
+      assemblyControls = { controls, placeholder };
+    }
+    const startControlsScale = ratio > 0 ? ratio : geometry(0).k;
 
     let progress = opening ? 0 : 1;
     let current = geometry(progress);
@@ -265,6 +286,11 @@
       canvas.style.transform = `translate(${current.origin.x - target.left}px, ${current.origin.y - target.top}px) scale(${current.k})`;
       canvas.style.clipPath = `inset(${current.y}px ${target.width - current.x - current.width}px `
         + `${target.height - current.y - current.height}px ${current.x}px)`;
+      if (assemblyControls) {
+        const size = lerp(startControlsScale, 1, progress);
+        assemblyControls.controls.style.width = `${current.box.width / size}px`;
+        assemblyControls.controls.style.transform = `translate(${current.x}px, ${current.y}px) scale(${size / current.k})`;
+      }
       if (window.updateTransform) window.updateTransform();
     };
 
