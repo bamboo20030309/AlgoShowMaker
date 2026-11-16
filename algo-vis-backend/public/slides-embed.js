@@ -63,7 +63,8 @@
     const request = ++runtimeGeometryRequest;
     return new Promise(resolve => {
       const run = () => Promise.resolve(window.ASMTracePlayer?.rebaseCurrentFrame?.({
-        confirmVisible: true
+        confirmVisible: true,
+        ifChanged: true
       })).then(ready => (ready ? lodSettled().then(() => ready) : ready)).then(ready => {
         if (request !== runtimeGeometryRequest || !ready) return resolve(false);
         if (window.parent !== window) {
@@ -465,6 +466,21 @@
     if (typeof window.requestAnimationFrame !== 'function') setTimeout(settled, 0);
     else window.requestAnimationFrame(() => window.requestAnimationFrame(settled));
   }
+
+  // 返回投影片的最後一步（父頁同源直接呼叫，與搬回投影片在同一個工作內完成，中間不會畫出任何一幀）：
+  // 切回投影片版面、鏡頭直接設成過場終點的取景、程式碼框與格子數字立即重排，
+  // 下一幀畫出的就是完整的投影片畫面，不必先藏起來再等重新排版。
+  function switchToRuntimeNow(cameraSurface) {
+    const predicted = runtimeSnapshot ? predictedRuntimeCamera(runtimeSnapshot) : null;
+    setEmbedMode('runtime', cameraSurface || null);
+    const factor = window.getBaseCamera?.()?.factor;
+    if (predicted?.world && predicted.scale > 0 && factor > 0) {
+      window.restoreCameraViewport?.({ centerX: predicted.world.x, centerY: predicted.world.y, scale: predicted.scale / factor });
+    }
+    window.ASMTraceCodePresenter?.relayoutNow?.();
+    window.ASMStructureLOD?.flush?.();
+  }
+  window.ASMEmbedBridge = { switchToRuntimeNow };
 
   // RUN 同步：編輯頁的 RUN 開始／結束時告訴父頁（投影片編輯欄的 RUN 與狀態跟著變）；
   // 編輯欄的 RUN 執行中時，父頁送 asm-runtime-run-state，這裡的 RUN 也顯示執行中。

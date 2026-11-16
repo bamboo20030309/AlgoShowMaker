@@ -60,7 +60,10 @@
     - 程式碼框（HTML，不在鏡頭裡）在打開前記下投影片上的位置與大小，過場中和內容一樣連續移動與縮放；對齊的是文字區（`.asm-trace-code-page`），外框的固定內距不跟字級等比，用外框對齊會讓文字到位前偏右偏大、到位後往左縮；
     - 過場中 `#canvasWrapper`／`#arraySvg` 不裁切（外框仍由 clip-path 裁切），播放列縮成投影片高度後，上方空隙由格線與程式碼框補滿；
     - `trace-structure-lod.js` 在過場中不重新判斷細節：它用 `getScreenCTM` 量格子大小，會把過場縮放算進去而把數字收掉；
-    - 回到投影片後，等格子裡的數字補完（`data-asm-lod-pending` 消失，最多 10 幀）才回報 `asm-animation-geometry-ready`，父頁收到後才顯示，不會看到一幀空格子；代價是回到投影片時動畫位置多空白約一兩幀。
+    - 回到投影片不再閃：搬回投影片、關閉編輯頁、切回投影片版面在同一個工作內完成（父頁同源呼叫 `ASMEmbedBridge.switchToRuntimeNow`），鏡頭直接設成過場終點的取景，程式碼框（`relayoutNow`）與格子數字（`ASMStructureLOD.flush`）立即重排，所以不必先藏起畫布；之前要藏約 70ms 等重排。
+    - `trace-player.js` 的重排加 `ifChanged`：同文件、同幀、同大小已排過就不再排（返回時「尺寸改變」與「變為可見」各要求一次，第二次多餘）。
+    - `trace-structure-lod.js`：待補的格子 400 個以內當場補完（實測 400 個約 4–8ms），重排完成時立即補；超過仍分批。
+    - iframe 被重新載入等退路情況，仍先藏起來，等版面排好、數字補完（`asm-animation-geometry-ready`）才顯示。
   - 返回的目標位置用打開時 iframe 與容器的相對位置換算（`algorithmFrameHomeRect`），不再用容器本身的框。
 - 返回（按鈕或 Esc）：
   - 先存回投影片；
@@ -79,8 +82,8 @@
 - `style.css`：程式碼編輯器（Ace）的捲軸改為深色細捲軸，程式碼頁與編輯動畫共用。
 
 ### 版本
-- `slides.js?v=slides-392`（runtime iframe `trace-runtime-144`）、`slides.css?v=animation-sidebar-3`；
-- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-5`、`canva.js?v=trace-26`、`trace-code-presenter.js?v=code-40`、`slides-embed.js?v=trace-29`、`trace-structure-lod.js?v=7`、`trace-editor.js?v=trace-45`。
+- `slides.js?v=slides-393`（runtime iframe `trace-runtime-145`）、`slides.css?v=animation-sidebar-3`；
+- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-5`、`canva.js?v=trace-26`、`trace-code-presenter.js?v=code-41`、`trace-player.js?v=trace-35`、`slides-embed.js?v=trace-30`、`trace-structure-lod.js?v=8`、`trace-editor.js?v=trace-45`。
 
 ## 驗證
 - 實機（隔離瀏覽器，公開範例 quick-sort）：

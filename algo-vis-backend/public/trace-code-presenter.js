@@ -879,6 +879,8 @@
 
   window.ASMTraceCodePresenter = {
     renderFrame,
+    // 版面大小剛改變時立即重排字級與位置（不等下一幀），編輯動畫返回投影片時用來避免閃一幀。
+    relayoutNow: () => { applyStoredFontSize(); applyStoredPosition(); },
     setActiveEvent,
     transitionDelay,
     transitionPlan: selectiveTransitionPlan,

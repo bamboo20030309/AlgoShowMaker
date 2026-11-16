@@ -10505,7 +10505,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-144';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-145';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10547,7 +10547,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-144';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-145';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10797,7 +10797,7 @@
         // 尚未載入（或瀏覽器不支援 moveBefore 而重新載入）：等嵌入頁就緒，再送入動畫。
         const ready = waitForFrameMessage(frame, 'asm-embed-ready', 20000);
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-144' + (isLocalCopy() ? '&localOnly=1' : '');
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-145' + (isLocalCopy() ? '&localOnly=1' : '');
         }
         await ready;
         await sendAlgorithmAnimationToFrame(frame, slide);
@@ -10875,9 +10875,11 @@
         await Promise.all([done, chrome.finished]);
       }
       // 搬回投影片後才切回 runtime，讓畫布在投影片的實際大小重新取景（不會沿用展開時的縮放）。
-      frame.style.opacity = '0';
+      // 搬動、關閉編輯頁與切換版面在同一個工作內完成（同源直接呼叫 iframe），中間不會畫出任何一幀，
+      // 所以不必先把畫布藏起來：過場最後一幀之後緊接的就是投影片版面的畫面，不會閃一下。
+      let kept = false;
       if (home?.parent?.isConnected) {
-        moveFramePreservingState(home.parent, frame, home.next?.parentNode === home.parent ? home.next : null);
+        kept = moveFramePreservingState(home.parent, frame, home.next?.parentNode === home.parent ? home.next : null);
       } else {
         frame.remove();
       }
@@ -10889,11 +10891,19 @@
       editingAlgorithmSlideId = null;
       setAlgorithmEditorStatus('');
       if (frame.isConnected) {
-        await setFrameEmbedMode(frame, 'runtime', slide?.id);
-        // 等投影片版面的畫面重新排好再顯示，避免重新排版的一兩幀（格子裡的數字還沒補上）被看到。
-        const geometry = waitForFrameMessage(frame, 'asm-animation-geometry-ready', 600);
-        sendAlgorithmFrameVisibility(frame);
-        if (algorithmFrameIsCurrent(frame)) await geometry;
+        let bridge = null;
+        try { bridge = kept ? frame.contentWindow?.ASMEmbedBridge : null; } catch (_) { bridge = null; }
+        if (bridge?.switchToRuntimeNow) {
+          bridge.switchToRuntimeNow(algorithmCameraSurface(frame, slide?.id));
+          sendAlgorithmFrameVisibility(frame);
+        } else {
+          // 退路（iframe 被重新載入等）：先藏起來，等投影片版面排好、格子數字補完再顯示。
+          frame.style.opacity = '0';
+          await setFrameEmbedMode(frame, 'runtime', slide?.id);
+          const geometry = waitForFrameMessage(frame, 'asm-animation-geometry-ready', 600);
+          sendAlgorithmFrameVisibility(frame);
+          if (algorithmFrameIsCurrent(frame)) await geometry;
+        }
       }
       frame.style.opacity = '';
       updateAlgorithmEditButton();

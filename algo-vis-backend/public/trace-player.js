@@ -15,6 +15,8 @@
   let preservedViewportCamera = null;
   let viewportSize = '';
   let viewportGeometryReady = false;
+  // 最近一次重新排版的文件、幀與大小；一般換幀繪製後清除，確保之後的重排照常執行。
+  let lastRebase = { document: null, key: "" };
   let runtimeVisibilityConfirmed = false;
   let activePlaybackPlan = null;
   let lastPlaybackPlan = null;
@@ -48,7 +50,7 @@
       return;
     }
     if (isRuntimeEmbed() && runtimeVisibilityConfirmed) {
-      rebaseCurrentFrame().catch(error => console.error('Trace viewport rebase failed', error));
+      rebaseCurrentFrame({ ifChanged: true }).catch(error => console.error('Trace viewport rebase failed', error));
       return;
     }
     window.ASMTraceCamera?.apply?.(document, document.frames[currentFrame], null, false);
@@ -72,6 +74,14 @@
     const canvas = window.document.getElementById('arraySvg');
     const rect = canvas?.getBoundingClientRect?.();
     if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) return Promise.resolve(false);
+    // 同一份文件、同一幀、同樣大小已經重新排過：不再重排（返回投影片時「尺寸改變」與「變為可見」
+    // 會各要求一次，第二次重排會讓畫面多閃一下）。
+    const rebaseKey = `${currentFrame}:${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    if (options.ifChanged && lastRebase.document === document && lastRebase.key === rebaseKey) {
+      viewportRebasePendingAfterPlayback = false;
+      return Promise.resolve(true);
+    }
+    lastRebase = { document, key: rebaseKey };
     viewportRebasePendingAfterPlayback = false;
     window.ASMTraceFrameTween?.cancel?.();
     const frame = document.frames[currentFrame];
@@ -87,6 +97,8 @@
         if (window.restoreCameraViewport) window.restoreCameraViewport(camera);
         else window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
       } else window.ASMTraceCamera?.apply?.(document, frame, null, false);
+      // 重排後立刻補上格子裡的數字，不等下一幀。
+      window.ASMStructureLOD?.flush?.();
       window.dispatchEvent(new CustomEvent('asm:trace-geometry-ready', {
         detail: { document, frame, index: currentFrame }
       }));
@@ -121,6 +133,7 @@
   // ---------------------------------------------------------------------------
   function render(index, options = {}) {
     preservedViewportCamera = null;
+    lastRebase = { document: null, key: '' };
     if (!document || !frameCount()) return Promise.resolve();
     const next = Math.max(0, Math.min(frameCount() - 1, index));
     const requestedFrom = Number.isInteger(options.fromIndex) ? options.fromIndex : currentFrame;
