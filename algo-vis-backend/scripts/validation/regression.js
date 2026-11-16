@@ -287,7 +287,8 @@ function run(command, args, env = process.env) {
 }
 function walk(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
-    if (['node_modules', 'vendor', '.git'].includes(entry.name)) return [];
+    // Generated probes and execution output are not application source.
+    if (['node_modules', 'vendor', '.git', 'test-results', 'tmp', 'artifact-cache-data'].includes(entry.name)) return [];
     const file = path.join(dir, entry.name);
     return entry.isDirectory() ? walk(file) : file.endsWith('.js') ? [file] : [];
   });
