@@ -97,6 +97,13 @@ html.asm-embed-assembling #vizPanel {
   overflow: visible !important;
 }
 
+/* 畫布框由 #tab-canvas 的 clip-path 裁切；裡面不再各自裁切。播放列在過場中縮成投影片上的高度，
+   畫布區（版面仍在編輯頁的位置）上緣與播放列之間的空隙要由格線與程式碼框補滿，才會和投影片完全貼合。 */
+html.asm-embed-assembling #canvasWrapper,
+html.asm-embed-assembling #arraySvg {
+  overflow: visible !important;
+}
+
 html.asm-embed-assembling #tab-canvas {
   position: relative;
   z-index: 3;

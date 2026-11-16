@@ -42,6 +42,20 @@
     window.requestAnimationFrame(() => window.requestAnimationFrame(notify));
   }
 
+  // 重新排版後，結構格子裡的數字由 trace-structure-lod 在下一幀非同步補上（data-asm-lod-pending）。
+  // 等補完再回報就緒，父頁才顯示，否則會看到一幀空格子。最多等 10 幀。
+  function lodSettled(maxFrames = 10) {
+    if (typeof window.requestAnimationFrame !== 'function') return Promise.resolve();
+    return new Promise(resolve => {
+      let frames = 0;
+      const check = () => {
+        if (!document.querySelector('[data-asm-lod-pending]') || ++frames >= maxFrames) resolve();
+        else window.requestAnimationFrame(check);
+      };
+      window.requestAnimationFrame(check);
+    });
+  }
+
   function prepareRuntimeGeometry() {
     if (mode !== 'runtime' || !runtimeVisible || !currentAnimation.traceDocument?.frames?.length) {
       return Promise.resolve(false);
@@ -50,7 +64,7 @@
     return new Promise(resolve => {
       const run = () => Promise.resolve(window.ASMTracePlayer?.rebaseCurrentFrame?.({
         confirmVisible: true
-      })).then(ready => {
+      })).then(ready => (ready ? lodSettled().then(() => ready) : ready)).then(ready => {
         if (request !== runtimeGeometryRequest || !ready) return resolve(false);
         if (window.parent !== window) {
           window.parent.postMessage({
@@ -151,6 +165,7 @@
   let assemblyAnimations = [];
   let assemblyFrame = null;
   let assemblyControls = null;
+  let assemblyCodePanel = null;
   let runtimeSnapshot = null;
 
   function cameraWorldCenter(camera, width, height) {
@@ -171,8 +186,18 @@
       size: { width: svg.clientWidth || rect.width, height: svg.clientHeight || rect.height },
       scale: camera.physicalScale,
       world: cameraWorldCenter(camera, rect.width, rect.height),
-      base: window.getBaseCamera?.() || null
+      base: window.getBaseCamera?.() || null,
+      codePanel: visibleCodePanelRect()
     };
+  }
+
+  // 畫布左上角的程式碼框（HTML，不在鏡頭裡）：過場中要和內容一樣，從投影片上的位置與大小連續變到編輯頁。
+  function visibleCodePanelRect() {
+    const panel = document.getElementById('traceCodePanel');
+    if (!panel || panel.hidden) return null;
+    const rect = panel.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0
+      ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
   }
 
   // 編輯頁打開完成時的基準鏡頭；返回時用它和現在的差（換幀、重新取景）推算投影片上的基準鏡頭。
@@ -217,6 +242,11 @@
       ['position', 'left', 'top', 'width', 'transform', 'transformOrigin', 'zIndex', 'margin']
         .forEach(name => { assemblyControls.controls.style[name] = ''; });
       assemblyControls = null;
+    }
+    if (assemblyCodePanel) {
+      assemblyCodePanel.style.transform = '';
+      assemblyCodePanel.style.transformOrigin = '';
+      assemblyCodePanel = null;
     }
     window.setViewportTransformOverride?.(null);
     document.documentElement.classList.remove('asm-embed-assembling');
@@ -286,6 +316,21 @@
     }
     const startControlsScale = ratio > 0 ? ratio : geometry(0).k;
 
+    // 程式碼框：投影片上的框（記下的位置換算到這裡的座標）到編輯頁的框之間連續移動與縮放。
+    const codePanel = document.getElementById('traceCodePanel');
+    const codeLocal = codePanel && !codePanel.hidden ? visibleCodePanelRect() : null;
+    const codeSlide = codeLocal && snapshot?.codePanel && ratio > 0 ? {
+      left: from.left + (snapshot.codePanel.left - snapshot.canvas.left) * ratio,
+      top: from.top + (snapshot.codePanel.top - snapshot.canvas.top) * ratio,
+      width: snapshot.codePanel.width * ratio
+    } : null;
+    if (codeSlide) {
+      codeLocal.left -= target.left;
+      codeLocal.top -= target.top;
+      assemblyCodePanel = codePanel;
+      codePanel.style.transformOrigin = '0 0';
+    }
+
     let progress = opening ? 0 : 1;
     let current = geometry(progress);
     const override = camera => {
@@ -324,6 +369,17 @@
         const size = lerp(startControlsScale, 1, progress);
         assemblyControls.controls.style.width = `${current.box.width / size}px`;
         assemblyControls.controls.style.transform = `translate(${current.x}px, ${current.y}px) scale(${size / current.k})`;
+      }
+      if (codeSlide) {
+        // 畫面上的目標框（以寬度決定縮放，文字等比），換回畫布內的座標再設定 transform。
+        const e = progress;
+        const left = lerp(codeSlide.left, target.left + codeLocal.left, e);
+        const top = lerp(codeSlide.top, target.top + codeLocal.top, e);
+        const width = lerp(codeSlide.width, codeLocal.width, e);
+        const scale = width / (current.k * codeLocal.width);
+        const x = (left - current.origin.x) / current.k - codeLocal.left;
+        const y = (top - current.origin.y) / current.k - codeLocal.top;
+        codePanel.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
       }
       if (window.updateTransform) window.updateTransform();
     };

@@ -199,6 +199,9 @@
   }
   function refresh() {
     queued = 0;
+    // 投影片與編輯動畫之間的組裝過場會用 CSS transform 縮放整個畫布，getScreenCTM 會把它算進去，
+    // 讓格子看起來太小而把數字收掉。過場中維持現有細節；結束時鏡頭重新套用會再觸發這裡。
+    if (document.documentElement.classList.contains('asm-embed-assembling')) return;
     revision++;
     jobs = [];
     const viewport = window.getViewport?.();
