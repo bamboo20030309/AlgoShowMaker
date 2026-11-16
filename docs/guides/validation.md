@@ -47,9 +47,9 @@ node --test tests/validation-evidence.test.js tests/regression-resume.test.js
 | 問題 | 測試檔 | 環境 |
 |---|---|---|
 | 正式範例封裝、Trace ID、來源指紋 | `guest-gallery-assets.test.js` | Node |
-| 範例卡片、縮圖、新教材開啟免編譯 | `guest-gallery-contract.browser.test.js` | 瀏覽器；自行建立隔離服務 |
+| 卡片僅載入資訊／縮圖；教材開啟後依序執行 | `guest-card-cache.browser.test.js`、`executable-only-slides.browser.test.js` | 瀏覽器；自行建立隔離服務 |
 | 舊 Trace 格式／來源相容性 | `trace-bundle-compatibility.test.js` | Node |
-| 預設線篩載入、取消、舊設定與快取重開 | `algorithm-default-sieve.browser.test.js` | 瀏覽器；自行建立隔離服務 |
+| 預設線篩執行與重開、拖幀不恢復舊箭頭 | `executable-only-default.browser.test.js`、`algorithm-default-sieve.browser.test.js` | 瀏覽器；自行建立隔離服務 |
 | text＋structure＋code 複製、縮放、儲存重開 | `mixed-object-paste.browser.test.js` | 瀏覽器；自行建立隔離服務 |
 | 切換程式後 DOM／記憶體趨勢 | `scene-resource-lifecycle.browser.test.js` | 瀏覽器；自行建立隔離服務 |
 | keep、提交時機、錄製器判斷 | `animation-assertions.test.js`、`trace-debug-recorder.test.js` | Node |
@@ -168,3 +168,8 @@ runner 自動將隔離服務網址傳給壓測的 `--base` 參數；壓測 CLI �
 交付至少記錄：基準與提交、修改範圍／V 級、執行指令與環境、通過／失敗／未執行項目、舊資料往返、報告位置。效能時間與 heap 先建立固定環境基準，不憑空設定門檻。
 
 設計與覆蓋範圍見 [驗證集設計](../development/validation-design.md)，更細的專項說明見 [tests README](../../algo-vis-backend/tests/README.md)。
+
+
+## 2026-11-17 測試清理
+
+永久 Trace、preview/full 下載與 IndexedDB 結果重開的舊流程已退休；目前驗證以執行配方、執行檔快取、每次開啟重新執行為準。刪除與替代覆蓋及仍未通過的原因，見 [失敗原因與清理紀錄](../ai/agent-tasks/2026-11-17-failure-analysis/delivery.md)。不得因案例失敗就刪除仍符合現行需求的驗證。

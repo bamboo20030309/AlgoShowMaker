@@ -364,8 +364,8 @@ JWT 認證整合測試還需要測試端與服務端使用相同的測試 secret
 ## 本轮新增的最小驗證入口
 
 - 驗證續跑與依賴失效：`validation-evidence.test.js`、`regression-resume.test.js`。
-- 正式範例資產：`guest-gallery-assets.test.js`；卡片／縮圖／新教材免編譯：`guest-gallery-contract.browser.test.js`。
-- 舊 Trace 格式與來源指紋：`trace-bundle-compatibility.test.js`；實際載入／使用／快取重開：`algorithm-default-sieve.browser.test.js`。
+- 正式範例資產：`guest-gallery-assets.test.js`；卡片／縮圖不執行動畫：`guest-card-cache.browser.test.js`；開啟教材依序執行：`executable-only-slides.browser.test.js`。
+- 舊 Trace 格式與來源指紋：`trace-bundle-compatibility.test.js`；目前配方載入與重開：`executable-only-default.browser.test.js`、`executable-only-storage.test.js`；拖幀不恢復舊箭頭：`algorithm-default-sieve.browser.test.js`。
 - 後端故障恢復：`compile-recovery.integration.test.js`。MLE 要在 Linux 執行；`npm run validate:backend-linux` 使用隔離容器，不可把 Windows 略過當通過。
 - 程式反覆切換的 DOM／heap 趨勢：`scene-resource-lifecycle.browser.test.js`。
 - 新增 Merge Sort、八皇后、BIT、Segment Tree、LCS 的大型矩陣代表仍由主代理執行，子代理不得自行啟動。

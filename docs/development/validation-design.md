@@ -21,7 +21,7 @@
 | 動畫／幾何 | keep、指標、style、camera、箭頭、前後切幀與播放 |
 | 編輯器／物件 | text、table、structure、code、LaTeX、混合選取、剪貼簿 |
 | 資料相容／儲存 | 新物件、缺少欄位的舊物件、自訂值／明確關閉、儲存後重開 |
-| 載入／效能 | scene-load-performance、sample-progressive-load、LOD、分塊與重用 |
+| 載入／效能 | scene-load-performance、executable-only-slides、guest-card-cache、LOD、分塊與重用 |
 | 後端／隔離 | compile-context、compile-job-queue、compile-job-registry、compile-cache、artifact-cache、HTTP 限制 |
 | 範例／教材 | guest-gallery-hints、八皇后及 Merge Sort 專項、匯入與已存 Trace |
 | 工具本身 | 回歸續跑、報告、測試伺服器及瀏覽器隔離 |
