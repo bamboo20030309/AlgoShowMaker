@@ -10505,7 +10505,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-145';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-146';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10547,7 +10547,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-145';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-146';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10797,7 +10797,7 @@
         // 尚未載入（或瀏覽器不支援 moveBefore 而重新載入）：等嵌入頁就緒，再送入動畫。
         const ready = waitForFrameMessage(frame, 'asm-embed-ready', 20000);
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-145' + (isLocalCopy() ? '&localOnly=1' : '');
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-146' + (isLocalCopy() ? '&localOnly=1' : '');
         }
         await ready;
         await sendAlgorithmAnimationToFrame(frame, slide);

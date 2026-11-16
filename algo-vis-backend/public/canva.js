@@ -84,6 +84,14 @@
   // -----------------------------------------------------------------------------
   // 過場覆寫：投影片與編輯動畫之間的組裝過場逐幀改寫畫面上的平移縮放，
   // 但不改動鏡頭狀態；期間鏡頭照常更新，覆寫函式拿到的永遠是最新鏡頭。
+  // 鏡頭計算用的畫布大小：版面尺寸（clientWidth/Height），不受 CSS transform 影響。
+  // 編輯動畫的組裝過場會縮放整個畫布；過場中若重新取景，用畫面上的大小算中心會偏掉，結束後也不會修正。
+  function svgLayoutRect() {
+    const rect = svg?.getBoundingClientRect?.() || { left: 0, top: 0, width: 0, height: 0 };
+    const width = svg?.clientWidth || rect.width;
+    const height = svg?.clientHeight || rect.height;
+    return { left: rect.left, top: rect.top, width, height, right: rect.left + width, bottom: rect.top + height };
+  }
   let transformOverride = null;
   function updateTransform() {
     const physicalScale = scale * getScreenScaleFactor();
@@ -266,7 +274,7 @@
   window.getScale        = () => scale * getScreenScaleFactor(); // 回傳物理縮放（供 interaction.js 等外部使用）
   window.getCameraViewport = function (requestedScale = scale) {
     if (!svg) return null;
-    const rect = svg.getBoundingClientRect();
+    const rect = svgLayoutRect();
     const factor = getScreenScaleFactor();
     const currentPhysical = Math.max(0.0001, scale * factor);
     const nextScale = Math.max(0.05, Number(requestedScale) || scale);
@@ -281,7 +289,7 @@
   };
   window.cameraScaleForViewportWidth = function (worldWidth) {
     if (!svg || !(Number(worldWidth) > 0)) return scale;
-    return svg.getBoundingClientRect().width / (Number(worldWidth) * getScreenScaleFactor());
+    return svgLayoutRect().width / (Number(worldWidth) * getScreenScaleFactor());
   };
 
   const AUTO_CAMERA_PADDING = Object.freeze({ horizontal: 30, vertical: 20 });
@@ -293,7 +301,7 @@
     const contentHeight = Number(bounds?.height);
     if (!(contentWidth > 0) || !(contentHeight > 0)) return null;
 
-    let rect = rectOverride || svg?.getBoundingClientRect?.();
+    let rect = rectOverride || svgLayoutRect();
     if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) {
       const parent = svg?.parentElement;
       rect = {
@@ -380,7 +388,7 @@
   function animateCamera(targetX, targetY, targetScale, duration = 400) {
     stopAnimation();
 
-    const rect = svg.getBoundingClientRect();
+    const rect = svgLayoutRect();
     if (rect.width === 0 || rect.height === 0) {
       // 如果 SVG 還沒佈局好，直接立即設定並回傳
       const factor = getScreenScaleFactor();
@@ -399,7 +407,7 @@
       const factor = getScreenScaleFactor();
 
       // 計算當前視圖中心的世界座標
-      const rect = svg.getBoundingClientRect();
+      const rect = svgLayoutRect();
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
       const physicalScale = scale * factor;
@@ -468,7 +476,7 @@
     } else {
       stopAnimation();
 
-      let rect = svg.getBoundingClientRect();
+      let rect = svgLayoutRect();
       // 確保 SVG 尺寸有效，否則嘗試使用父容器尺寸
       if (rect.width === 0 || rect.height === 0) {
         const parent = svg.parentElement;
@@ -575,7 +583,7 @@
     }
 
     // 先保留原縮放；原縮放放不下時，改用仍可完整容納物件的最大倍率。
-    let rect = svg.getBoundingClientRect();
+    let rect = svgLayoutRect();
     if (rect.width === 0 || rect.height === 0) {
       // 嘗試從父容器獲取尺寸
       const parent = svg.parentElement;
@@ -624,7 +632,7 @@
   }
 
   function presentationCameraTarget(x, y, baseScale) {
-    let rect = svg?.getBoundingClientRect?.();
+    let rect = svgLayoutRect();
     if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) {
       rect = {
         width: svg?.parentElement?.clientWidth || 800,
@@ -654,7 +662,7 @@
   function capturePresentationCamera() {
     if (!presentationCameraEnabled) return { ...presentationCamera };
     if (!hasBaseCamera || !svg) return { ...presentationCamera };
-    const rect = svg.getBoundingClientRect();
+    const rect = svgLayoutRect();
     if (!(rect.width > 0) || !(rect.height > 0)) return { ...presentationCamera };
     const baseScale = Math.max(0.0001, Number(lastCameraScale) || 1);
     const physicalScale = scale * getScreenScaleFactor();

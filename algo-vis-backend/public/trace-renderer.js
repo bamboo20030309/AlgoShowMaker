@@ -6543,9 +6543,10 @@
 
   function mainCameraSize(includeCodeInset = true) {
     const canvas = window.document.getElementById('arraySvg');
+    // 版面尺寸優先（不受 CSS transform 影響）：編輯動畫的組裝過場會縮放畫布，取景不能跟著算錯。
     const rect = canvas?.getBoundingClientRect?.();
-    const width = Number(rect?.width) || canvas?.clientWidth || 800;
-    const height = Number(rect?.height) || canvas?.clientHeight || 450;
+    const width = canvas?.clientWidth || Number(rect?.width) || 800;
+    const height = canvas?.clientHeight || Number(rect?.height) || 450;
     return {
       width,
       height,

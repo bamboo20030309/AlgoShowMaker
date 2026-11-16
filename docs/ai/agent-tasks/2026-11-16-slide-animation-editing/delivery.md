@@ -55,6 +55,7 @@
   - 畫布的框與內容分開處理：框以 transform＋clip-path 連續變形；內容由 `canva.js` 新增的 `setViewportTransformOverride` 逐幀改寫畫面上的平移縮放（不改鏡頭狀態），世界中心固定在框的中心，縮放倍率以等比連續插值。
   - 起點／終點是投影片上實際的取景：父頁搬動 iframe 前送 `asm-embed-capture-runtime`，iframe 記下 runtime 鏡頭並先隱藏，避免搬動後以 runtime 版面在全頁大小閃一下。
   - 播放列在過場中一直顯示在框的上緣：以同寬同高的佔位元素保留版面（視窗較窄時播放列的最小寬度會撐寬畫布，只保留高度會讓 svg 變窄、鏡頭重新取景而跳動），播放列改為絕對定位，寬度跟著框重新排版，高度與按鈕大小從投影片上的大小連續變成編輯頁的大小。
+  - 鏡頭計算用版面尺寸：`canva.js` 的鏡頭（`setCamera`、`getCameraViewport`、自動取景等）與 `trace-renderer.js` 的 `mainCameraSize` 改用 `clientWidth/Height`。之前用 `getBoundingClientRect`，過場中重新取景時把縮放後的畫布當成實際大小，中心算錯，過場結束後也沒有再修正，編輯頁打開後內容偏右下（使用者窗格實測偏 101×108px，恰為過場中與實際畫布大小差的一半）。
   - 量測不受過場縮放影響：`trace-code-presenter.js` 的 `safeInsetLeft`（自動取景替程式碼框留的左側空間）與字級用的畫布大小改用版面尺寸；之前過場的 transform 讓它們變動，鏡頭在過場中與結束後重新取景而瞬移。
   - 返回到位時畫布裡的東西也要和投影片完全一致：
     - 程式碼框（HTML，不在鏡頭裡）在打開前記下投影片上的位置與大小，過場中和內容一樣連續移動與縮放；對齊的是文字區（`.asm-trace-code-page`），外框的固定內距不跟字級等比，用外框對齊會讓文字到位前偏右偏大、到位後往左縮；
@@ -82,8 +83,8 @@
 - `style.css`：程式碼編輯器（Ace）的捲軸改為深色細捲軸，程式碼頁與編輯動畫共用。
 
 ### 版本
-- `slides.js?v=slides-393`（runtime iframe `trace-runtime-145`）、`slides.css?v=animation-sidebar-3`；
-- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-5`、`canva.js?v=trace-26`、`trace-code-presenter.js?v=code-41`、`trace-player.js?v=trace-35`、`slides-embed.js?v=trace-30`、`trace-structure-lod.js?v=8`、`trace-editor.js?v=trace-45`。
+- `slides.js?v=slides-394`（runtime iframe `trace-runtime-146`）、`slides.css?v=animation-sidebar-3`；
+- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-5`、`canva.js?v=trace-27`、`trace-renderer.js?v=trace-293`、`trace-code-presenter.js?v=code-41`、`trace-player.js?v=trace-35`、`slides-embed.js?v=trace-30`、`trace-structure-lod.js?v=8`、`trace-editor.js?v=trace-45`。
 
 ## 驗證
 - 實機（隔離瀏覽器，公開範例 quick-sort）：
