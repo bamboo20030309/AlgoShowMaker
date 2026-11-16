@@ -105,7 +105,7 @@
   function applyAnimation(animation = {}, editorSessionKey = null, cameraSurface = editorSessionKey) {
     settleAnimationVisuals();
     currentAnimation = normalize(animation);
-    window.setLocalCameraSurface?.(`slides:${mode}:${cameraSurface || 'default'}`);
+    window.setLocalCameraSurface?.(`slides:${cameraSurface || 'default'}`);
     if (typeof aceEditor !== 'undefined') {
       window.__asmEmbeddedAnimationPayload = currentAnimation;
       if (mode === 'editor' && editorSessionKey != null) {
@@ -168,8 +168,36 @@
     return {
       canvas,
       center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+      size: { width: svg.clientWidth || rect.width, height: svg.clientHeight || rect.height },
       scale: camera.physicalScale,
-      world: cameraWorldCenter(camera, rect.width, rect.height)
+      world: cameraWorldCenter(camera, rect.width, rect.height),
+      base: window.getBaseCamera?.() || null
+    };
+  }
+
+  // 編輯頁打開完成時的基準鏡頭；返回時用它和現在的差（換幀、重新取景）推算投影片上的基準鏡頭。
+  let editorBaseAtOpen = null;
+
+  // 回到投影片後的取景：投影片的基準鏡頭（依編輯頁裡的變化調整）＋現在共用的手動偏移，
+  // 算法與 canva.js presentationCameraTarget 相同。
+  function predictedRuntimeCamera(snapshot) {
+    const base = snapshot.base;
+    const now = window.getBaseCamera?.();
+    if (!base || !now || !(base.factor > 0) || !snapshot.size?.width) return snapshot;
+    let { x, y, scale } = base;
+    if (editorBaseAtOpen?.scale > 0) {
+      x += now.x - editorBaseAtOpen.x;
+      y += now.y - editorBaseAtOpen.y;
+      scale *= now.scale / editorBaseAtOpen.scale;
+    }
+    const modifier = now.modifier;
+    const physicalScale = Math.max(0.05, scale) * modifier.zoomFactor * base.factor;
+    return {
+      scale: physicalScale,
+      world: {
+        x: x - modifier.panXRatio * snapshot.size.width / physicalScale,
+        y: y - modifier.panYRatio * snapshot.size.height / physicalScale
+      }
     };
   }
 
@@ -229,13 +257,16 @@
     const svgHeight = svg?.clientHeight || svgRect?.height || 0;
     const snapshot = runtimeSnapshot;
     const ratio = snapshot?.canvas?.width ? from.width / snapshot.canvas.width : 0;
+    // 打開：用記下的投影片取景。返回：投影片會以「當時的基準鏡頭＋現在的手動偏移」重新取景，
+    // 所以終點用現在的偏移推算（在編輯頁拖動、換幀後，回到投影片也不會跳）。
+    const slideCamera = snapshot && !opening ? predictedRuntimeCamera(snapshot) : snapshot;
     const slideView = snapshot && ratio > 0 ? {
       center: {
         x: from.left + (snapshot.center.x - snapshot.canvas.left) * ratio,
         y: from.top + (snapshot.center.y - snapshot.canvas.top) * ratio
       },
-      scale: snapshot.scale * ratio,
-      world: snapshot.world
+      scale: slideCamera.scale * ratio,
+      world: slideCamera.world
     } : null;
 
     // 播放列：一直貼在框的上緣，寬度跟著框重新排版（不是跟著縮放拉伸），
@@ -245,7 +276,10 @@
     if (controls && controls.offsetHeight > 0) {
       const placeholder = document.createElement('div');
       placeholder.className = 'asm-assembly-controls-placeholder';
-      placeholder.style.cssText = `flex:0 0 auto;height:${controls.offsetHeight}px;`;
+      // 佔位要和播放列佔一樣的空間：精確高度（offsetHeight 會取整數），以及寬度——
+      // 視窗較窄時播放列的最小寬度會撐寬畫布，少了它 svg 就變窄、鏡頭重新取景而跳動。
+      const size = controls.getBoundingClientRect();
+      placeholder.style.cssText = `flex:0 0 auto;height:${size.height}px;width:${size.width}px;min-width:${size.width}px;`;
       controls.before(placeholder);
       Object.assign(controls.style, { position: 'absolute', left: '0px', top: '0px', margin: '0px', zIndex: '2', transformOrigin: '0 0' });
       assemblyControls = { controls, placeholder };
@@ -327,7 +361,10 @@
       paint();
       // 打開完成：拿掉覆寫，畫面就是編輯頁的鏡頭（最後一幀已與它相同）。
       // 返回完成：停在投影片的框與取景，直到父頁搬回投影片並切回 runtime。
-      if (opening) cancelAssembly();
+      if (opening) {
+        cancelAssembly();
+        editorBaseAtOpen = window.getBaseCamera?.() || null;
+      }
     });
   }
 
@@ -349,7 +386,7 @@
       if (trace) window.ASMTraceStudio?.attach?.(trace);
       document.querySelector('.tab-btn[data-tab="tab-canvas"]')?.click();
     }
-    if (cameraSurface) window.setLocalCameraSurface?.(`slides:${mode}:${cameraSurface}`);
+    if (cameraSurface) window.setLocalCameraSurface?.(`slides:${cameraSurface}`);
     if (typeof aceEditor !== 'undefined') aceEditor.resize?.();
     window.dispatchEvent(new Event('resize'));
     const report = () => {
@@ -463,7 +500,7 @@
     }
     if (event.data.type === 'asm-runtime-visibility' && mode === 'runtime') {
       runtimeVisible = event.data.visible === true;
-      if (event.data.cameraSurface) window.setLocalCameraSurface?.(`slides:${mode}:${event.data.cameraSurface}`);
+      if (event.data.cameraSurface) window.setLocalCameraSurface?.(`slides:${event.data.cameraSurface}`);
 
       if (!runtimeVisible) {
         runtimeGeometryRequest += 1;

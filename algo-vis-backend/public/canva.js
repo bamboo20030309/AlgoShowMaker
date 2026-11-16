@@ -718,6 +718,12 @@
     if (!hasBaseCamera) window.resetCanvasView();
   };
   window.getPresentationCameraTransform = () => ({ ...presentationCamera });
+  // 基準鏡頭（作者／自動取景的目標，不含手動偏移）與手動偏移：供過場推算另一個版面的取景。
+  window.getBaseCamera = () => (hasBaseCamera ? {
+    x: lastCameraX, y: lastCameraY, scale: lastCameraScale,
+    modifier: presentationCameraEnabled ? { ...presentationCamera } : { panXRatio: 0, panYRatio: 0, zoomFactor: 1 },
+    factor: getScreenScaleFactor()
+  } : null);
   window.capturePresentationCameraTransform = capturePresentationCamera;
 
   window.addEventListener('resize', () => {

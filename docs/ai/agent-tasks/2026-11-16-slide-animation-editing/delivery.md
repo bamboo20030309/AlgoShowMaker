@@ -53,7 +53,8 @@
   - 過場中 iframe 頁面背景透明。
   - 畫布的框與內容分開處理：框以 transform＋clip-path 連續變形；內容由 `canva.js` 新增的 `setViewportTransformOverride` 逐幀改寫畫面上的平移縮放（不改鏡頭狀態），世界中心固定在框的中心，縮放倍率以等比連續插值。
   - 起點／終點是投影片上實際的取景：父頁搬動 iframe 前送 `asm-embed-capture-runtime`，iframe 記下 runtime 鏡頭並先隱藏，避免搬動後以 runtime 版面在全頁大小閃一下。
-  - 播放列在過場中一直顯示在框的上緣：以同高的佔位元素保留版面，播放列改為絕對定位，寬度跟著框重新排版，高度與按鈕大小從投影片上的大小連續變成編輯頁的大小。
+  - 播放列在過場中一直顯示在框的上緣：以同寬同高的佔位元素保留版面（視窗較窄時播放列的最小寬度會撐寬畫布，只保留高度會讓 svg 變窄、鏡頭重新取景而跳動），播放列改為絕對定位，寬度跟著框重新排版，高度與按鈕大小從投影片上的大小連續變成編輯頁的大小。
+  - 量測不受過場縮放影響：`trace-code-presenter.js` 的 `safeInsetLeft`（自動取景替程式碼框留的左側空間）與字級用的畫布大小改用版面尺寸；之前過場的 transform 讓它們變動，鏡頭在過場中與結束後重新取景而瞬移。
   - 返回的目標位置用打開時 iframe 與容器的相對位置換算（`algorithmFrameHomeRect`），不再用容器本身的框。
 - 返回（按鈕或 Esc）：
   - 先存回投影片；
@@ -63,12 +64,17 @@
 - 不支援 `moveBefore` 時退回重新載入，再送入動畫（沒有連續過場）。系統設定「減少動態效果」時直接切換。
 - `trace-editor.js`：`embedMode` 改為每次從 body class 判斷（同一個 iframe 會切換模式）。
 
+### 手動平移縮放同步
+- 編輯動畫頁與投影片編輯畫面共用同一份手動平移縮放（`slides.js` `algorithmCameraSurface` 一律用 `slide-editor`；`slides-embed.js` 的鏡頭範圍不再分 runtime／editor）。放映仍是另一份。
+- 在投影片上拖動，打開編輯動畫看到相同偏移；在編輯頁拖動或縮放，回到投影片保留。
+- `presentation-camera.browser` 的編輯動畫段落改為驗證雙向同步；此測試在前段 `ASMTraceStudio.open()`（Trace Studio 已改為左側標籤）就既有失敗，尚未跑到這一段。
+
 ### 程式碼的捲軸
 - `style.css`：程式碼編輯器（Ace）的捲軸改為深色細捲軸，程式碼頁與編輯動畫共用。
 
 ### 版本
-- `slides.js?v=slides-383`（runtime iframe `trace-runtime-135`）、`slides.css?v=animation-sidebar-3`；
-- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-3`、`canva.js?v=trace-25`、`slides-embed.js?v=trace-24`、`trace-editor.js?v=trace-45`。
+- `slides.js?v=slides-385`（runtime iframe `trace-runtime-137`）、`slides.css?v=animation-sidebar-3`；
+- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-3`、`canva.js?v=trace-26`、`trace-code-presenter.js?v=code-40`、`slides-embed.js?v=trace-26`、`trace-editor.js?v=trace-45`。
 
 ## 驗證
 - 實機（隔離瀏覽器，公開範例 quick-sort）：
@@ -86,7 +92,7 @@
 - 未執行完整 regression 與動畫驗證集（依規範由主代理執行）。
 
 ## 已知限制與剩餘事項
-- 返回過場的終點用打開前記下的投影片取景。若在編輯頁換了幀或改了鏡頭，回到投影片後 runtime 重新取景時可能和終點略有差異。實測同一幀時，打開與返回的內容寬度都連續變化（每幀最多 2.9%），返回後的大小與過場終點相同（241.6 px），沒有跳動。
+- 返回過場的終點：投影片打開前的基準鏡頭（依編輯頁裡換幀、重新取景的變化調整）加上現在共用的手動偏移。換幀後兩種版面的自動取景比例不完全相同，可能還有小差異；實測同一幀、在投影片或編輯頁拖動後，1000×720、1200×800、1440×900 三種視窗打開與返回都沒有跳動。
 - 打開時，搬動 iframe 到開始過場之間約 3 幀（約 50 ms）畫布是隱藏的。
 - 手機版的動畫區塊尚未調整。
 - `docs/reference` 的指令文件尚未提到新的編輯欄與編輯頁操作。

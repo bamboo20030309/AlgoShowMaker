@@ -94,10 +94,11 @@
 
   function viewportSize() {
     const canvas = document.getElementById('arraySvg');
+    // 版面大小（不受 CSS transform 影響）：編輯動畫的展開過場會縮放整個畫布，不能讓字級跟著變。
     const rect = canvas?.getBoundingClientRect?.();
     return {
-      width: Number(rect?.width) || canvas?.clientWidth || CODE_PANEL_REFERENCE_WIDTH,
-      height: Number(rect?.height) || canvas?.clientHeight || CODE_PANEL_REFERENCE_HEIGHT
+      width: canvas?.clientWidth || Number(rect?.width) || CODE_PANEL_REFERENCE_WIDTH,
+      height: canvas?.clientHeight || Number(rect?.height) || CODE_PANEL_REFERENCE_HEIGHT
     };
   }
 
@@ -830,7 +831,10 @@
     const rect = panel.getBoundingClientRect();
     const wrapperRect = panel.parentElement?.getBoundingClientRect?.();
     if (!wrapperRect || rect.left - wrapperRect.left > wrapperRect.width * 0.42) return 0;
-    return Math.max(0, rect.right - wrapperRect.left + 20);
+    // 換回版面座標：編輯動畫的展開過場會用 transform 縮放畫布，鏡頭要的是未縮放的寬度。
+    const layoutWidth = panel.parentElement?.offsetWidth || wrapperRect.width;
+    const scale = layoutWidth > 0 ? wrapperRect.width / layoutWidth : 1;
+    return Math.max(0, (rect.right - wrapperRect.left) / (scale > 0 ? scale : 1) + 20);
   }
 
   function applyPresentationSettings(trace = currentDocument) {

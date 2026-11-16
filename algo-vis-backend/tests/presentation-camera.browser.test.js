@@ -172,26 +172,26 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
         && Math.abs(camera.panYRatio - expected.panYRatio) < 1e-6;
     }, saved);
 
+    // 編輯動畫頁是同一個畫布展開（2026-11-16）：手動平移縮放與投影片編輯畫面共用，雙向同步。
     await page.click('#algorithmEditSlideBtn');
-    await page.waitForFunction(() => document.querySelector('#algorithmEditorFrame')
-      ?.contentWindow?.document?.body?.classList.contains('asm-embed-editor'));
-    const editor = page.frames().find(frame => frame.url().includes('asmEmbed=editor'));
-    assert.ok(editor);
-    const editorCamera = await editor.evaluate(() => window.getPresentationCameraTransform?.());
-    assert.deepEqual(editorCamera, { panXRatio: 0, panYRatio: 0, zoomFactor: 1 },
-      'the algorithm-animation editor must not inherit the slide presentation camera');
-    const editorBox = await editor.locator('#arraySvg').boundingBox();
+    await runtime.waitForFunction(() => document.body.classList.contains('asm-embed-editor')
+      && !document.documentElement.classList.contains('asm-embed-assembling'));
+    assert.deepEqual(await runtime.evaluate(() => window.getPresentationCameraTransform?.()), saved,
+      'the animation editor shows the slide canvas with the same manual camera');
+    const editorBox = await runtime.locator('#arraySvg').boundingBox();
     await page.mouse.move(editorBox.x + editorBox.width / 2, editorBox.y + editorBox.height / 2);
     await page.mouse.wheel(0, -120);
-    await editor.waitForFunction(() => getPresentationCameraTransform().zoomFactor > 1);
+    await runtime.waitForFunction(expected => getPresentationCameraTransform().zoomFactor > expected, saved.zoomFactor);
     await page.waitForTimeout(220);
-    const changedEditorCamera = await editor.evaluate(() => getPresentationCameraTransform());
-    assert.deepEqual(await runtime.evaluate(() => getPresentationCameraTransform()), saved);
+    const changedEditorCamera = await runtime.evaluate(() => getPresentationCameraTransform());
     await page.keyboard.press('Escape');
-    await page.click('#algorithmEditSlideBtn');
-    await page.waitForFunction(() => !document.getElementById('algorithmEditorModal').classList.contains('is-loading'));
-    assert.deepEqual(await editor.evaluate(() => getPresentationCameraTransform()), changedEditorCamera);
-    await page.keyboard.press('Escape');
+    await page.locator('#algorithmEditorPage').waitFor({ state: 'hidden', timeout: 30000 });
+    await runtime.waitForFunction(() => document.body.classList.contains('asm-embed-runtime'));
+    assert.deepEqual(await runtime.evaluate(() => getPresentationCameraTransform()), changedEditorCamera,
+      'returning to the slide keeps the camera adjusted in the editor');
+    saved.panXRatio = changedEditorCamera.panXRatio;
+    saved.panYRatio = changedEditorCamera.panYRatio;
+    saved.zoomFactor = changedEditorCamera.zoomFactor;
 
     await page.reload();
     await page.waitForFunction(() => document.querySelector('.algorithm-slide-frame')

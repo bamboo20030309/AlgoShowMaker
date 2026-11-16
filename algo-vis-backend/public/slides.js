@@ -10418,8 +10418,9 @@
   }
 
   function algorithmCameraSurface(frame, slideId) {
-    const view = frame === editingAlgorithmFrame ? 'animation-editor'
-      : document.body.classList.contains('asm-edit-mode') ? 'slide-editor' : 'presentation';
+    // 編輯動畫頁與投影片編輯畫面是同一個畫布，手動平移縮放共用同一份；放映另存一份。
+    const view = frame === editingAlgorithmFrame || document.body.classList.contains('asm-edit-mode')
+      ? 'slide-editor' : 'presentation';
     return `${DRAFT_KEY}:${slideId}:${view}`;
   }
 
@@ -10504,7 +10505,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-135';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-137';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10546,7 +10547,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-135';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-137';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10796,7 +10797,7 @@
         // 尚未載入（或瀏覽器不支援 moveBefore 而重新載入）：等嵌入頁就緒，再送入動畫。
         const ready = waitForFrameMessage(frame, 'asm-embed-ready', 20000);
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-135' + (isLocalCopy() ? '&localOnly=1' : '');
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-137' + (isLocalCopy() ? '&localOnly=1' : '');
         }
         await ready;
         await sendAlgorithmAnimationToFrame(frame, slide);
