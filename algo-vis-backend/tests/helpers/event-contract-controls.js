@@ -241,17 +241,31 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
         equal('hiddenSourceHasNoObject', Boolean(object(hiddenId)), false);
         const target = required('target DOM', object(targetId)).getBoundingClientRect();
         const visible = required('visible source DOM', object(visibleId)).getBoundingClientRect();
+        // The object wrapper also includes its name below the cell. The
+        // incoming operand must cover the actual old value, not that wrapper.
+        const targetValueBounds = required('target value glyph', document.querySelector(
+          '[data-trace-object-key="' + targetValueKey + '"] text[data-trace-content-role="value"]')).getBoundingClientRect();
         const moving = transfers(); equal('transferCount', moving.length, 2);
         const centers = moving.map(node => { const bounds = node.getBoundingClientRect(); return {
           x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2,
           source: node.dataset.traceTransferSourceKey || '', literal: node.classList.contains('asm-trace-assign-literal-value') }; });
+        observed.operandGeometry = { target: { x: target.x, y: target.y, width: target.width, height: target.height }, centers, literalMotion: moving.map(node => node.dataset.traceLiteralMotion || '') };
         const visibleTransfer = required('visible source transfer', centers.find(node => node.source.includes(visibleId)));
         const hiddenTransfer = required('hidden numeric transfer', centers.find(node => node.literal));
         equal('visibleOriginAtSource', Math.abs(visibleTransfer.x - (visible.x + visible.width / 2)) < 1, true);
-        equal('hiddenOperandAtTargetCenter', Math.abs(hiddenTransfer.y-(target.y+target.height/2))<1, true);
-        await advance(658); equal('beforeAllArrive', value(), String(item.eventSpec.before));
+        equal('hiddenOperandAtTargetCenter', Math.abs(hiddenTransfer.y-(targetValueBounds.y+targetValueBounds.height/2))<1, true);
+        equal('hiddenOperandCenteredHorizontally', Math.abs(hiddenTransfer.x-(target.x+target.width/2))<1, true);
+        const hiddenNode = required('hidden numeric node', moving.find(node => node.classList.contains('asm-trace-assign-literal-value')));
+        equal('hiddenOperandMotion', hiddenNode.dataset.traceLiteralMotion, item.controlSpec.hiddenMotion);
+        const centered = () => {
+          const bounds = hiddenNode.getBoundingClientRect();
+          return Math.abs(bounds.x+bounds.width/2-hiddenTransfer.x)<1 && Math.abs(bounds.y+bounds.height/2-hiddenTransfer.y)<1;
+        };
+        await advance(329); equal('hiddenOperandStationaryDuringTransfer', centered(), true);
+        await advance(329); equal('hiddenOperandStationaryBeforeCommit', centered(), true);
+        equal('beforeAllArrive', value(), String(item.eventSpec.before));
         await step(1); equal('afterAllArrive', value(), String(item.eventSpec.after));
-        await finish();
+        await finish(); equal('temporaryCopiesAfter', temporary(), 0);
       } else throw Error('Unsupported control case: ' + item.id);
     } catch (error) {
       failures.push({ path: 'execution', expected: 'observable control result', actual: error.message });

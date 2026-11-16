@@ -4846,7 +4846,11 @@
       finalText = formatTargetValue(event?.payload?.after, afterValue);
       if (targetText) targetText.textContent = formatTargetValue(event?.payload?.before, beforeValue);
       {
-        const literalSources = sources.filter(assignmentSourceIsLiteral);
+        // Missing visual sources use their captured value, with the same
+        // destination lanes as literal operands. Count only those numeric
+        // operands so one hidden value is centered beside a visible transfer.
+        const literalSources = sources.filter((item, index) =>
+          assignmentSourceIsLiteral(item) || !sourceOperands[index]);
         const literalCount = literalSources.length;
         const laneCharacters = Math.max(0, ...literalSources.map(item =>
           String(item.literalValue ?? item.expression ?? '').length + 2));
@@ -4885,7 +4889,8 @@
               && Number.isFinite(before) && Number.isFinite(after) ? after - before : null;
             return createLiteralAssignmentTransfer(root, { ...sourceItem,
               literalValue: raw?.value ?? raw ?? event.payload?.source ?? increment ?? event.payload?.after }, operand,
-              literalIndex++, Math.max(1, sources.length), operatorPrefix);
+              literalIndex++, Math.max(1, literalCount), operatorPrefix,
+              { stationary: sources.length > 1, laneCharacters });
           }
           return createAssignmentTransfer(
             root,
@@ -11704,10 +11709,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-366';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-367';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-366', play, cancel, updateEventAvailability,
+    build: 'trace-367', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

@@ -2188,8 +2188,9 @@
         "visibleSource": "b",
         "hiddenSource": "c",
         "visibleOrigin": "b",
-        "hiddenOrigin": "above-target",
-        "commitAfterAllTransfers": true
+        "hiddenOrigin": "target-value-center",
+        "commitAfterAllTransfers": true,
+        "hiddenMotion": "stationary"
       },
       "eventSpec": {
         "fixture": "visibility",
