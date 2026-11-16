@@ -82,13 +82,24 @@
   // 平移縮放狀態
   // translate 與 scale 是唯一鏡頭狀態；所有手勢只更新這三個值，再由此函式套用 transform。
   // -----------------------------------------------------------------------------
+  // 過場覆寫：投影片與編輯動畫之間的組裝過場逐幀改寫畫面上的平移縮放，
+  // 但不改動鏡頭狀態；期間鏡頭照常更新，覆寫函式拿到的永遠是最新鏡頭。
+  let transformOverride = null;
   function updateTransform() {
     const physicalScale = scale * getScreenScaleFactor();
+    const view = transformOverride?.({ translateX, translateY, physicalScale }) || null;
     viewport.setAttribute(
       'transform',
-      `translate(${translateX},${translateY}) scale(${physicalScale})`
+      view
+        ? `translate(${view.translateX},${view.translateY}) scale(${view.physicalScale})`
+        : `translate(${translateX},${translateY}) scale(${physicalScale})`
     );
   }
+  window.setViewportTransformOverride = function (override) {
+    transformOverride = typeof override === 'function' ? override : null;
+    if (viewport) updateTransform();
+  };
+  window.getCameraState = () => ({ translateX, translateY, physicalScale: scale * getScreenScaleFactor() });
 
   // -----------------------------------------------------------------------------
   // 滑鼠與觸控手勢

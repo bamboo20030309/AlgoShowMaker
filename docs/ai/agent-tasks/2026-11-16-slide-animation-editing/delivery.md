@@ -48,11 +48,12 @@
   - 投影片上的 runtime iframe 以 `Element.moveBefore()` 搬進頁面，不重新載入，頁內狀態保留；
   - 父頁送 `asm-embed-set-mode`（editor），iframe 切換 `asm-embed-runtime`／`asm-embed-editor`；
   - 編輯模式隱藏網站頂部列、我的程式碼、範例側欄與手繪工具列，並接上左側設定標籤。
-- 組裝式過場（`slides-embed.js` `playAssembly`，460 ms）：
-  - 過場中 iframe 頁面背景透明；
-  - 畫布從投影片上的位置移到右側；
-  - 左側編輯區從左邊展開；
-  - 右側分頁從上方落下。
+- 組裝式過場（`slides-embed.js` `playAssembly`），分兩段依序播放：
+  - 打開：畫布先從投影片上的位置移到右側定位（420 ms），接著左側編輯區從左邊展開、右側分頁從上方落下（300 ms）；返回時順序相反。
+  - 過場中 iframe 頁面背景透明。
+  - 畫布的框與內容分開處理：框以 transform＋clip-path 連續變形；內容由 `canva.js` 新增的 `setViewportTransformOverride` 逐幀改寫畫面上的平移縮放（不改鏡頭狀態），世界中心固定在框的中心，縮放倍率以等比連續插值。
+  - 起點／終點是投影片上實際的取景：父頁搬動 iframe 前送 `asm-embed-capture-runtime`，iframe 記下 runtime 鏡頭並先隱藏，避免搬動後以 runtime 版面在全頁大小閃一下。
+  - 返回的目標位置用打開時 iframe 與容器的相對位置換算（`algorithmFrameHomeRect`），不再用容器本身的框。
 - 返回（按鈕或 Esc）：
   - 先存回投影片；
   - 反向組裝（`asm-embed-disassemble`）；
@@ -65,8 +66,8 @@
 - `style.css`：程式碼編輯器（Ace）的捲軸改為深色細捲軸，程式碼頁與編輯動畫共用。
 
 ### 版本
-- `slides.js?v=slides-378`（runtime iframe `trace-runtime-131`）、`slides.css?v=animation-sidebar-3`；
-- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-3`、`slides-embed.js?v=trace-20`、`trace-editor.js?v=trace-45`。
+- `slides.js?v=slides-381`（runtime iframe `trace-runtime-133`）、`slides.css?v=animation-sidebar-3`；
+- `algorithm.html`：`style.css?v=side-tabs-4`、`slides-embed.css?v=canvas-only-3`、`canva.js?v=trace-25`、`slides-embed.js?v=trace-22`、`trace-editor.js?v=trace-45`。
 
 ## 驗證
 - 實機（隔離瀏覽器，公開範例 quick-sort）：
@@ -84,6 +85,7 @@
 - 未執行完整 regression 與動畫驗證集（依規範由主代理執行）。
 
 ## 已知限制與剩餘事項
-- 返回過場的最後一刻，畫布是以編輯頁的版面縮放到投影片位置。編輯頁畫布比投影片窄，所以縮放倍率大於 1，內容會略大，最後一刻才換回投影片版面。最終尺寸正確。
+- 返回過場的終點用打開前記下的投影片取景。若在編輯頁換了幀或改了鏡頭，回到投影片後 runtime 重新取景時可能和終點略有差異。實測同一幀時，打開與返回的內容寬度都連續變化（每幀最多 2.9%），返回後的大小與過場終點相同（241.6 px），沒有跳動。
+- 打開時，搬動 iframe 到開始過場之間約 3 幀（約 50 ms）畫布是隱藏的。
 - 手機版的動畫區塊尚未調整。
 - `docs/reference` 的指令文件尚未提到新的編輯欄與編輯頁操作。

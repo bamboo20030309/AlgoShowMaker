@@ -137,47 +137,167 @@
     return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
   }
 
-  // 組裝式過場：左側編輯區從左邊展開、畫布從投影片上的位置移到右側、右側分頁從上方落下。
+  // 組裝式過場，分兩段：
+  //   打開：畫布先從投影片上的位置移到右側定位，接著左側編輯區從左邊展開、右側分頁從上方落下；
+  //   返回：反過來，先收起左側與分頁，畫布再移回投影片。
+  // 畫布移動時框與內容分開處理：框（transform＋clip-path）從投影片的框連續變成編輯頁的框；
+  // 內容由鏡頭覆寫逐幀決定，世界中心固定在框的中心，縮放倍率以等比（對數）連續插值，
+  // 起點是投影片上實際的取景（打開前記下的 runtime 鏡頭），終點是編輯頁目前的鏡頭。
   // from 是投影片上的畫布在這個 iframe 座標中的位置；過場中頁面背景透明，看得到後面的投影片。
-  const ASSEMBLE_MS = 460;
+  const ASSEMBLE_CANVAS_MS = 420;
+  const ASSEMBLE_PANEL_MS = 300;
+  const ASSEMBLE_MS = ASSEMBLE_CANVAS_MS + ASSEMBLE_PANEL_MS;
   const ASSEMBLE_EASING = 'cubic-bezier(.22, 1, .36, 1)';
   let assemblyAnimations = [];
+  let assemblyFrame = null;
+  let runtimeSnapshot = null;
+
+  function cameraWorldCenter(camera, width, height) {
+    const scale = Math.max(0.0001, camera.physicalScale);
+    return { x: (width / 2 - camera.translateX) / scale, y: (height / 2 - camera.translateY) / scale };
+  }
+
+  // 投影片上的取景：打開前在 runtime 版面記下，供打開的起點與返回的終點使用。
+  function captureRuntimeSnapshot() {
+    const svg = document.getElementById('arraySvg');
+    const canvas = canvasRect();
+    const rect = svg?.getBoundingClientRect();
+    const camera = window.getCameraState?.();
+    if (!canvas?.width || !rect?.width || !rect.height || !camera) return null;
+    return {
+      canvas,
+      center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+      scale: camera.physicalScale,
+      world: cameraWorldCenter(camera, rect.width, rect.height)
+    };
+  }
 
   function cancelAssembly() {
+    if (assemblyFrame != null) window.cancelAnimationFrame?.(assemblyFrame);
+    assemblyFrame = null;
     assemblyAnimations.forEach(animation => animation.cancel());
     assemblyAnimations = [];
+    const canvas = document.getElementById('tab-canvas');
+    if (canvas) {
+      canvas.style.transform = '';
+      canvas.style.clipPath = '';
+      canvas.style.transformOrigin = '';
+    }
+    window.setViewportTransformOverride?.(null);
     document.documentElement.classList.remove('asm-embed-assembling');
   }
 
   function playAssembly(from, direction) {
     cancelAssembly();
     const canvas = document.getElementById('tab-canvas');
+    const svg = document.getElementById('arraySvg');
     const target = canvas?.getBoundingClientRect();
-    if (!from || !target?.width || typeof canvas.animate !== 'function') {
+    if (!from || !target?.width || !target.height || typeof canvas.animate !== 'function') {
       document.documentElement.classList.remove('asm-embed-assembly-pending');
       return Promise.resolve();
     }
     document.documentElement.classList.add('asm-embed-assembling');
     document.documentElement.classList.remove('asm-embed-assembly-pending');
-    const scale = from.width / target.width;
-    const visibleHeight = Math.min(target.height, from.height / scale);
-    const placed = {
-      transform: `translate(${from.left - target.left}px, ${from.top - target.top}px) scale(${scale})`,
-      clipPath: `inset(0px 0px ${Math.max(0, target.height - visibleHeight)}px 0px)`
-    };
-    const settled = { transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px)' };
     const opening = direction === 'open';
-    const options = { duration: ASSEMBLE_MS, easing: ASSEMBLE_EASING, fill: 'both' };
+    const lerp = (a, b, e) => a + (b - a) * e;
+
+    // 框：可見範圍從 from 連續變成 target。k 讓可見範圍不超出畫布本身，播放列貼齊底部。
+    const geometry = e => {
+      const box = {
+        left: lerp(from.left, target.left, e), top: lerp(from.top, target.top, e),
+        width: lerp(from.width, target.width, e), height: lerp(from.height, target.height, e)
+      };
+      const k = Math.max(box.width / target.width, box.height / target.height);
+      const width = box.width / k;
+      const height = box.height / k;
+      const x = (target.width - width) / 2;
+      const y = target.height - height;
+      return { k, x, y, width, height, origin: { x: box.left - k * x, y: box.top - k * y } };
+    };
+
+    // 內容：svg 在畫布中的位置用過場前的版面量，過場中不改變版面，不會觸發重新排版。
+    const svgRect = svg?.getBoundingClientRect();
+    const svgOffset = svgRect ? { x: svgRect.left - target.left, y: svgRect.top - target.top } : null;
+    const svgWidth = svg?.clientWidth || svgRect?.width || 0;
+    const svgHeight = svg?.clientHeight || svgRect?.height || 0;
+    const snapshot = runtimeSnapshot;
+    const ratio = snapshot?.canvas?.width ? from.width / snapshot.canvas.width : 0;
+    const slideView = snapshot && ratio > 0 ? {
+      center: {
+        x: from.left + (snapshot.center.x - snapshot.canvas.left) * ratio,
+        y: from.top + (snapshot.center.y - snapshot.canvas.top) * ratio
+      },
+      scale: snapshot.scale * ratio,
+      world: snapshot.world
+    } : null;
+
+    let progress = opening ? 0 : 1;
+    let current = geometry(progress);
+    const override = camera => {
+      if (!svgOffset || !(svgWidth > 0) || !(svgHeight > 0)) return null;
+      const e = progress;
+      const editorWorld = cameraWorldCenter(camera, svgWidth, svgHeight);
+      const editorCenter = { x: target.left + svgOffset.x + svgWidth / 2, y: target.top + svgOffset.y + svgHeight / 2 };
+      const startGeometry = geometry(0);
+      const start = slideView || {
+        center: {
+          x: startGeometry.origin.x + startGeometry.k * (svgOffset.x + svgWidth / 2),
+          y: startGeometry.origin.y + startGeometry.k * (svgOffset.y + svgHeight / 2)
+        },
+        scale: camera.physicalScale * startGeometry.k,
+        world: editorWorld
+      };
+      const endScale = Math.max(0.0001, camera.physicalScale);
+      const startScale = Math.max(0.0001, start.scale);
+      const scale = startScale * Math.pow(endScale / startScale, e);
+      const center = { x: lerp(start.center.x, editorCenter.x, e), y: lerp(start.center.y, editorCenter.y, e) };
+      const world = { x: lerp(start.world.x, editorWorld.x, e), y: lerp(start.world.y, editorWorld.y, e) };
+      const physicalScale = scale / current.k;
+      return {
+        translateX: (center.x - current.origin.x) / current.k - svgOffset.x - world.x * physicalScale,
+        translateY: (center.y - current.origin.y) / current.k - svgOffset.y - world.y * physicalScale,
+        physicalScale
+      };
+    };
+    const paint = () => {
+      current = geometry(progress);
+      canvas.style.transformOrigin = '0 0';
+      canvas.style.transform = `translate(${current.origin.x - target.left}px, ${current.origin.y - target.top}px) scale(${current.k})`;
+      canvas.style.clipPath = `inset(${current.y}px ${target.width - current.x - current.width}px `
+        + `${target.height - current.y - current.height}px ${current.x}px)`;
+      if (window.updateTransform) window.updateTransform();
+    };
+
+    const canvasDelay = opening ? 0 : ASSEMBLE_PANEL_MS;
+    const panelDelay = opening ? ASSEMBLE_CANVAS_MS : 0;
+    const panelOptions = { duration: ASSEMBLE_PANEL_MS, delay: panelDelay, easing: ASSEMBLE_EASING, fill: 'both' };
     const pair = (start, end) => opening ? [start, end] : [end, start];
-    const parts = [
-      [canvas, pair(placed, settled)],
+    const panels = [
       [document.getElementById('codePanel'), pair({ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' })],
       [document.getElementById('divider'), pair({ opacity: 0 }, { opacity: 1 })],
       [document.getElementById('subTabs'), pair({ transform: 'translateY(-100%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 })]
     ].filter(([element]) => element);
-    canvas.style.transformOrigin = '0 0';
-    assemblyAnimations = parts.map(([element, frames]) => element.animate(frames, options));
+    // 畫布的進度來源：空轉的動畫只提供套用 easing 後的進度，實際畫面由 paint 逐幀設定。
+    const timing = canvas.animate([{ opacity: 1 }, { opacity: 1 }],
+      { duration: ASSEMBLE_CANVAS_MS, delay: canvasDelay, easing: ASSEMBLE_EASING, fill: 'both' });
+    assemblyAnimations = [timing, ...panels.map(([element, frames]) => element.animate(frames, panelOptions))];
+    window.setViewportTransformOverride?.(override);
+    paint();
+    const tick = () => {
+      const value = Number(timing.effect?.getComputedTiming?.().progress);
+      const eased = Number.isFinite(value) ? value : (timing.playState === 'finished' ? 1 : 0);
+      progress = opening ? eased : 1 - eased;
+      paint();
+      if (timing.playState !== 'finished') assemblyFrame = window.requestAnimationFrame(tick);
+    };
+    assemblyFrame = window.requestAnimationFrame(tick);
     return Promise.all(assemblyAnimations.map(animation => animation.finished.catch(() => {}))).then(() => {
+      if (assemblyFrame != null) window.cancelAnimationFrame(assemblyFrame);
+      assemblyFrame = null;
+      progress = opening ? 1 : 0;
+      paint();
+      // 打開完成：拿掉覆寫，畫面就是編輯頁的鏡頭（最後一幀已與它相同）。
+      // 返回完成：停在投影片的框與取景，直到父頁搬回投影片並切回 runtime。
       if (opening) cancelAssembly();
     });
   }
@@ -185,6 +305,7 @@
   function setEmbedMode(next, cameraSurface = null, assembleFrom = null) {
     if (!['runtime', 'editor'].includes(next)) return;
     if (next === 'editor' && assembleFrom) document.documentElement.classList.add('asm-embed-assembly-pending');
+    else document.documentElement.classList.remove('asm-embed-assembly-pending');
     if (next === 'runtime') cancelAssembly();
     if (next !== mode) {
       if (mode === 'editor') window.ASMTraceStudio?.flushSourceSettings?.();
@@ -207,10 +328,12 @@
       window.parent.postMessage({ type: 'asm-embed-mode-changed', mode, canvasRect: canvasRect() },
         window.location.origin);
     };
-    const settled = () => {
-      if (mode === 'editor' && assembleFrom) playAssembly(assembleFrom, 'open').then(report);
-      else report();
-    };
+    // 組裝過場立即開始：量位置會強制排版，鏡頭在上面的 resize 已同步更新；之後的鏡頭變化由覆寫即時跟上。
+    if (mode === 'editor' && assembleFrom) {
+      playAssembly(assembleFrom, 'open').then(report);
+      return;
+    }
+    const settled = report;
     if (typeof window.requestAnimationFrame !== 'function') setTimeout(settled, 0);
     else window.requestAnimationFrame(() => window.requestAnimationFrame(settled));
   }
@@ -268,6 +391,17 @@
     }
     if (event.data.type === 'asm-embed-set-mode') {
       setEmbedMode(event.data.mode, event.data.cameraSurface || null, event.data.assembleFrom || null);
+      return;
+    }
+    if (event.data.type === 'asm-embed-capture-runtime') {
+      // 父頁在把 iframe 搬進編輯頁之前送來：記下投影片上的取景（搬動後版面就變了）。
+      if (mode === 'runtime') runtimeSnapshot = captureRuntimeSnapshot();
+      // 搬動到切換版面之間先隱藏，避免以 runtime 版面在全頁大小閃一下；playAssembly 開始時再顯示。
+      document.documentElement.classList.add('asm-embed-assembly-pending');
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'asm-embed-runtime-captured', ok: Boolean(runtimeSnapshot) },
+          window.location.origin);
+      }
       return;
     }
     if (event.data.type === 'asm-embed-disassemble') {

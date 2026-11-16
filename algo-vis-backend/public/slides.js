@@ -10504,7 +10504,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-131';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-133';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10546,7 +10546,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-131';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-133';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10682,7 +10682,7 @@
   const algorithmEditorStage = document.getElementById('algorithmEditorStage');
   const algorithmEditorBackBtn = document.getElementById('algorithmEditorBackBtn');
   const algorithmEditorTitle = document.getElementById('algorithmEditorTitle');
-  const ALGORITHM_EDITOR_TRANSITION_MS = 420;
+  const ALGORITHM_EDITOR_TRANSITION_MS = 720;
   const ALGORITHM_EDITOR_EASING = 'cubic-bezier(.22, 1, .36, 1)';
 
   function setAlgorithmEditorStatus(text) {
@@ -10742,6 +10742,20 @@
     return { left: rect.left - stage.left, top: rect.top - stage.top, width: rect.width, height: rect.height };
   }
 
+  // iframe 回到投影片後的位置：以打開時 iframe 與容器的相對位置，套到容器現在的位置與縮放。
+  function algorithmFrameHomeRect(home) {
+    const parent = home.parent.getBoundingClientRect();
+    const { frameRect, parentRect } = home;
+    if (!frameRect || !(parentRect?.width > 0)) return parent;
+    const ratio = parent.width / parentRect.width;
+    return {
+      left: parent.left + (frameRect.left - parentRect.left) * ratio,
+      top: parent.top + (frameRect.top - parentRect.top) * ratio,
+      width: frameRect.width * ratio,
+      height: frameRect.height * ratio
+    };
+  }
+
   function algorithmSlideLabel(slideId) {
     const position = slidePositions.get(slideId);
     if (!position) return '編輯動畫';
@@ -10762,7 +10776,14 @@
         && !frame.classList.contains('is-loading');
       const slideRect = frame.getBoundingClientRect();
       const animate = loaded && slideRect.width > 40 && !prefersReducedMotion();
-      editingAlgorithmFrameHome = { parent: frame.parentNode, next: frame.nextSibling, hidden: frame.hidden };
+      if (animate) {
+        // 搬動前先讓 iframe 記下投影片上的取景，過場的起點才會和投影片上看到的完全一致。
+        const captured = waitForFrameMessage(frame, 'asm-embed-runtime-captured', 500);
+        frame.contentWindow?.postMessage({ type: 'asm-embed-capture-runtime' }, window.location.origin);
+        await captured;
+      }
+      editingAlgorithmFrameHome = { parent: frame.parentNode, next: frame.nextSibling, hidden: frame.hidden,
+        frameRect: slideRect, parentRect: frame.parentNode?.getBoundingClientRect?.() || null };
       editingAlgorithmSlideId = slideId;
       editingAlgorithmFrame = frame;
       if (algorithmEditorTitle) algorithmEditorTitle.textContent = algorithmSlideLabel(slideId);
@@ -10775,7 +10796,7 @@
         // 尚未載入（或瀏覽器不支援 moveBefore 而重新載入）：等嵌入頁就緒，再送入動畫。
         const ready = waitForFrameMessage(frame, 'asm-embed-ready', 20000);
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-131' + (isLocalCopy() ? '&localOnly=1' : '');
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-133' + (isLocalCopy() ? '&localOnly=1' : '');
         }
         await ready;
         await sendAlgorithmAnimationToFrame(frame, slide);
@@ -10841,7 +10862,7 @@
         }
       }
       const home = editingAlgorithmFrameHome;
-      const homeRect = home?.parent?.isConnected ? home.parent.getBoundingClientRect() : null;
+      const homeRect = home?.parent?.isConnected ? algorithmFrameHomeRect(home) : null;
       const animate = Boolean(homeRect && homeRect.width > 40) && !prefersReducedMotion();
       let chrome = null;
       if (animate) {
