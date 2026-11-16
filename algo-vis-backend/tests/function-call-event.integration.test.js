@@ -137,7 +137,7 @@ int main() {
   assert.ok(restored.callLifecycles.length > 0);
 });
 
-test('enabled function-call code is grey from call start through completion', () => {
+test('enabled function-call code is yellow while active and grey only after completion', () => {
   const window = { addEventListener() {} };
   window.window = window;
   const context = vm.createContext(window);
@@ -146,17 +146,17 @@ test('enabled function-call code is grey from call start through completion', ()
   const events = new Map([[call.id, call]]);
   const state = (active, completed = new Set()) => window.ASMTraceCodePresenter.visualStateForIds([call.id], events, new Set(), completed, active);
   assert.equal(state('').complete, false);
-  assert.equal(state(call.id).active, false);
-  assert.equal(state(call.id).complete, true);
+  assert.equal(state(call.id).active, true);
+  assert.equal(state(call.id).complete, false);
   assert.equal(state('', new Set([call.id])).complete, true);
   const comparison = { id: 'compare', type: 'compare', enabled: true, result: true };
   events.set(comparison.id, comparison);
   const shared = window.ASMTraceCodePresenter.visualStateForIds([call.id, comparison.id], events,
     new Set([comparison.id]), new Set([comparison.id]), call.id);
-  assert.equal(shared.active, false, 'an active call keeps a shared span grey instead of yellow');
-  assert.equal(shared.complete, true);
+  assert.equal(shared.active, true, 'the active call takes precedence over a completed comparison');
+  assert.equal(shared.complete, false);
   assert.equal(shared.pending, false);
-  assert.equal(shared.conditionResult, undefined);
+  assert.equal(shared.conditionResult, true, 'completed comparison metadata survives while active yellow takes visual precedence');
   call.enabled = false;
   assert.equal(state(call.id, new Set([call.id])).complete, false);
   assert.equal(state(call.id).active, false);

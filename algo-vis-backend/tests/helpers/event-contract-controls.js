@@ -75,14 +75,19 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
       const deck = { groups: [{ id: 'group', slides: [{ id: 'slide', kind: 'algorithm-animation',
         animation: { mode: 'trace', code: document.sourceCode, input: '', traceDocument: document } }] }] };
       await client.saveDeck(key, JSON.stringify(deck));
-      // A new client must read the persisted ID and fetch the actual Trace
-      // from IndexedDB; no in-memory source or network fallback is supplied.
+      // Persistent drafts carry source/settings/executable ID, never a result ID.
       const reopened = ASMSlideStorage.create(indexedDB, localStorage, database);
       const compact = await reopened.loadDeck(key, [], { lazyTraces: true });
       const animation = required('saved animation', compact?.groups?.[0]?.slides?.[0]?.animation);
-      equal('savedReferenceIsId', /^[a-f0-9]{64}$/.test(animation.traceRef || ''), true);
+      equal('savedReferenceRemoved', animation.traceRef, undefined);
       equal('savedTraceIsExternal', !animation.traceDocument, true);
-      const restored = await ASMSlideTraceStore.create(ASMSlideStorage, reopened).materializeAnimation(animation);
+      let executions = 0;
+      const restored = await ASMSlideTraceStore.create(ASMSlideStorage, reopened, null, async recipe => {
+        executions++;
+        equal('rebuildSourcePreserved', recipe.code, document.sourceCode);
+        return { ...recipe, traceDocument: clone(document) };
+      }).materializeAnimation(animation);
+      equal('reopenExecutesOnce', executions, 1);
       return required('reopened Trace', restored.traceDocument);
     };
     try {
@@ -153,20 +158,23 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
         const next = required('next assignment frame', full.frames[index + 1]);
         current.frames[1] = { ...clone(next), id: targetFrame.id,
           events: [...clone(targetFrame.events), ...clone(next.events)] };
-        await start(); await advance(410); rate = item.controlSpec.changeDuringEvent.to;
-        await advance(249); equal('currentBefore660ms', value(), '3');
-        await step(1); equal('currentAt660ms', value(), '11');
+        await start(); await advance(610); rate = item.controlSpec.changeDuringEvent.to;
+        await advance(249); equal('currentBefore860ms', value(), '3');
+        await step(1); equal('currentAt860ms', value(), '11');
         await advance(600); // 第一個事件仍按 1 倍完成停留與清理，總計 1260 ms。
-        await advance(329); equal('nextBefore330ms', value(), '11');
-        await step(1); equal('nextAt330ms', value(), '14');
+        await advance(429); equal('nextBefore430ms', value(), '11');
+        await step(1); equal('nextAt430ms', value(), '14');
         await finish();
       } else if (item.id === 'C06') {
-        await start(); await advance(150); required('active transfer', transfers()[0]);
+        await start(); await advance(350); required('active transfer', transfers()[0]);
         window.dispatchEvent(new Event('pagehide'));
         await Promise.resolve();
-        equal('temporaryCopiesAfterLeave', temporary(), 0);
-        equal('valueAfterLeave', value(), String(item.eventSpec.after));
-        window.dispatchEvent(new Event('pageshow')); await advance(1000);
+        const pausedCopies = temporary();
+        required('copies retained while paused', pausedCopies);
+        await advance(1000);
+        equal('copiesFrozenWhileAway', temporary(), pausedCopies);
+        equal('valueWhileAway', value(), String(item.eventSpec.before));
+        window.dispatchEvent(new Event('pageshow')); await advance(1500);
         equal('frameAfterReturn', CodeScript.get_current_frame_index(), 1);
         equal('temporaryCopiesAfterReturn', temporary(), 0);
         equal('valueAfterReturn', value(), String(item.eventSpec.after));
@@ -177,9 +185,9 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
         if (item.id === 'C09') {
           asmApplyTraceDocument(current); await CodeScript.goto(0);
           const key = required('style target key', object(targetId)?.dataset.traceObjectKey);
-          current.studio.objectStyles ||= {};
-          for (const frame of current.frames) current.studio.objectStyles[frame.id] = {
-            ...(current.studio.objectStyles[frame.id] || {}), [key]: { fill: item.controlSpec.customFill } };
+          for (const frame of current.frames) (frame.styles ||= []).push({
+            id: 'saved-target-fill', targetVariableId: targetId, selector: {type:'all'},
+            styleType:'background', color:item.controlSpec.customFill });
           current = await saveReopen(current);
         }
         await start(); await finish();
@@ -207,25 +215,26 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
         equal('reopenedValue', value(), String(item.eventSpec.after));
       } else if (item.id === 'C10') {
         const sourceId = required('read source b', Object.keys(current.variables).find(id => current.variables[id].name === 'b'));
-        current.rules = [...(current.rules || []), { id: 'authored-highlight', match: {}, actions: [{
-          targetVariableId: sourceId, style: { styleTypes: { highlight: '#7b1fa2' } } }] }];
+        for (const frame of current.frames) (frame.styles ||= []).push({
+          id:'authored-highlight',targetVariableId:sourceId,selector:{type:'all'},
+          styleType:'highlight',color:'#7b1fa2'});
         asmApplyTraceDocument(current); await CodeScript.goto(0);
         const authored = () => [...document.querySelectorAll('#asm-trace-root [stroke="#7b1fa2"]')]
           .filter(node => !node.classList.contains('asm-trace-read-highlight'));
         required('authored highlight before event', authored()[0]);
-        await start(); await advance(150);
+        await start(); await advance(350);
         const automatic = readHighlights(); required('automatic highlight during read', automatic[0]);
         equal('automaticBlink', automatic.some(node => getComputedStyle(node).animationName !== 'none'), false);
         await finish(); equal('automaticHighlightEnds', readHighlights().length, 0);
         equal('authoredHighlightPreserved', authored().length > 0, true);
       } else if (item.id === 'C11') {
-        await start(); await advance(150);
+        await start(); await advance(350);
         equal('readHighlightCount', readHighlights().length, item.controlSpec.readHighlightCount);
         equal('transferCount', transfers().length, item.controlSpec.transferCount);
         equal('automaticBlink', readHighlights().some(node => getComputedStyle(node).animationName !== 'none'), false);
         await finish(); equal('value', value(), '6'); equal('temporaryCopiesAfter', temporary(), 0);
       } else if (item.id === 'C12') {
-        await start(); await step(1);
+        await start(); await advance(201);
         observed.owner = ASMTracePlayer.getDocument().frames[1].events.find(event => event.id === owner.id);
         const visibleId = Object.keys(current.variables).find(id => current.variables[id].name === item.controlSpec.visibleSource);
         const hiddenId = Object.keys(current.variables).find(id => current.variables[id].name === item.controlSpec.hiddenSource);
@@ -239,7 +248,7 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
         const visibleTransfer = required('visible source transfer', centers.find(node => node.source.includes(visibleId)));
         const hiddenTransfer = required('hidden numeric transfer', centers.find(node => node.literal));
         equal('visibleOriginAtSource', Math.abs(visibleTransfer.x - (visible.x + visible.width / 2)) < 1, true);
-        equal('hiddenOriginAboveTarget', hiddenTransfer.y < target.y + target.height / 2, true);
+        equal('hiddenOperandAtTargetCenter', Math.abs(hiddenTransfer.y-(target.y+target.height/2))<1, true);
         await advance(658); equal('beforeAllArrive', value(), String(item.eventSpec.before));
         await step(1); equal('afterAllArrive', value(), String(item.eventSpec.after));
         await finish();

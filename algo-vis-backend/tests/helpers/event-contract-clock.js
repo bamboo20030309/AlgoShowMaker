@@ -116,9 +116,12 @@ async function runClockProbe({ page, trace, item, observation }) {
         const sourceBefore = sourceKeys.map(readCell);
         if (item.visual?.sourceRetained === true && sourceKeys.length === 0) throw Error('No visible source to check retention');
         if (item.visual?.targetStylePreserved === true) {
-          loaded.studio.objectStyles ||= {};
-          for (const frame of loaded.frames) loaded.studio.objectStyles[frame.id] = {
-            ...(loaded.studio.objectStyles[frame.id] || {}), [targetKey]: { fill: '#123456' } };
+          // Author an actual drawing style; legacy manual studio.objectStyles
+          // is deliberately discarded by the current directive-only model.
+          for (const frame of loaded.frames) (frame.styles ||= []).push({
+            id: 'clock-target-fill', targetVariableId: target.variableId,
+            selector: target.indexExpression ? { type: 'index', indexExpression: String(target.resolvedIndex ?? target.indexExpression) } : { type: 'all' }, styleType: 'background', color: '#123456'
+          });
         }
         ASMTraceFrameTween.cancel();
         window.requestAnimationFrame = callback => { callbacks.set(++serial, callback); return serial; };

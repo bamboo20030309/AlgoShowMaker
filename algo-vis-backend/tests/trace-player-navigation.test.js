@@ -16,7 +16,7 @@ function playerHarness(options = {}) {
   const harnessOptions = options;
   const renders = [];
   let cancellations = 0;
-  let pauses = 0;
+  let pauses = 0, tweenPauses = 0, resumes = 0, finishPlayback = null;
   const documentListeners = new Map();
   const windowListeners = new Map();
   const browserDocument = {
@@ -33,7 +33,7 @@ function playerHarness(options = {}) {
     ASMTraceRenderers: {
       renderFrame: (document, frame, previousFrame, renderOptions) => {
         renders.push({ frame, previousFrame, options: renderOptions });
-        const transition = Promise.resolve();
+        const transition = previousFrame && harnessOptions.pendingPlayback ? new Promise(resolve => { finishPlayback = resolve; }) : Promise.resolve();
         if (previousFrame && harnessOptions.playbackPlans) {
           transition.playbackPlan = {
             id: `plan-${frame.id}`,
@@ -43,7 +43,7 @@ function playerHarness(options = {}) {
         return transition;
       }
     },
-    ASMTraceFrameTween: { cancel() { cancellations += 1; } },
+    ASMTraceFrameTween: { cancel() { cancellations += 1; }, pause() { tweenPauses++; }, resume() { resumes++; }, isPaused() { return false; } },
     ASMPlaybackNavigation: { pause() { pauses += 1; } },
     ASMTraceCamera: { apply() {}, transitionDuration: () => 0 },
     ASMTraceCodePresenter: { transitionDelay: () => 0 },
@@ -69,7 +69,7 @@ function playerHarness(options = {}) {
   });
   renders.length = 0;
   return { window, browserDocument, renders, cancellations: () => cancellations,
-    pauses: () => pauses, documentListeners, windowListeners };
+    pauses: () => pauses, tweenPauses: () => tweenPauses, resumes: () => resumes, finishPlayback: () => finishPlayback?.(), documentListeners, windowListeners };
 }
 
 // -----------------------------------------------------------------------------
@@ -126,31 +126,21 @@ test('next during playback settles the current frame before animating the follow
   assert.equal(cancellations(), 1);
 });
 
-test('leaving the visible page cancels its active run and retains the destination as a stable frame', async () => {
-  const { window, browserDocument, renders, documentListeners, pauses } = playerHarness({ playbackPlans: true });
-  const transition = window.CodeScript.next();
-  browserDocument.hidden = true;
-  documentListeners.get('visibilitychange')();
-  await transition;
-  assert.equal(pauses(), 1);
-  assert.equal(window.CodeScript.get_current_frame_index(), 1);
-  assert.equal(renders.at(-1).frame.id, 'f1');
-  assert.equal(renders.at(-1).previousFrame, null);
-  assert.equal(renders.at(-1).options.pageLeave, true);
-  assert.equal(renders.at(-1).options.animateEvents, false);
-  const count = renders.length;
-  browserDocument.hidden = false;
-  documentListeners.get('visibilitychange')();
-  assert.equal(renders.length, count, 'returning must not replay the abandoned transition');
+test('leaving the visible page pauses and resumes the same active transition', async () => {
+  const h = playerHarness({playbackPlans:true,pendingPlayback:true});
+  const transition=h.window.CodeScript.next(); const plan=h.window.ASMTracePlayer.getActivePlaybackPlan();
+  h.browserDocument.hidden=true; h.documentListeners.get('visibilitychange')();
+  assert.equal(h.pauses(),1);assert.equal(h.tweenPauses(),1);assert.equal(h.cancellations(),0);
+  assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),plan);
+  h.browserDocument.hidden=false;h.documentListeners.get('visibilitychange')();
+  assert.equal(h.resumes(),1);assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),plan);
+  h.finishPlayback();await transition;assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),null);
 });
 
-test('pagehide settles the current destination even before document.hidden changes', async () => {
-  const { window, renders, windowListeners, pauses } = playerHarness({ playbackPlans: true });
-  const transition = window.CodeScript.next();
-  windowListeners.get('pagehide')();
-  await transition;
-  assert.equal(pauses(), 1);
-  assert.equal(renders.at(-1).frame.id, 'f1');
-  assert.equal(renders.at(-1).options.animatePositions, false);
-  assert.equal(window.ASMTracePlayer.getActivePlaybackPlan(), null);
+test('pagehide pauses before document.hidden changes and pageshow resumes', async () => {
+  const h=playerHarness({playbackPlans:true,pendingPlayback:true});const transition=h.window.CodeScript.next();
+  const plan=h.window.ASMTracePlayer.getActivePlaybackPlan();h.windowListeners.get('pagehide')();
+  assert.equal(h.pauses(),1);assert.equal(h.tweenPauses(),1);assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),plan);
+  h.windowListeners.get('pageshow')();assert.equal(h.resumes(),1);h.finishPlayback();await transition;
+  assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),null);
 });

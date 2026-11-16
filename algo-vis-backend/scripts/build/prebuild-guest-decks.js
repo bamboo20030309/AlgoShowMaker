@@ -14,11 +14,11 @@ global.ASMTraceViewSource = require('../../public/trace-view-source');
 global.ASMTraceModel = { normalizeTraceDocument: value => JSON.parse(JSON.stringify(value)) };
 const A = require('../../public/asmdeck');
 const Recipe = require('../../public/animation-recipe');
+const stagedWrites = new Map();
 async function write(file, bytes) {
   const target = path.resolve(publicRoot, file.replace(/^\//, '').split('?')[0]);
   if (!target.startsWith(publicRoot + path.sep)) throw new Error('Asset path escaped public');
-  const tmp = target + '.' + process.pid + '.tmp';
-  await fs.writeFile(tmp, bytes); await fs.rename(tmp, target);
+  stagedWrites.set(target, bytes);
 }
 async function main() {
   const catalog = JSON.parse(await fs.readFile(path.join(publicRoot, 'guest-decks.json'), 'utf8'));
@@ -66,17 +66,29 @@ async function main() {
       const animation = projected.deck.groups.flatMap(group => group.slides || []).find(slide => slide.animation)?.animation;
       await write('/default-animation/manifest.json', JSON.stringify({ format: 'AlgoShowMaker.default-animation', packageVersion: 2, id: 'linear-sieve', animation }, null, 2) + '\n');
     }
-    console.log(`${entry.id}: recipe published`);
+    console.log(`${entry.id}: recipe prepared`);
   }
   // Old URLs stay importable but also contain no embedded result payloads.
   for (const name of await fs.readdir(path.join(publicRoot, 'guest-decks'))) {
-    if (!name.endsWith('.asmdeck') || published.has(name)) continue;
-    const decoded = await A.decode(new Blob([await fs.readFile(path.join(publicRoot, 'guest-decks', name))]));
+    if (!name.endsWith('.asmdeck') || published.has(name) || stagedWrites.has(path.join(publicRoot, 'guest-decks', name))) continue;
+    const historicalBytes = await fs.readFile(path.join(publicRoot, 'guest-decks', name));
+    const historicalCover = await A.readCover(new Blob([historicalBytes]));
+    const historicalBody = JSON.parse(require('node:zlib').gunzipSync(historicalBytes.subarray(historicalCover?.bodyOffset || 9))).body;
+    const hasResults = Object.keys(historicalBody.prebuiltTraces || {}).length ||
+      historicalBody.deck.groups.some(group => (group.slides || []).some(slide => slide.animation &&
+        (slide.animation.traceDocument || slide.animation.traceRef || slide.animation.prebuilt)));
+    // Already migrated immutable URLs must remain byte-for-byte unchanged.
+    if (!hasResults) continue;
+    const decoded = await A.decode(new Blob([historicalBytes]));
     const projected = await A.project(decoded.deck);
     if (decoded.cover) projected.cover = decoded.cover;
     await write('/guest-decks/' + name, Buffer.from(await (await A.encode(projected)).arrayBuffer()));
   }
   await write('/guest-decks.json', JSON.stringify(catalog, null, 2) + '\n');
+  for (const [target, bytes] of stagedWrites) {
+    const temporary = target + '.' + process.pid + '.tmp';
+    await fs.writeFile(temporary, bytes); await fs.rename(temporary, target);
+  }
   console.log(JSON.stringify({ decks: catalog.decks.length, animations: count, traceAssets: 0 }));
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

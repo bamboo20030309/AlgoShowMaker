@@ -93,7 +93,7 @@ int main() {
   assert.doesNotMatch(visible, /#include|using namespace|int main|return 0/);
   assert.doesNotMatch(visible, /@frame|@style|@asm-view/);
   assert.ok(plan.fragments.flatMap(fragment => fragment.items)
-    .some(item => item.kind === 'line' && item.number === 11 && item.text.trim() === '}'),
+    .some(item => item.kind === 'line' && item.number === 12 && item.text.trim() === '}'),
   'the closing brace for the active loop must remain visible');
   const highlightedText = plan.fragments.flatMap(fragment => fragment.items)
     .flatMap(item => item.segments || [])
@@ -178,10 +178,10 @@ test('drawing directives are removed silently while omitted algorithm code uses 
   const event = {
     id: 'event-increment',
     type: 'write',
-    line: 5,
+    line: 6,
     source: {
-      from, to, line: 5, endLine: 5, functionName: 'main',
-      contexts: [{ type: 'FunctionDefinition', from: 0, to: source.length, openLine: 1, closeLine: 14 }]
+      from, to, line: 6, endLine: 6, functionName: 'main',
+      contexts: [{ type: 'FunctionDefinition', from: 0, to: source.length, openLine: 1, closeLine: 15 }]
     }
   };
   const context = { window: {} };
@@ -192,7 +192,7 @@ test('drawing directives are removed silently while omitted algorithm code uses 
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-code-model.js'), 'utf8'), context);
   const plan = context.ASMTraceCodeModel.planFrame({ sourceCode: source }, {
-    id: 'frame-1', source: { line: 5 }, events: [event]
+    id: 'frame-1', source: { line: 6 }, events: [event]
   });
   const items = plan.fragments[0].items;
   const visible = items.filter(item => item.kind === 'line').map(item => item.text).join('\n');
@@ -226,10 +226,10 @@ int main() {
   const decrementFrom = source.indexOf('arr[i]--');
   const functionContext = { type: 'FunctionDefinition', from: source.indexOf('int main'), to: source.length,
     headerFrom: source.indexOf('int main'), headerTo: source.indexOf('{', source.indexOf('int main')),
-    openLine: 3, closeLine: 14 };
+    openLine: 3, closeLine: 15 };
   const forFrom = source.indexOf('for (');
   const forContext = { type: 'ForStatement', from: forFrom, to: source.lastIndexOf('  }') + 3,
-    headerFrom: forFrom, headerTo: source.indexOf('{', forFrom), openLine: 7, closeLine: 12 };
+    headerFrom: forFrom, headerTo: source.indexOf('{', forFrom), openLine: 7, closeLine: 13 };
   const ifFrom = source.indexOf('if (');
   const ifContext = { type: 'IfStatement', from: ifFrom, to: source.indexOf('\n    }', ifFrom) + 6,
     headerFrom: ifFrom, headerTo: source.indexOf('{', ifFrom), openLine: 8, closeLine: 10 };
@@ -243,7 +243,7 @@ int main() {
   const visibleLines = plan.fragments[0].items.filter(item => item.kind === 'line');
   assert.ok(visibleLines.some(item => item.number === 10 && item.text.trim() === '}'),
     'the nested if closing brace must remain visible');
-  assert.ok(visibleLines.some(item => item.number === 12 && item.text.trim() === '}'),
+  assert.ok(visibleLines.some(item => item.number === 13 && item.text.trim() === '}'),
     'the outer for closing brace must remain visible even beyond the normal six-line target');
 });
 
@@ -512,8 +512,8 @@ int main() {
   assert.equal(condition.enabled, false);
   assert.equal(context.ASMTraceEvents.showTag('condition', trace), false);
   assert.equal(context.ASMTraceEvents.showInspector(condition, trace), false);
-  assert.equal(context.ASMTraceEvents.showInspector(initializer, trace), false,
-    'the raw initializer remains replay data without creating a second Studio row');
+  assert.equal(context.ASMTraceEvents.showInspector(initializer, trace), true,
+    'the raw initializer remains independently configurable; presentation grouping does not erase its event');
   assert.equal(initializer.source?.text, 'i = 0');
   const declaration = frame.events.find(event => (
     event.type === 'declare' && /:i$/.test(event.signature || '')
@@ -546,7 +546,7 @@ test('nested sorting loops keep initializers and comparisons visible while condi
     'the inner for declaration must represent its initializer in the inspector');
   assert.equal(visible.some(event => (
     event.type === 'assign' && event.declarationInitializer === true
-  )), false, 'paired raw initializer assignments must not create duplicate inspector rows');
+  )), true, 'paired raw initialization retains its independent control');
   assert.ok(visible.some(event => event.type === 'compare' && /:i\s*</.test(event.signature || '')),
     'the outer for comparison must appear in the event inspector');
   assert.ok(visible.some(event => event.type === 'compare' && /:j\s*</.test(event.signature || '')),
@@ -931,6 +931,7 @@ test('code jumps actually move the expanded page to the next focus line', () => 
   window.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
   window.setTimeout = callback => { timers.push(callback); return timers.length; };
   window.clearTimeout = () => {};
+  window.cancelAnimationFrame = () => {};
   window.matchMedia = () => ({ matches: false });
   const line = number => ({ kind: 'line', number, text: `line ${number}`, segments: [] });
   const first = { id: 'first', events: [] };
@@ -989,7 +990,7 @@ test('code jumps actually move the expanded page to the next focus line', () => 
   assert.notEqual(transformY(expanded), expandedStart,
     'the target line must produce a measurable nonzero scroll distance');
   const targetY = expanded.querySelector('[data-source-line="12"]').getBoundingClientRect().top;
-  timers.at(-1)();
+  frames.splice(0).forEach(callback => callback(window.performance.now() + 540));
   assert.equal(panel.style.top, stableTop,
     'collapsing the snippet must keep the panel at its original height');
   assert.equal(body.querySelector('[data-source-line="12"]').getBoundingClientRect().top, targetY,

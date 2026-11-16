@@ -123,7 +123,9 @@
       },
       "timing": {
         "durationMs": 1480,
-        "assignmentCommitMs": 880
+        "assignmentCommitMs": 880,
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -202,7 +204,9 @@
       },
       "timing": {
         "durationMs": 1260,
-        "commitMs": 660
+        "commitMs": 660,
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -240,7 +244,9 @@
       },
       "timing": {
         "durationMs": 1260,
-        "commitMs": 660
+        "commitMs": 660,
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -281,7 +287,9 @@
       },
       "timing": {
         "durationMs": 1260,
-        "commitMs": 660
+        "commitMs": 660,
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -316,7 +324,9 @@
       },
       "timing": {
         "durationMs": 1260,
-        "commitMs": 660
+        "commitMs": 660,
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -349,7 +359,9 @@
       },
       "timing": {
         "durationMs": 1260,
-        "commitMs": 660
+        "commitMs": 660,
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -388,7 +400,9 @@
       },
       "timing": {
         "durationMs": 1260,
-        "commitMs": 660
+        "commitMs": 660,
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -419,7 +433,9 @@
       },
       "timing": {
         "durationMs": 1260,
-        "commitMs": 660
+        "commitMs": 660,
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -706,7 +722,8 @@
         "transferMs": 500,
         "durationMs": 1260,
         "commitMs": 660,
-        "codePromptMs": 200
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -832,7 +849,8 @@
         "transferMs": 500,
         "durationMs": 1260,
         "commitMs": 660,
-        "codePromptMs": 200
+        "codePromptMs": 200,
+        "reason": "先反白程式碼 200ms，再開始既定資料動作；抵達前 1ms 不得提交。"
       },
       "assertionKind": "event"
     },
@@ -1864,11 +1882,13 @@
       "visual": {
         "controlScenario": true
       },
-      "timing": {},
+      "timing": {
+        "codePromptMs": 200
+      },
       "execution": "browser-scenario",
       "assertionKind": "control",
       "controlSpec": {
-        "atMs": 410,
+        "atMs": 610,
         "resumeSameProgress": true,
         "preserveReadHighlight": true
       },
@@ -1966,7 +1986,9 @@
       "visual": {
         "controlScenario": true
       },
-      "timing": {},
+      "timing": {
+        "codePromptMs": 200
+      },
       "execution": "browser-scenario",
       "assertionKind": "control",
       "controlSpec": {
@@ -1996,13 +2018,15 @@
       "visual": {
         "controlScenario": true
       },
-      "timing": {},
+      "timing": {
+        "codePromptMs": 200
+      },
       "execution": "browser-scenario",
       "assertionKind": "control",
       "controlSpec": {
-        "cancelOnLeave": true,
-        "temporaryCopiesAfter": 0,
-        "restoreStableFrameOnReturn": true
+        "pauseOnLeave": true,
+        "resumeOnReturn": true,
+        "temporaryCopiesAfter": 0
       },
       "eventSpec": {
         "fixture": "assignment",
@@ -2101,7 +2125,9 @@
       "visual": {
         "controlScenario": true
       },
-      "timing": {},
+      "timing": {
+        "codePromptMs": 200
+      },
       "execution": "browser-scenario",
       "assertionKind": "control",
       "controlSpec": {
@@ -2126,7 +2152,9 @@
       "visual": {
         "controlScenario": true
       },
-      "timing": {},
+      "timing": {
+        "codePromptMs": 200
+      },
       "execution": "browser-scenario",
       "assertionKind": "control",
       "controlSpec": {
@@ -2151,7 +2179,9 @@
       "visual": {
         "controlScenario": true
       },
-      "timing": {},
+      "timing": {
+        "codePromptMs": 200
+      },
       "execution": "browser-scenario",
       "assertionKind": "control",
       "controlSpec": {

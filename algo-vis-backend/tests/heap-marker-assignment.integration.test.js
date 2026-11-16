@@ -412,8 +412,8 @@ int main() {
   ]);
   assert.equal(
     window.ASMTraceFrameTween.markerTargetBeforeFrameEvents(trace, initializerFrame, marker),
-    `unresolved:${Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr')}`,
-    'raw state before initialization stays unresolved; presentation chooses its entry mode'
+    `${Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr')}#0`,
+    'constant initialization enters directly at the known target cell'
   );
   const declaration = initializerFrame.events.find(event => event.type === 'declare'
     && event.targets?.some(target => target.variableId === initializer.targets[0].variableId));
@@ -640,8 +640,8 @@ int main() {
     'an enabled comparison still needs visible operands for its canvas animation');
   assert.equal(comparison.canvasRenderable, false);
   assert.equal(comparison.autoAnimationUnavailableReason, 'missing-target');
-  assert.equal(window.ASMTraceEvents.showInspector(event, trace), false,
-    'initialization metadata shares its declaration row instead of duplicating it');
+  assert.equal(window.ASMTraceEvents.showInspector(event, trace), true,
+    'declaration and assignment keep independent inspector controls');
   const declaration = trace.frames.flatMap(frame => frame.events || []).find(e => e.type === 'declare' && e.name === 'i');
   assert.ok(declaration);
   assert.equal(window.ASMTraceEvents.showInspector(declaration, trace), true);

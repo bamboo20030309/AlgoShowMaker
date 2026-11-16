@@ -162,8 +162,8 @@ int main() {
   ]);
   assert.throws(() => findFrameDirectives(source.replace('[0:r-1][0:c]', '[0:r:1][0:c]')),
     /二維 row 範圍無效/);
-  assert.throws(() => findFrameDirectives(source.replace('[0:r-1][0:c]', '[0:][0:c]')),
-    /二維 row 範圍無效/);
+  const openEnded = findFrameDirectives(source.replace('[0:r-1][0:c]', '[0:][0:c]'))[0].styles[0].selector;
+  assert.deepEqual(openEnded.rowSelector, { type: 'range', startExpression: '0', endExpression: '', endInclusive: true });
 
   const { trace, window } = await compile(source);
   const gridId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'grid');

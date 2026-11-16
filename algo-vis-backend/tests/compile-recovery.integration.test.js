@@ -29,8 +29,16 @@ async function result(owner, job) {
 }
 const normal = marker => `#include <iostream>\nint main(){std::cout<<"${marker}";}`;
 async function assertDrained(base, directory) {
-  const q = await (await fetch(`${base}/api/compile/queue`)).json();
-  assert.equal(q.active + q.pending + q.asyncJobs.running + q.asyncJobs.queued + q.resultStreams.active, 0, JSON.stringify(q));
+  // Reading the HTTP body can precede the server's response close callback.
+  // Require the exact same zero counts within a bounded one-second cleanup window.
+  let q, drained = false;
+  const deadline = Date.now() + 1000;
+  do {
+    q = await (await fetch(`${base}/api/compile/queue`)).json();
+    drained = q.active + q.pending + q.asyncJobs.running + q.asyncJobs.queued + q.resultStreams.active === 0;
+    if (!drained) await new Promise(resolve => setTimeout(resolve, 20));
+  } while (!drained && Date.now() < deadline);
+  assert.equal(drained, true, 'queue/process/stream counters must all return to zero within 1000ms: ' + JSON.stringify(q));
   const executionDir = path.join(directory, 'executions');
   for (let i = 0; i < 30; i++) {
     if (!fs.existsSync(executionDir) || fs.readdirSync(executionDir).length === 0) return;

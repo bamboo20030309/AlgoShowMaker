@@ -11,6 +11,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+function loadTweenFixture(source, target) {
+  vm.runInContext(source, target);
+  const api=target.window?.ASMTraceFrameTween;
+  if(!api?.markerAssignmentMotion)return;
+  const original=api.markerAssignmentMotion;
+  api.markerAssignmentMotion=(...args)=>{
+    for(const entry of args[5]||[])for(const el of [entry.element,entry.previousVisual])
+      if(el&&!el.hasAttribute)el.hasAttribute=name=>el.getAttribute?.(name)!=null;
+    return original(...args);
+  };
+}
 
 // Exercise the renderer's binding adapter without adding a public test API.
 const source = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8')
@@ -31,7 +42,7 @@ vm.runInContext(
 // Load that real dependency instead of leaving the old harness incomplete.
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-model.js'), 'utf8'), context);
 vm.runInContext(source, context);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
+loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
 
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
@@ -170,7 +181,7 @@ test('unknown and known markers stay in separate groups and retain IDs when reso
 test('recursive automatic markers keep visual continuity without merging runtime identities', () => {
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {', 'window.ASMTraceFrameTween = { markerActivationChanged,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = (runtimeIdentity, continuityKey) => ({
     dataset: {
       traceSourceVariableId: 'heapify:i',
@@ -191,7 +202,7 @@ test('a reference parameter renames one continuing marker without re-entering', 
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerActivationChanged, previousVisualForEntry,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const aliasKey = 'auto-marker-alias:address-i:address-heap:$source';
   const caller = {
     dataset: {
@@ -343,7 +354,7 @@ test('a moved swap container settles before its swap event can start', () => {
 
 test('legacy lifecycle motion is preserved without moving text or array containers', () => {
   // This case must also run alone, without another test loading the tween module.
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
   const {
     visualLifecycleKind: kind,
     visualLifecycleOffsetY: offsetY,
@@ -456,7 +467,7 @@ test('an outgoing live object retained by a new keep snapshot never receives gen
     requestAnimationFrame() {}, cancelAnimationFrame() {}, performance: { now: () => 0 },
     queueMicrotask() {}
   });
-  vm.runInContext(tweenSource, keepContext);
+  loadTweenFixture(tweenSource, keepContext);
   const retained = keepContext.window.ASMTraceFrameTween.previousVisualRetainedByEnteringKeep;
   assert.equal(retained(
     'main:arr', { dataset: { traceRuntimeIdentity: 'runtime-arr' } },
@@ -500,7 +511,7 @@ test('derived markers sharing one runtime identity recover their own previous vi
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { previousVisualForEntry,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = (key, continuityKey, x) => ({
     dataset: {
       traceObjectKey: key,
@@ -530,7 +541,7 @@ test('a recursive marker with a new lifetime is not mistaken for exact-instance 
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerContinuationFor, markerNeedsEntrance,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const continuityKey = 'auto-marker:heapify:i:heapify:arr:i:0';
   const previous = {
     dataset: {
@@ -568,7 +579,7 @@ test('a loop-local marker redeclared after keep enters as a new visual lifetime'
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerDeclaredInFrame, markerNeedsEntrance, markerContinuationFor, previousVisualForEntry,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = {
     dataset: {
       traceObjectKey: 'marker-j',
@@ -613,7 +624,7 @@ test('a marker frozen inside keep ignores declarations from the new live frame',
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerDeclaredInFrame, markerNeedsEntrance,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = {
     dataset: {
       traceObjectKey: 'round_1:auto-frame-binding-main:j-main:arr-0',
@@ -634,7 +645,7 @@ test('a live marker never continues from a retained keep marker in legacy traces
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerContinuationFor, markerNeedsEntrance, previousVisualForEntry,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const continuityKey = 'auto-marker:main:j:main:arr:j:0';
   const live = {
     dataset: {
@@ -678,7 +689,7 @@ test('declaration and exit targets never bind to a retained keep marker', () => 
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { eventTargetVisualKeys, scopeExitVisualKeys,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const kept = {
     dataset: {
       traceObjectKey: 'round_1:marker-j',
@@ -832,8 +843,7 @@ test('each renderable sourced event prompts in code before its visual response',
     ordered: events => events,
     animation: type => ({ declare: 'declare', 'function-enter': 'code' })[type] || 'none'
   };
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
     promptContext
   );
   const visual = { dataset: {}, closest: () => null };
@@ -880,8 +890,7 @@ test('a for-header code range does not substitute for a missing canvas target', 
     ordered: events => events,
     animation: type => ({ compare: 'compare', 'function-enter': 'code' })[type] || 'none'
   };
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
     availabilityContext
   );
   const comparison = {
@@ -928,8 +937,7 @@ test('code-only and sourceless events do not add a redundant prompt hold', () =>
     ordered: events => events,
     animation: type => ({ 'function-enter': 'code', declare: 'declare' })[type] || 'none'
   };
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
     promptContext
   );
   const functionEnter = {
@@ -1044,8 +1052,7 @@ test('one multi-target @exit batch finishes in parallel before keep appears', ()
     ordered: events => events,
     animation: type => type === 'visual-exit' || type === 'scope-exit' ? 'exit' : 'none'
   };
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
     batchContext
   );
   const exits = ['min_idx', 'i'].map((name, index) => ({
@@ -1089,11 +1096,10 @@ test('one multi-target @exit batch finishes in parallel before keep appears', ()
     traceDocument, frame, 1, 520, new Map(), new Map(), new Map(),
     500, previousObjects
   );
-  assert.equal(timeline.length, 2);
-  assert.equal(timeline[0].start, 500);
-  assert.equal(timeline[1].start, 500);
-  assert.equal(timeline[0].end, 680);
-  assert.equal(timeline[1].end, 680);
+  assert.equal(timeline.length, 2);  assert.equal(timeline[0].start, 700);
+  assert.equal(timeline[1].start, 700);
+  assert.equal(timeline[0].end, 920);
+  assert.equal(timeline[1].end, 920);
 
   const plan = batchContext.window.ASMTraceFrameTween.createPlaybackPlan({
     frame,
@@ -1105,10 +1111,10 @@ test('one multi-target @exit batch finishes in parallel before keep appears', ()
   });
   const exitPhase = plan.phases.find(phase => phase.id === 'pre-keep-exit');
   const keepPhase = plan.phases.find(phase => phase.id === 'keep-transition');
-  assert.equal(exitPhase.durationMs, 180);
+  assert.equal(exitPhase.durationMs, 420);
   assert.equal(exitPhase.steps[0].startMs, 500);
   assert.equal(exitPhase.steps[1].startMs, 500);
-  assert.equal(keepPhase.startMs, 680);
+  assert.equal(keepPhase.startMs, 920);
   assert.equal(keepPhase.steps[0].subtype, 'in-place-fade');
 });
 
@@ -1123,8 +1129,7 @@ test('consecutive scope-exit events keep separate rows but leave in one parallel
     ordered: events => events,
     animation: type => type === 'scope-exit' ? 'exit' : type === 'assign' ? 'assign' : 'none'
   };
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
     exitContext
   );
   const target = name => ({
@@ -1192,8 +1197,7 @@ test('a visible event between exits preserves runtime order and starts a new exi
     ordered: events => events,
     animation: type => type === 'scope-exit' ? 'exit' : type === 'assign' ? 'assign' : 'none'
   };
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
     orderedContext
   );
   const visual = name => ({
@@ -1229,16 +1233,15 @@ test('a visible event between exits preserves runtime order and starts a new exi
         b: { name: 'b', kind: 'scalar' },
         value: { name: 'value', kind: 'scalar' }
       },
-      studio: { eventIntervalMs: 100 }
+      studio: { eventSettings: { gapMs: 0 } }
     },
     { id: 'ordered-exits', events: [exit('a', 1), assign, exit('b', 3)], state: {} },
     1, 520, placements, placements, elements, 0, elements
   );
 
-  assert.equal(timeline.length, 3);
-  assert.equal(timeline[0].end, timeline[1].start,
+  assert.equal(timeline.length, 3);  assert.equal(timeline[0].end, timeline[1].promptStart,
     'the next event begins immediately after the exit when the default gap is zero');
-  assert.equal(timeline[1].end, timeline[2].start,
+  assert.equal(timeline[1].end, timeline[2].promptStart,
     'the second exit stays after the intervening event without an extra default wait');
   assert.notEqual(timeline[0].start, timeline[2].start,
     'exit batches must not jump across another visible event');
@@ -1287,8 +1290,8 @@ test('forward replay checkpoints isolate every mutation from later frame state',
   assert.equal(display(plan.initialState['value:arr#0']), '5');
   assert.equal(display(plan.initialState['value:arr#1']), '7');
   assert.equal(plan.checkpoints[0].mode, 'animated');
-  assert.equal(plan.checkpoints[0].commitMs, 300,
-    'assignment commits after the shared 300ms transfer, before the custom 760ms slot ends');
+  assert.equal(plan.checkpoints[0].commitMs, 500,
+    'assignment commits after the shared 500ms transfer, before the custom 760ms slot ends');
   assert.equal(display(plan.checkpoints[0].afterState['value:arr#0']), '3');
   assert.equal(plan.checkpoints[1].mode, 'instant');
   assert.equal(plan.checkpoints[1].commitMs, 760);
@@ -1393,8 +1396,8 @@ test('a declaration initializer stays blank until its paired assignment commits'
   assert.equal(track.steps[0].after, null,
     'the declaration controls presence only when a paired initializer assignment exists');
   assert.equal(track.steps[1].after.value, 9);
-  assert.equal(track.steps[1].commitMs, 520,
-    'the deliberately supplied 220ms declaration is followed by a 300ms assignment transfer');
+  assert.equal(track.steps[1].commitMs, 720,
+    'the deliberately supplied 220ms declaration is followed by a 500ms assignment transfer');
 });
 
 test('a newly declared marker starts in the unresolved group before assignment motion', () => {
@@ -1413,7 +1416,7 @@ test('a newly declared marker starts in the unresolved group before assignment m
     fs.readFileSync(path.join(__dirname, '../public/trace-pointer-model.js'), 'utf8'),
     motionContext
   );
-  vm.runInContext(tweenSource, motionContext);
+  loadTweenFixture(tweenSource, motionContext);
   const marker = {
     dataset: {
       traceBindingTarget: 'arr#2', traceSourceVariableId: 'j',
@@ -1441,8 +1444,7 @@ test('a newly declared marker starts in the unresolved group before assignment m
       markerPointPath: {}, markerLabelBox: { getAttribute: () => '18' }
     }]
   );
-  motion.update(0);
-  assert.ok(motion.arrowStates.get('marker-j').x < 0,
+  motion.update(0);  assert.ok(motion.arrowStates.get('marker-j').x < 0,
     'before j has a value, its label is parked to the left of the leftmost cell');
   motion.update(550);
   assert.ok(motion.arrowStates.get('marker-j').x > -17
@@ -1459,7 +1461,7 @@ test('pre-keep exits remove matching marker lifetimes from the retained snapshot
     requestAnimationFrame() {}, cancelAnimationFrame() {}, performance: { now: () => 0 },
     queueMicrotask() {}
   });
-  vm.runInContext(tweenSource, exitContext);
+  loadTweenFixture(tweenSource, exitContext);
   const attributes = new Map();
   const marker = {
     dataset: {
@@ -1490,7 +1492,7 @@ test('a scope exit already represented by the current marker does not need a pre
     requestAnimationFrame() {}, cancelAnimationFrame() {}, performance: { now: () => 0 },
     queueMicrotask() {}
   });
-  vm.runInContext(tweenSource, exitContext);
+  loadTweenFixture(tweenSource, exitContext);
   const marker = (lifetimeIdentity, connected = true) => ({
     isConnected: connected,
     dataset: {
@@ -1525,7 +1527,7 @@ test('a marker target one cell beyond the visible array remains renderable by ex
     window: {}, document: { documentElement: { dataset: {} } },
     requestAnimationFrame() {}, cancelAnimationFrame() {}, performance: { now: () => 0 }
   });
-  vm.runInContext(tweenSource, markerContext);
+  loadTweenFixture(tweenSource, markerContext);
   const placements = new Map([
     ['arr#4', { x: 160, y: 100, width: 40, height: 40 }],
     ['arr#5', { x: 200, y: 100, width: 40, height: 40 }]
@@ -1538,7 +1540,7 @@ test('assignment retains the parked arrow until motion starts, then reaches the 
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {', 'window.ASMTraceFrameTween = { markerAssignmentMotion,');
   context.window.ASMTraceRules = { resolveExpression: (doc, frame, expr, locals) => Number(locals.i) };
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const element = {
     dataset: { traceBindingTarget: 'arr#2', traceSourceVariableId: 'i', traceMarkerIndexExpression: 'i' },
     getAttribute: name => name === 'transform' ? 'translate(180,120)' : null
@@ -1556,8 +1558,7 @@ test('assignment retains the parked arrow until motion starts, then reaches the 
     { variables: { i: { name: 'i' } } }, {},
     [{ animation: 'assign', event, start: 0, motionStart: 100, end: 200 }],
     placements, new Map([['marker', element]]), [entry]);
-  motion.update(99);
-  assert.deepEqual({ ...motion.arrowStates.get('marker') }, { x: 63, y: 40, targetX: 63, targetY: 60 });
+  motion.update(99);  assert.deepEqual({ ...motion.arrowStates.get('marker') }, { x: 63, y: 40, targetX: 63, targetY: 60, targetMissing: true });
   motion.update(150);
   assert.ok(motion.arrowStates.get('marker').x > 63);
   assert.ok(motion.arrowStates.get('marker').x < 180);
@@ -1571,7 +1572,7 @@ test('same-cell marker reflow starts with the overlapping entrance, then frame e
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerGroupReflowDuration, markerFrameMotionDelay,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const existingPrevious = {
     dataset: {
       traceBindingTarget: 'arr#0',
@@ -1690,8 +1691,7 @@ test('same-cell marker reflow starts with the overlapping entrance, then frame e
     direction: 1,
     enteringMarkerKeys: ['marker-j'],
     transitionSteps: [reflowStep]
-  });
-  assert.equal(preEventPlan.phases.find(phase => phase.id === 'frame-transition').startMs, 0);
+  });  assert.equal(preEventPlan.phases.find(phase => phase.id === 'frame-transition').startMs, 0);
   assert.equal(preEventPlan.phases.find(phase => phase.id === 'object-entrance').startMs, 0,
     'the incoming marker appears when its peers begin making room');
   assert.equal(preEventPlan.preEventDurationMs, 180,
@@ -1778,8 +1778,7 @@ test('a caller marker waits for the outgoing same-cell marker to move and exit',
     eventTimeline: timeline,
     currentElements: new Map([['marker-i', entering]]),
     previousObjects: new Map([['marker-now', outgoing]])
-  });
-  assert.equal(barriers.get('marker-i'), 740,
+  });  assert.equal(barriers.get('marker-i'), 740,
     'the caller marker waits until the outgoing parameter finishes its exit');
 
   const plan = context.window.ASMTraceFrameTween.createPlaybackPlan({
@@ -1803,7 +1802,7 @@ test('a hidden caller marker does not move an outgoing same-cell parameter sidew
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { deferredMarkerEntranceBarriers, exitMarkerReflowSchedule,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = (variableId, lifetimeIdentity) => ({
     dataset: {
       traceSourceVariableId: variableId,
@@ -1865,7 +1864,7 @@ test('marker event motion preserves same-cell reflow and a peer entrance', () =>
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerAssignmentMotion,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = (variableId, transform) => ({
     dataset: {
       traceBindingTarget: 'arr#0',
@@ -1961,7 +1960,7 @@ test('a marker exit and its same-cell peer close-gap motion start together', () 
     requestAnimationFrame() {}, cancelAnimationFrame() {}, performance: { now: () => 0 },
     queueMicrotask() {}
   });
-  vm.runInContext(tweenSource, motionContext);
+  loadTweenFixture(tweenSource, motionContext);
   const motionMarker = (variableId, lifetime, x) => ({
     dataset: {
       traceBindingTarget: 'arr#0', traceSourceVariableId: variableId,
@@ -2117,7 +2116,7 @@ test('an exiting marker makes room for a marker that remains on its destination 
   }], 'the existing marker makes room while the arriving marker moves');
 });
 
-test('declaration and initializer keep separate slots for visible sources and literals', () => {
+test('initialization combines presentation while retaining declaration and assignment semantics', () => {
   const c = vm.createContext({
     window: {}, document: { documentElement: { dataset: {} } },
     queueMicrotask() {}, CustomEvent: function CustomEvent() {}
@@ -2126,8 +2125,7 @@ test('declaration and initializer keep separate slots for visible sources and li
     ordered: events => [...events].sort((left, right) => left.order - right.order),
     animation: type => ({ declare: 'declare', assign: 'assign' })[type] || 'none'
   };
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), c
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), c
   );
   const source = { dataset: {}, closest: () => null, querySelector: () => null };
   const target = { dataset: {}, closest: () => null, querySelector: () => null };
@@ -2157,17 +2155,14 @@ test('declaration and initializer keep separate slots for visible sources and li
     { variables: { x: { name: 'x' }, a: { name: 'a' } } }, frame, 1, 520,
     new Map(), placements, elements, 0, null, null,
     { skipAvailability: true }
-  );
-  assert.equal(timeline.length, 2);
+  );  assert.equal(timeline.length, 1);
   assert.equal(timeline[0].event, declaration);
   assert.equal(timeline[0].animation, 'declare');
-  assert.equal(timeline[0].duration, 220);
-  assert.equal(timeline[0].declarationInitializerTransfer, false);
-  assert.equal(timeline[1].event, initializer);
-  assert.equal(timeline[1].animation, 'assign');
-  assert.equal(timeline[1].start, 220);
-  assert.equal(timeline[1].duration, 1260);
-  assert.equal(timeline[1].end, 1480);
+  assert.equal(timeline[0].declarationInitializerTransfer, true);
+  assert.deepEqual([...timeline[0].replayMemberEvents], [initializer]);
+  assert.equal(timeline[0].start, 200, 'yellow source prompt precedes the visual entrance');
+  assert.equal(timeline[0].duration, 1480, '220ms entrance plus the authored transfer recipe');
+
   const replay = c.window.ASMTraceFrameTween.createForwardReplayPlan(
     { variables: { x: { name: 'x' }, a: { name: 'a' } } }, frame, timeline, 1
   );
@@ -2181,19 +2176,16 @@ test('declaration and initializer keep separate slots for visible sources and li
     new Map(), placements, elements, 0, null, null,
     { skipAvailability: true }
   );
-  assert.equal(literalTimeline.length, 2);
+  assert.equal(literalTimeline.length, 1);
   assert.equal(literalTimeline[0].declarationInitializerTransfer, false);
-  assert.equal(literalTimeline[1].event, initializer);
-  assert.equal(literalTimeline[1].start, 220);
-  assert.equal(literalTimeline[1].end, 1480);
+  assert.equal(literalTimeline[0].declarationInitializerDirect, true);
+  assert.deepEqual([...literalTimeline[0].replayMemberEvents], [initializer]);
   const literalReplay = c.window.ASMTraceFrameTween.createForwardReplayPlan(
     { variables: { x: { name: 'x' } } }, frame, literalTimeline, 1
   );
   assert.equal(literalReplay.checkpoints.find(item => item.event === initializer).mode, 'animated');
-  assert.equal(literalReplay.valueTracks.find(track => (
-    track.kind === 'value' && track.key === 'x'
-  )).initial, null,
-    'a literal initializer remains blank until its separate falling-value assignment commits');
+  assert.equal(literalTimeline[0].duration, 220, 'a literal uses only the direct declaration entrance');
+
 });
 
 test('renderer gives recursive activations one stable pointer role and distinct instances', () => {
@@ -2270,7 +2262,7 @@ test('same-cell reflow finishes before a later i++ marker movement', () => {
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerAssignmentMotion,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   context.window.ASMTraceRules = {
     resolveExpression: (doc, frame, expression, locals) => Number(locals[expression])
   };
@@ -2337,7 +2329,7 @@ test('destination peers make room as soon as an arriving marker starts moving', 
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerAssignmentMotion,');
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   context.window.ASMTraceRules = {
     resolveExpression: (doc, frame, expression, locals) => Number(locals[expression])
   };
@@ -2423,7 +2415,7 @@ test('a moving declaration continuation uses the standard cross-cell duration', 
     fs.readFileSync(path.join(__dirname, '../public/trace-pointer-model.js'), 'utf8'),
     c
   );
-  vm.runInContext(source, c);
+  loadTweenFixture(source, c);
   const tween = c.window.ASMTraceFrameTween;
   const visual = (identity, target, x) => ({
     dataset: {
@@ -2525,7 +2517,7 @@ test('compound scalar writes move their dependent marker but array compounds do 
     document: { documentElement: { dataset: {} } },
     queueMicrotask() {}
   });
-  vm.runInContext(source, c);
+  loadTweenFixture(source, c);
   const marker = {
     dataset: { traceSourceVariableId: 'build:i', traceRuntimeIdentity: 'build-i-life' },
     closest: () => null
@@ -2567,7 +2559,7 @@ test('compare marker followers use the event checkpoint rather than the final re
 
 test('j and j+1 follow their comparison-time cells before a later j--', () => {
   // This case must also run by name without relying on earlier tests to load it.
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
+  loadTweenFixture(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
   const doc = { variables: { j: { name: 'j', kind: 'scalar' } } };
   const frame = { state: {} };
   const checkpoint = { beforeState: { 'value:j#0': { kind: 'scalar', value: 2 } } };
@@ -2590,7 +2582,7 @@ test('a disabled marker assignment still updates logical position after earlier 
   context.window.ASMTraceRules = {
     resolveExpression: (doc, frame, expr, locals) => Number(locals[expr])
   };
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = {
     dataset: {
       traceBindingTarget: 'arr#1',
@@ -2642,7 +2634,7 @@ test('a terminal loop increment remains at its event-final marker position', () 
   context.window.ASMTraceRules = {
     resolveExpression: (doc, frame, expression, locals) => Number(locals[expression])
   };
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = {
     dataset: {
       traceBindingTarget: 'arr#4',
@@ -2691,7 +2683,7 @@ test('a disabled loop-boundary increment does not update the logical marker posi
   context.window.ASMTraceRules = {
     resolveExpression: (doc, frame, expression, locals) => Number(locals[expression])
   };
-  vm.runInContext(tweenSource, context);
+  loadTweenFixture(tweenSource, context);
   const marker = {
     dataset: {
       traceBindingTarget: 'arr#4', traceSourceVariableId: 'j',
@@ -2767,7 +2759,7 @@ test('a later same-frame declaration makes room before its initializer moves awa
   const c = vm.createContext({ window: { ASMTraceRules: {
     resolveExpression: (doc, frame, expression, locals) => locals[expression]
   } }, document: { documentElement: { dataset: {} } } });
-  vm.runInContext(source, c);
+  loadTweenFixture(source, c);
   const marker = (name, index, x) => ({
     dataset: { traceBindingTarget: `arr#${index}`, traceSourceVariableId: name,
       traceMarkerIndexExpression: name, traceMarkerSortKey: name },

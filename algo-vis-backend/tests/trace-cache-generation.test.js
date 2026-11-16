@@ -22,7 +22,7 @@ test('source, input, old generation and missing provenance are distinguished wit
  assert.equal(trace.provenance.generationFingerprint,'a'.repeat(64));
  delete trace.provenance.generationFingerprint;assert.equal(api.status(trace,'code','input').kind,'outdated');
 });
-test('stale cached ID is never returned; shared recovery updates ID and survives save/reopen',async()=>{
+test('stale runtime results rebuild once per session; reopening recipes executes again without persistent Trace',async()=>{
  const api=provenance();api.configure({generationFingerprint:'b'.repeat(64)});
  const client=Storage.create(new IDBFactory(),null);
  const old={schemaVersion:'1.0',frames:[{old:true}],provenance:{...api.create('code','input'),generationFingerprint:'a'.repeat(64)},studio:{eventSettings:{readHighlightEnabled:false},codePanelFontSize:19}};
@@ -38,10 +38,13 @@ test('stale cached ID is never returned; shared recovery updates ID and survives
  const [a,b]=await Promise.all([store.materializeAnimation(saved),store.materializeAnimation(saved)]);
  assert.equal(runs,1);assert.equal(a.traceDocument.frames[0].new,true);assert.deepEqual(a,b);
  const result=await store.detachDeck({groups:[{slides:[{animation:a}]}]});
- assert.notEqual(result.groups[0].slides[0].animation.traceRef,oldID);
+ assert.notEqual(result.groups[0].slides[0].animation.traceRef, oldID, 'in-session references identify replacement results');
  await client.saveDeck('updated',JSON.stringify(result),store.retainedKeys());
  const reopened=await client.loadDeck('updated');
- const materialized=await Store.create(Storage,client,null,()=>{throw Error('must use new cache');},options).materializeDeck(reopened);
+ assert.equal(reopened.groups[0].slides[0].animation.traceRef,undefined);
+ assert.equal(reopened.groups[0].slides[0].animation.traceDocument,undefined);
+ const materialized=await Store.create(Storage,client,null,async a=>{runs++;return {...a,traceDocument:{...trace,...a.traceView}};},options).materializeDeck(reopened);
+ assert.equal(runs,2,'reopening a persisted recipe executes again instead of restoring a Trace cache');
  assert.equal(materialized.groups[0].slides[0].animation.traceDocument.frames[0].new,true);
  assert.equal(materialized.groups[0].slides[0].animation.traceDocument.studio.eventSettings.readHighlightEnabled,false);
  assert.ok(states.includes('outdated')&&states.includes('updating'));assert.equal(states.at(-1),'current');

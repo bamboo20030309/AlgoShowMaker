@@ -43,7 +43,7 @@ int main() {
   assert.equal(decrement.autoAnimationDisabled, false);
   elements.delete(`${arr}#0`);
   window.ASMTraceFrameTween.updateEventAvailability(trace, frame, placements, elements);
-  assert.equal(assignment.autoAnimationDisabled, true, 'an actually hidden source must still disable assignment');
+  assert.equal(assignment.autoAnimationDisabled, false, 'a visible target can use the captured value when its source cell is hidden');
   assert.equal(decrement.autoAnimationDisabled, false, 'array source visibility does not suppress j--');
 });
 
@@ -92,8 +92,8 @@ int main() {
   assert.equal(event.update, undefined);
   assert.equal(event.payload.before.value, 0);
   assert.equal(event.payload.after.value, 27);
-  assert.equal(Object.hasOwn(event.payload, 'source'), false,
-    'the renderer reads the source cell text without evaluating the C++ expression twice');
+  assert.equal(Number(event.payload.source.value), 27,
+    'capture the source once at runtime while retaining its visible cell identity');
   assert.equal(event.targets.find(target => target.role === 'target').variableId, sum);
   assert.equal(event.targets.find(target => target.role === 'source').variableId, tree);
   assert.equal(event.targets.find(target => target.role === 'source').resolvedIndex, 1);
@@ -302,6 +302,6 @@ int main() {
   assert.equal(Number(frame.state[arr].data.items[0].value), 5);
   const write = frame.events.find(event => event.type === 'write'
     && event.targets?.some(target => target.variableId === arr));
-  assert.equal(write.compound, undefined,
-    'unsafe target expressions preserve the single-evaluation write path');
+  assert.equal(write.compound, true,
+    'nested target side effects remain single-evaluation while retaining compound assignment semantics');
 });

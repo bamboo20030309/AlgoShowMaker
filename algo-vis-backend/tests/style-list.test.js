@@ -74,7 +74,7 @@ int main(){int a[2]={},b[2]={};
   assert.throws(() => findFrameDirectives(`int main(){int a[2]={},b[2]={};
 // @frame a,b
 // @style a,,b background AV_green
-}`), /目標列表無效/);
+}`), /目標\s*列表無效：a,,b/);
 });
 
 test('preset list styles retain independent override priority', () => {

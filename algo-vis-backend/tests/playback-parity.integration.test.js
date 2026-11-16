@@ -28,7 +28,7 @@ function surface(mode, rate) {
     URLSearchParams, localStorage: { getItem: () => '' },
     location: { search: mode === 'runtime' ? '?asmEmbed=runtime' : '' },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
-    document: { documentElement: {}, getElementById: id => id === 'arraySvg' ? canvas : null, addEventListener() {},
+    document: { documentElement: {}, querySelectorAll: () => [], getElementById: id => id === 'arraySvg' ? canvas : null, addEventListener() {},
       body: { classList: { contains: () => studioOpen } } },
     getComputedStyle: () => ({ getPropertyValue: () => rate }),
     ResizeObserver: class { constructor(callback) { resizeCallback = callback; } observe() {} },
@@ -132,7 +132,7 @@ for (const name of ['bubble', 'insertion']) test(`${name}: save/reopen routes id
   const code = fs.readFileSync(path.join(__dirname, 'fixtures', name + '.cpp'), 'utf8');
   const { trace } = await compile(code, fixture.input);
   trace.studio.eventSettings = { gapMs: 300, defaultEnabled: {}, timelineTypes: {} };
-  trace.studio.cameraRules = [{ id: 'authored', manualFrame: true, centerX: 120, centerY: 90, zoom: 1.4 }];
+  trace.frames.forEach(frame => { frame.camera = { manualFrame:true,centerX:120,centerY:90,zoom:1.4 }; });
   trace.studio.positions = { [trace.frames[0].id]: { arr: { x: 40, y: 50 } } };
   const saved = JSON.parse(JSON.stringify({ mode: 'trace', code, input: fixture.input, traceDocument: trace }));
   for (const rate of [1.2, 2]) {
@@ -150,7 +150,7 @@ for (const name of ['bubble', 'insertion']) test(`${name}: save/reopen routes id
       await s.c.CodeScript.reset(); s.flush();
       await s.c.CodeScript.goto(2); s.flush();
       assert.equal(s.c.ASMTracePlayer.getCurrentFrame(), 2);
-      assert.deepEqual(plain(s.c.ASMTracePlayer.getDocument().studio), plain(trace.studio));
+      assert.deepEqual(plain(s.c.ASMTracePlayer.getDocument().studio), plain({ ...trace.studio, positions: undefined }));
     }
     for (const s of surfaces.slice(1)) {
       assert.deepEqual(s.renders, surfaces[0].renders);
@@ -166,8 +166,8 @@ test('shared camera handles auto capture, keep, bindings and instant editing', (
   const trace = { frames: [frame], studio: { cameraRules: [] } };
   s.c.ASMTraceCamera.apply(trace, frame, null, false);
   assert.deepEqual(s.cameras.pop(), ['fit', .92, false, 260, 0, 0, true]);
-  trace.studio.cameraRules = [{ manualFrame: true, centerX: 1, centerY: 2, zoom: 2,
-    binding: { targetKey: 'arr', dx: 3, dy: 4 } }];
+  frame.camera = { manualFrame: true, centerX: 1, centerY: 2, zoom: 2,
+    binding: { targetKey: 'arr', dx: 3, dy: 4 } };
   s.c.ASMTraceCamera.apply(trace, frame, null, false);
   assert.deepEqual(s.cameras.pop(), ['manual', 103, 204, 2, false, 260]);
 });
@@ -175,8 +175,7 @@ test('shared camera handles auto capture, keep, bindings and instant editing', (
 test('camera is recalculated after a hidden slide iframe receives its final size', () => {
   const s = surface('runtime', 1);
   const trace = {
-    frames: [{ id: 'frame-0', state: {} }],
-    studio: { cameraRules: [{ manualFrame: true, centerX: 40, centerY: 50, zoom: 1.6 }] }
+    frames: [{ id: 'frame-0', state: {}, camera: { manualFrame:true,centerX:40,centerY:50,zoom:1.6 } }], studio: {}
   };
   s.c.ASMTracePlayer.apply(trace);
   s.flush();
@@ -209,8 +208,7 @@ test('frame completion awaits both SVG playback and the parallel code presenter'
 test('late viewport refresh preserves a manually panned subtab camera until navigation', async () => {
   const s = surface('algorithm', 1);
   s.load({ mode: 'trace', code: '', input: '', traceDocument: {
-    frames: [{ id: 'a', state: {} }, { id: 'b', state: {} }],
-    studio: { cameraRules: [{ manualFrame: true, centerX: 40, centerY: 50, zoom: 1.6 }] } } });
+    frames: ['a','b'].map(id => ({id,state:{},camera:{manualFrame:true,centerX:40,centerY:50,zoom:1.6}})), studio: {} } });
   s.c.ASMTracePlayer.preserveViewportCamera({ centerX: 321, centerY: -147, scale: 1.73 });
   s.resize(1280, 720); s.flush(); await new Promise(setImmediate);
   assert.deepEqual(s.cameras.at(-1), ['manual', 321, -147, 1.73, false]);

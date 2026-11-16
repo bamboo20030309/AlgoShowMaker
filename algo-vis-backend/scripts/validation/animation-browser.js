@@ -362,9 +362,9 @@ async function runAnimationBrowser(baseURL) {
               const nodes = [...presenter.getPanel().querySelectorAll('[data-trace-event-ids]')]
                 .filter(node => node.dataset.traceEventIds.split(/\s+/).includes(id));
               window.__callCodeChecks.samples++;
-              if (!nodes.length || nodes.some(node => !node.classList.contains('is-complete')
-                || node.classList.contains('is-active'))) {
-                window.__callCodeChecks.failures.push({ kind: 'function-call-code-grey', id, nodes: nodes.length });
+              if (!nodes.length || nodes.some(node => !node.classList.contains('is-active')
+                || node.classList.contains('is-complete'))) {
+                window.__callCodeChecks.failures.push({ kind: 'function-call-code-active-yellow', id, nodes: nodes.length });
               }
             });
           });
