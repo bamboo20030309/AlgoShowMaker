@@ -111,3 +111,8 @@ Windows 的記憶體限制驗證有 1 項平台略過；Linux 已補驗。trace-
 - 事件：test-results/revalidation-2026-11-17/events-summary.json；資源與授權：同目錄 linux.log、licenses.log。
 - 續跑狀態已根據實際通過紀錄，透過既有 readTestState／recordFileResult API 登記 rich-text；保留原始全量結果、測試指紋與重跑紀錄。仍為failed狀態，下次僅排入64個未通過檔及兩個動畫前置；依賴變動則自動失效。
 - 未合併main、未發布release、未更新使用者投影片或雲端資料。
+
+
+## 後續分類核實
+
+本報告保留全量執行當時的分類；後續查到renderer產品自報版本不一致，不能歸咎於測試過時。最新逐檔原因與分類更正見 [小測試失敗核實](../2026-11-18-small-test-failure-audit/delivery.md)。
