@@ -31,7 +31,7 @@ test('rich text fragments preserve base and per-character styles in new and exis
         if (sessionStorage.getItem('fixture')) return;
         localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(value)); sessionStorage.setItem('fixture', '1');
       }, deck);
-      const ready = () => page.waitForFunction(() => fixtureCanvas?.getObjects().length >= 2 && Reveal.isReady());
+      const ready = () => page.waitForFunction(() => window.fixtureCanvas?.getObjects().length >= 2 && Reveal.isReady());
       await page.goto(base + '/slides.html'); await ready();
       if (!(await page.locator('body').getAttribute('class')).includes('asm-edit-mode')) await page.locator('#modeToggleBtn').click();
       await page.evaluate(() => {
