@@ -42,7 +42,9 @@ int main() {
         await page.waitForFunction(() => !document.getElementById('runBtn').classList.contains('loading'),
           null, { timeout: 30000 });
         const appliedSource = await page.evaluate(() => ASMTracePlayer.getDocument()?.sourceCode || '');
-        assert.equal(appliedSource.replace(/\r\n/g, '\n'), code.replace(/\r\n/g, '\n'),
+        // RUN may synchronize the trailing Studio settings. Compare all executable
+        // code/directives through the production normalizer, not UI-only metadata.
+        assert.equal(require('../public/trace-provenance').sourceText(appliedSource), require('../public/trace-provenance').sourceText(code),
           `${name} applies the code that was compiled`);
         const probes = await page.evaluate(async final => {
           const doc = ASMTracePlayer.getDocument();

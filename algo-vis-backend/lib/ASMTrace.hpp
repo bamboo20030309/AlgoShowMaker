@@ -1312,7 +1312,8 @@ template <typename TargetFactory, typename Action, typename TargetsFactory>
 decltype(auto) event_nested_mutation(int line, const char* signature,
     const char* variable_id, const char* expression, bool assignment, bool update,
     TargetFactory target_factory, Action action, TargetsFactory targets_factory,
-    const std::string& source_value = "null") {
+    const std::string& source_value = "null",
+    const std::string& operation_metadata = "", bool bitwise = false) {
   auto&& target = target_factory();
   const std::string before = encode_value(target);
   return complete_expression([&]()->decltype(auto) { return action(target); }, [&]() {
@@ -1322,7 +1323,9 @@ decltype(auto) event_nested_mutation(int line, const char* signature,
         + ",\"expression\":" + quoted(expression ? expression : "")
         + ",\"animate\":true,\"nestedExpression\":true"
         + (update ? ",\"update\":true" : assignment ? "" : ",\"compound\":true")
-        + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + (update ? after : source_value) + "}"
+        + operation_metadata
+        + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + (update ? after : source_value)
+        + (bitwise ? ",\"left\":" + before + ",\"right\":" + source_value : "") + "}"
         + ",\"targets\":" + targets_factory());
   });
 }

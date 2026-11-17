@@ -177,3 +177,8 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 2026-11-04 依使用者最新確認，保留目前排程，恢復 504d51c 原始比較視覺。比較維持 1560 ms：180 進場、400 觀察、300 動作、420 結果、260 復原。大小比較共同上抬後縮放，相等比較先對齊再靠近；第 580 ms 起隨動作漸顯結果，880 ms 完全顯示。運算符保留原式，假條件在符號上加斜線，不另附 true／false。單值條件框恢復原版進場時機。
 
 `node --test tests/restored-comparison.browser.test.js` 使用實際 SVG、固定時鐘及播放按鈕，驗證新建與保存重開的舊 Trace、自訂樣式、1 倍／2 倍的手動與自動播放。一般賦值為 1260 ms，但第 660 ms 抵達即提交，後面的停留不能重複改值；宣告初始化另加 220 ms 入場。相關固定答案見 `tests/fixtures/event-contracts/manifest.json`，依影響範圍選案例執行，不因調整節奏重跑全部演算法。
+
+
+## 巢狀複合操作
+
+`tests/nested-compound-operations.integration.test.js` 以十種複合賦值的獨立數值答案，核對 RHS／LHS 各求值一次、內層事件先於外層、位移量與位元來源資料、參考回傳及實際格子索引。另驗 `a[i++]--` 與 `++a[i--]`，避免用字串掃描混淆內外運算子。需提供隔離服務的 ASM_TEST_BASE_URL；搭配 `nested-expressions.integration.test.js`、`postfix-presentation.integration.test.js`。位元畫面使用 `bit-shift.integration.test.js`、`bitwise.integration.test.js`，不要只驗最終計算值。
