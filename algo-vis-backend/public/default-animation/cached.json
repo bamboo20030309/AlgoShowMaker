@@ -1,0 +1,17 @@
+{
+  "format": "AlgoShowMaker.default-animation",
+  "packageVersion": 1,
+  "engineVersion": "15/1",
+  "totalFrames": 116,
+  "generationFingerprint": "d1cec745ab369927affca0f9c5a61537603a4c1a7c43253b6b1b68e4019e85df",
+  "full": {
+    "url": "/default-animation/linear-sieve-full-f0b7a54b4d4ef33b469e74ec612501924d5a1c20e67f4d8491d213434f9b136f.asmtrace",
+    "contentHash": "f0b7a54b4d4ef33b469e74ec612501924d5a1c20e67f4d8491d213434f9b136f",
+    "bytes": 374366
+  },
+  "preview": {
+    "url": "/default-animation/linear-sieve-preview-b5bdd9d0c5fadae3baa0f9578465cf5e36f912cecd184f3ce7126263913a9fc3.asmtrace",
+    "contentHash": "b5bdd9d0c5fadae3baa0f9578465cf5e36f912cecd184f3ce7126263913a9fc3",
+    "bytes": 11485
+  }
+}

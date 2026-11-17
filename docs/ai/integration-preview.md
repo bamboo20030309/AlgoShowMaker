@@ -23,6 +23,7 @@
 - Release 與公開部署另依使用者授權執行，不因整合推送自動發布。
 - 依 2026-11-16 更新：不再發布或保存 Trace 結果。階段驗收使用 `prebuild:guest-decks -- --prewarm --base-url <整合或建置服務>` 順序執行公開教材、只保存執行檔 ID，再用 `--verify-only` 檢查封裝與來源。載入投影片時從第一個動畫依序重新執行。推送不代表授權發布；詳見 [執行檔與 Trace 生命週期](../guides/trace-cache-updates.md)。
 - 每輪新任務以主代理指定的完整 checkpoint commit 為基準，各自獨立分支與 worktree。
+- 2026-11-18 例外：algorithm.html 預設線篩保留獨立靜態 Trace；其餘投影片仍不保存結果。更新方式見快取生命週期文件。
 
 ## 本機設定
 

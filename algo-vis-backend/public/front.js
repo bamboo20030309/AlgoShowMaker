@@ -616,13 +616,38 @@ async function loadDefaultAlgorithm() {
   if (!canApplyDefaultAlgorithm()) return;
   defaultAlgorithmLoadController = new AbortController();
   const { signal } = defaultAlgorithmLoadController;
+  setDefaultAnimationState('loading', 0);
   try {
-    await window.ASMDeck.clearCache();
+    // 清理舊 IndexedDB 不應阻擋預設程式與靜態動畫下載。
+    window.ASMDeck.clearCache().catch(error => console.warn('舊動畫快取清理未完成', error));
     const response = await fetch(DEFAULT_ALGORITHM_MANIFEST, { signal, cache: 'no-store' });
     if (!response.ok) throw new Error(`無法讀取預設線篩設定 (${response.status})`);
     const manifest = await response.json();
     if (!canApplyDefaultAlgorithm() || signal.aborted) return;
+    activeBuiltinDefault = { code: manifest.animation.code, input: manifest.animation.input || '' };
+    algorithmDraftApplying = true;
+    aceEditor.setValue(activeBuiltinDefault.code, -1);
+    document.getElementById('inputArea').value = activeBuiltinDefault.input;
+    algorithmDraftApplying = false;
     setDefaultAnimationState('loading', 0);
+    // 只有首頁線篩使用固定 Trace；其他投影片仍依配方重新執行。
+    try {
+      const cachedResponse = await fetch('/default-animation/cached.json', { signal, cache: 'no-store' });
+      if (cachedResponse.ok) {
+        const cached = window.ASMTraceBundle.validateManifest(await cachedResponse.json());
+        if (cached.engineVersion !== window.ASMTraceBundle.currentEngineVersion()) throw new Error('預設快取引擎版本已過期');
+        await window.ASMTraceProvenance.ready();
+        const payload = await fetchDefaultAnimationBundle(cached.full, cached, 'full', signal);
+        if (payload.animation.code !== manifest.animation.code || (payload.animation.input || '') !== (manifest.animation.input || '')) throw new Error('預設快取來源已更新');
+        if (applyDefaultAnimation(payload, 'ready', 'prebuilt')) {
+          document.body.dataset.defaultAnimationCache = 'static';
+          return;
+        }
+      }
+    } catch (error) {
+      if (signal.aborted || !canApplyDefaultAlgorithm()) return;
+      console.warn('預設 Trace 快取無法使用，改為重新執行', error);
+    }
     const animation = await window.ASMDeck.rebuildMissingAnimation(manifest.animation);
     if (signal.aborted || !canApplyDefaultAlgorithm()) return;
     applyDefaultAnimation({ animation, totalFrames: animation.traceDocument.frames.length }, 'ready', 'executed');
