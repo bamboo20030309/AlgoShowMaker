@@ -50,3 +50,4 @@ build/
 # Runtime results are session-only; publish source/executable recipes instead.
 algo-vis-backend/public/deck-traces/
 algo-vis-backend/public/default-animation/*.asmtrace
+!algo-vis-backend/public/default-animation/linear-sieve-*.asmtrace

@@ -2,6 +2,10 @@
 
 2026-11-16 起不再持久保存 Trace 結果；本規則取代先前的預建 Trace／Trace ID 快取。
 
+2026-11-18 例外：依使用者要求，`algorithm.html` 預設線篩恢復獨立靜態 Trace 快取；不放入投影片封裝。來源、輸入或引擎不符，以及快取缺失／損壞時，仍回退重新執行。其他投影片維持以下規則。
+
+更新預設快取：在後端目錄執行 `node scripts/build/prebuild-default-algorithm.js --with-trace --base-url http://127.0.0.1:3100`，將 `public/default-animation/cached.json` 與其引用的 `.asmtrace` 一起部署。
+
 ## 載入投影片
 
 1. 先讀投影片內容與設定，畫面不必等所有動畫執行完畢。
