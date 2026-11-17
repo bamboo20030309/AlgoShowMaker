@@ -15,7 +15,7 @@ const { chromium } = require('playwright');
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('automatic fixed marks survive styled frame tween and match the Studio redraw', { timeout: 60000 }, async () => {
+for (const speed of [1, 2]) test(`automatic fixed marks survive styled frame tween and match the Studio redraw (${speed}x)`, { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
@@ -28,7 +28,8 @@ test('automatic fixed marks survive styled frame tween and match the Studio redr
     await page.evaluate(code => ace.edit('editor').setValue(code, -1), code);
     await page.click('#runBtn');
     await page.waitForFunction(code => !document.getElementById('runBtn').classList.contains('loading') && window.ASMTracePlayer.getDocument()?.provenance?.sourceFingerprint === window.ASMTraceProvenance.create(code, '').sourceFingerprint, code, { timeout: 30000 });
-    const result = await page.evaluate(async () => {
+    const result = await page.evaluate(async speed => {
+      window.asmGetAnimationPlaybackRate = () => speed;
       const player = window.ASMTracePlayer, source = JSON.parse(JSON.stringify(player.getDocument()));
       const read = () => [...document.querySelectorAll('#asm-trace-root .asm-trace-style-decoration')]
         .filter(wrapper => {
@@ -81,7 +82,7 @@ test('automatic fixed marks survive styled frame tween and match the Studio redr
           && getComputedStyle(wrapper).display !== 'none')
         .map(wrapper => Number(wrapper._asmStyleCell?.dataset.traceIndex));
       return { expected, forward, entering, beforeStudio, studio, backward, reload, disabled, manual };
-    });
+    }, speed);
     console.log('Auto fixed SVG:', JSON.stringify(result));
     assert.ok(result.expected.at(-1).length >= 2, 'the fixture generates and renders completed cell marks');
     assert.deepEqual(result.forward, result.expected.slice(1), 'forward tween must retain persistent marks');

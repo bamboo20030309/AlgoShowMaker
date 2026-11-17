@@ -10895,7 +10895,11 @@
         endMs
       );
     }
-    const directiveFollowPlan = createDirectiveFollowPlan(traceDocument, eventFrame,
+    // Reverse playback uses the outgoing frame for motion events only. The
+    // follow plan also supplies styleFrameAt() when there are no follow records;
+    // seed it from the destination so it cannot restore outgoing fixed marks.
+    const directiveFrame = Number(options.direction) < 0 ? frame : eventFrame;
+    const directiveFollowPlan = createDirectiveFollowPlan(traceDocument, directiveFrame,
       forwardReplayPlan, playbackEventTimeline, options.direction);
     directivePresentation = window.ASMTraceRenderers?.createDirectivePresenter?.(
       traceDocument, frame, root, currentPlacements, currentElements, directiveFollowPlan.records);
@@ -11709,10 +11713,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-367';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-368';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-367', play, cancel, updateEventAvailability,
+    build: 'trace-368', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
