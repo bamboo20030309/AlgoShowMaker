@@ -40,7 +40,7 @@ Docker Compose 會在 backend 容器內明確將 `MONGO_URI` 覆寫為
 `mongodb://mongo:27017/algo_vis_db`。即使本機開發用 `.env` 指向 `localhost`，容器仍會透過
 Compose service 名稱 `mongo` 連線。Docker 映像使用 Node.js 22，以符合 Mongoose 9 的 runtime 要求。
 ## 三、 啟動伺服器
-1. **修正相容性問題**：若伺服器 CPU 不支援 AVX，請將 `docker-compose.yml` 中的 `image: mongo:latest` 改為 `image: mongo:4.4`。若 Docker 版本過舊導致 `pids` 報錯，請註解掉 `pids: 128` 這一行。
+1. **修正相容性問題**：共用設定使用 `mongo:latest`。若遠端 CPU 不支援 AVX，僅在該機器將映像改為 `mongo:4.4`，更新程式時用 stash 保留本機差異，不推回共用設定。既有新版資料卷不可直接交給 4.4 開啟；更換資料庫版本前須備份並確認資料格式相容。若 Docker 版本過舊導致 `pids` 報錯，請調整該機器的 `pids` 設定。
 2. **執行啟動指令**：在 `algo-vis-backend` 目錄下執行 `docker-compose up -d --build`。
 
 ## 四、 維運常用指令
