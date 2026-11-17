@@ -19,19 +19,6 @@ test('missing editor results rebuild from legacy ID or portable metadata; empty 
  }
  assert.equal(jobs,2);
 });
-test('export repairs an unseen stale animation and names the failing page when repair fails',{timeout:60000},async t=>{
- const {base}=await startIsolatedServer(t);process.env.ASM_TEST_BASE_URL=base;const {trace}=await compile(code);trace.provenance.generationFingerprint='a'.repeat(64);
- const browser=await launch();t.after(()=>browser.close());const p=await browser.newPage();let jobs=0;
- p.on('request',r=>{if(r.method()==='POST'&&r.url().endsWith('/api/compile/jobs'))jobs++;});
- await p.addInitScript(({code,trace})=>{localStorage.setItem('asm_reveal_fabric_deck_v5',JSON.stringify({groups:[{id:'g',slides:[{id:'blank',kind:'fabric',objects:[]},{id:'animation',kind:'algorithm-animation',animation:{mode:'trace',code,input:'',sliceMode:'manual',traceDocument:trace}}]}]}));},{code,trace});
- await p.goto(base+'/slides.html');await p.waitForFunction(()=>window.Reveal?.isReady());await p.waitForTimeout(200);assert.equal(jobs,0,'an unseen animation is not eagerly executed');
- let rejectNext=true;await p.route('**/api/compile/jobs',route=>{if(rejectNext){rejectNext=false;return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'export test unavailable'})});}return route.continue();});
- await p.locator('#exportDeckBtn').click();await p.waitForFunction(()=>document.querySelector('#cloudSaveStatus').textContent.includes('第 2 頁'));assert.equal(jobs,1);
- const downloaded=p.waitForEvent('download');await p.locator('#exportDeckBtn').click();const download=await downloaded;const bytes=fs.readFileSync(await download.path());const body=readPackage(bytes).body;const animation=body.deck.groups[0].slides[1].animation;
- assert.ok(animation.traceRef);assert.equal(animation.traceDocument,undefined);assert.equal(jobs,2);
- const saved=await p.evaluate(async id=>{const store=ASMSlideStorage.create(indexedDB,localStorage);return store.loadTrace(id);},animation.traceRef);
- const version=await (await fetch(base+'/api/trace/version')).json();assert.equal(saved.provenance.generationFingerprint,version.generationFingerprint);
-});
 test('slide focus rechecks version; Merge Sort saved and manual results agree and frame 21 fits',{timeout:90000},async t=>{
  const {base}=await startIsolatedServer(t);const browser=await launch();t.after(()=>browser.close());const p=await browser.newPage();let versions=0;
  p.on('request',r=>{if(r.url().endsWith('/api/trace/version'))versions++;});

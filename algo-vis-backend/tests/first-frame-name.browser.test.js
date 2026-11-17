@@ -9,7 +9,7 @@ test('KMP first-frame names stay centered after RUN from hidden canvas tabs', {t
  const {base}=await startIsolatedServer(t);
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());
  const page=await browser.newPage();await page.goto(base+'/algorithm.html');
- await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');
+ await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
  const code=fs.readFileSync(path.join(__dirname, 'fixtures/kmp-first-frame.cpp'),'utf8');
  for (const tab of ['tab-canvas','tab-input','tab-debug']) {
   await page.click(`[data-tab="${tab}"]`);

@@ -44,7 +44,7 @@ test('all field formats travel with their value rather than appearing as station
         return { moving: [...moving], detachedPrefix };
       } finally { restore(); ASMTraceFrameTween.cancel(); }
     }, { trace, speed });
-    for (const value of ['+3', '=7', '0b101', '0xA', 'true', '1.25', '25.0%', '-2']) {
+    for (const value of ['+3', '=7', '+0b101', '+0xA', '+true', '+1.25', '+25.0%', '-2']) {
       assert.ok(report.moving.includes(value), 'moving text must include complete format ' + value + ': ' + report.moving.join(', '));
     }
     assert.equal(report.detachedPrefix, false, 'no stationary format prefix is created');

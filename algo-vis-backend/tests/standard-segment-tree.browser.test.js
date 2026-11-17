@@ -36,7 +36,7 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
       document.getElementById('inputArea').value = input;
     }, { code, input });
     await page.evaluate(() => document.getElementById('runBtn').click());
-    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code, code, { timeout: 30000 });
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
     const result = await page.evaluate(async () => {
       const player = window.ASMTracePlayer;
       const doc = player.getDocument();
@@ -167,8 +167,7 @@ int main() {
       document.getElementById('inputArea').value = '10\n';
     }, { code: zeroBasedCode });
     await page.evaluate(() => document.getElementById('runBtn').click());
-    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code,
-      zeroBasedCode, { timeout: 30000 });
+    await require('./helpers/algorithm-page').waitForTraceSource(page,zeroBasedCode);
     const zeroBased = await page.evaluate(async () => {
       const player = window.ASMTracePlayer;
       const doc = player.getDocument();
@@ -204,8 +203,7 @@ int main() {
       document.getElementById('inputArea').value = input;
     }, { code: gapCode, input });
     await page.evaluate(() => document.getElementById('runBtn').click());
-    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code,
-      gapCode, { timeout: 30000 });
+    await require('./helpers/algorithm-page').waitForTraceSource(page,gapCode);
     const withGap = await page.evaluate(async () => {
       const player = window.ASMTracePlayer;
       const doc = player.getDocument();
@@ -247,8 +245,7 @@ int main() {
     }, { code, input: operationsInput });
     await page.waitForFunction(() => !document.getElementById('runBtn').classList.contains('loading'));
     await page.evaluate(() => document.getElementById('runBtn').click());
-    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code,
-      code, { timeout: 30000 });
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
     const operations = await page.evaluate(async () => {
       const player = window.ASMTracePlayer;
       const doc = player.getDocument();
@@ -406,8 +403,8 @@ test('animated tree writes preserve visible lazy and sets fields in composite ce
       return {
         targetIndex,
         frameNumber: targetIndex + 1,
-        text: cell?.querySelector(':scope > text')?.textContent,
-        fields: [...cell.querySelectorAll('[data-trace-field-variable]')].map(field => ({
+        text: [...cell.querySelectorAll(':scope > text tspan')].filter(n=>getComputedStyle(n).display!=='none').map(n=>n.textContent).join(''),
+        fields: [...cell.querySelectorAll('[data-trace-field-variable]')].filter(n=>getComputedStyle(n).display!=='none').map(field => ({
           variableId: field.dataset.traceFieldVariable,
           text: field.textContent
         }))
@@ -463,8 +460,7 @@ int main() {
       document.getElementById('inputArea').value = '';
     }, code);
     await page.evaluate(() => document.getElementById('runBtn').click());
-    await page.waitForFunction(expected => window.ASMTracePlayer.getDocument()?.sourceCode === expected,
-      code, { timeout: 30000 });
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
     const result = await page.evaluate(async () => {
       const player = window.ASMTracePlayer;
       const doc = player.getDocument();

@@ -21,9 +21,7 @@ test('text, arrow and variable-index style follow their own events, including di
   await page.goto(base + '/algorithm.html?asmEmbed=runtime'); await page.waitForFunction(() => window.ASMTracePlayer);
   for (const disabled of [false, true]) for (const speed of [1, 2]) {
     const document = JSON.parse(JSON.stringify(trace));
-    document.studio.objectStyles ||= {};
-    document.studio.objectStyles[document.frames[1].id] ||= {};
-    document.studio.objectStyles[document.frames[1].id]['text:line-13'] = { fontSize: 22 };
+    for(const frame of document.frames)for(const text of frame.texts||[])for(const segment of text.segments||[])segment.fontSize=22;
     if (disabled) {
       document.studio.eventInstructionStates ||= {};
       document.studio.eventInstructionStates['assign:main:i=1'] = false;

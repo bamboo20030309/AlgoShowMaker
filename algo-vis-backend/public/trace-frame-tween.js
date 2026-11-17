@@ -4202,7 +4202,10 @@
     // destination frame. Reuse that row's previous binding, not an unrelated
     // hidden variable or retained snapshot. Captured left bits supply its data.
     if (!left && target) {
-      const previousFrame = document.frames?.[document.frames.indexOf(frame) - 1];
+      // Event replay supplies a state snapshot, not the canonical frame object.
+      // Match its stable ID so alias handoffs can still find the prior row.
+      const frameIndex = document.frames?.findIndex(candidate => candidate.id === frame.id) ?? -1;
+      const previousFrame = document.frames?.[frameIndex - 1];
       const previousLeft = previousFrame && bitwiseRow(document, previousFrame, leftOperand, elements);
       if (previousLeft?.element === target.element
         && (previousFrame.rendererOptions?.[previousLeft.variableId]
@@ -11100,7 +11103,9 @@
         );
         const localProgress = entry.recursionDeclarationClock?.instant
           ? 1 : Math.max(0, Math.min(1, motionElapsed / localDuration));
-        const localEased = easeOutCubic(localProgress);
+        const localEased = entry.sequenceMotionSlot
+          ? sequenceOuterframeProgress(entry.sequenceMotionSlot, elapsed)
+          : easeOutCubic(localProgress);
         const appearElapsed = Math.max(0, elapsed - entry.appearanceStart);
         const appearProgress = clamp01(
           appearElapsed / Math.min(APPEAR_TIMING.duration, localDuration)
@@ -11716,7 +11721,7 @@
   document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-368';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-368', play, cancel, updateEventAvailability,
+    build: 'trace-369', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

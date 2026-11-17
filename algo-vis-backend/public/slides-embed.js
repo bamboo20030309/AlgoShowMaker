@@ -431,7 +431,7 @@
     });
   }
 
-  function setEmbedMode(next, cameraSurface = null, assembleFrom = null) {
+  function setEmbedMode(next, cameraSurface = null, assembleFrom = null, editorSessionKey = null) {
     if (!['runtime', 'editor'].includes(next)) return;
     if (next === 'editor' && assembleFrom) document.documentElement.classList.add('asm-embed-assembly-pending');
     else document.documentElement.classList.remove('asm-embed-assembly-pending');
@@ -443,6 +443,7 @@
       document.body.classList.add(`asm-embed-${mode}`);
     }
     if (mode === 'editor') {
+      if (editorSessionKey && typeof aceEditor !== 'undefined') window.asmUseEditorSession?.(editorSessionKey, aceEditor.getValue());
       runtimeVisible = true;
       runtimeGeometryRequest += 1;
       const trace = window.ASMTraceEditor?.getTraceDocument?.();
@@ -534,7 +535,7 @@
       return;
     }
     if (event.data.type === 'asm-embed-set-mode') {
-      setEmbedMode(event.data.mode, event.data.cameraSurface || null, event.data.assembleFrom || null);
+      setEmbedMode(event.data.mode, event.data.cameraSurface || null, event.data.assembleFrom || null, event.data.editorSessionKey || null);
       return;
     }
     if (event.data.type === 'asm-embed-capture-runtime') {

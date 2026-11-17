@@ -49,7 +49,7 @@ for (const [plainOnly, tableVariant] of [[false,false], [true,false], [false,tru
         if (sessionStorage.getItem('fixture')) return;
         localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(value)); sessionStorage.setItem('fixture', '1');
       }, deck);
-      const ready = () => page.waitForFunction(() => fixtureCanvas?.getObjects().length >= 2 && Reveal.isReady());
+      const ready = () => page.waitForFunction(() => window.fixtureCanvas?.getObjects().length >= 2 && Reveal.isReady());
       const saved = () => page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage)
         .loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0]);
       await page.goto(base + '/slides.html'); await ready();
@@ -155,7 +155,7 @@ for (const [plainOnly, tableVariant] of [[false,false], [true,false], [false,tru
           await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
         };
         // Start from a text object, then from a widget: both must move the same four objects.
-        await drag(130,95,150,115);
+        await page.keyboard.down('Alt');await drag(130,95,150,115);await page.keyboard.up('Alt');
         const moved = await saved();
         assert.deepEqual(errors,[]);
         for (let i=2;i<4;i++) {
@@ -165,7 +165,7 @@ for (const [plainOnly, tableVariant] of [[false,false], [true,false], [false,tru
           assert.ok(Math.abs(moved.widgets[i].y - after.widgets[i].y - 20) < 1);
         }
         await assertGroup(4);
-        await drag(900,400,920,410);
+        await page.keyboard.down('Alt');await drag(900,400,920,410);await page.keyboard.up('Alt');
         const widgetMoved = await saved();
         for (let i=2;i<4;i++) {
           assert.ok(Math.abs(widgetMoved.canvas.objects[i].left - moved.canvas.objects[i].left - 20) < 1,JSON.stringify({before:moved.canvas.objects[i].left,after:widgetMoved.canvas.objects[i].left,errors}));

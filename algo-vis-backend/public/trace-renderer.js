@@ -7013,9 +7013,8 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-291';
   window.ASMTraceRenderers = {
-    build: 'trace-292', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-294', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, hiddenField, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
@@ -7042,4 +7041,5 @@
       refreshPresentedKeepArrows(root);
     }
   };
+  document.documentElement.dataset.asmTraceRendererBuild = window.ASMTraceRenderers.build;
 })();

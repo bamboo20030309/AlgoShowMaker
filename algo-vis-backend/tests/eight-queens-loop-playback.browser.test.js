@@ -15,12 +15,11 @@ test('loop sample covers all 256 configurations without event-heavy skipped inte
       'public/guest-decks/eight-queens-teaching.asmdeck')));
     const animation = archive.body.deck.groups.flatMap(group => group.slides).find(slide => slide.animation).animation;
     const trace = savedTrace(archive.body, animation);
+    trace.viewSettingsApplied=true;delete trace.asmView;trace.studio.eventInstructionStates={};trace.studio.eventStates={};Object.assign(trace.studio.eventSettings.defaultEnabled ||= {},{declare:false,assign:false,write:false,compare:false});
     // This performance scenario explicitly disables automatic statement
     // animations. The published sample's settings differ from the retired
     // draft: change only this copy, retaining the strict assertion below.
-    Object.assign(trace.studio.eventSettings.defaultEnabled, {
-      declare: false, assign: false, write: false, compare: false
-    });
+    for(const frame of trace.frames)for(const event of frame.events)if(['declare','assign','write','compare'].includes(event.type)){event.enabled=false;trace.studio.eventInstructionStates ||= {};}
     assert.equal(trace.provenance.sourceFingerprint, require('../public/trace-provenance').create(animation.code, animation.input).sourceFingerprint);
     assert.equal(trace.frames.length, 257);
     const value = (frame, name) => Object.values(frame.state)

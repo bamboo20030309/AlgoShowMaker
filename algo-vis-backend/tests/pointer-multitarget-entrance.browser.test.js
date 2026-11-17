@@ -4,7 +4,7 @@ test('new KMP j pointer enters at p while the existing s pointer moves independe
  const {trace}=await compile(fs.readFileSync(path.join(__dirname, 'fixtures/kmp-fallback-multitarget.cpp'),'utf8'),'abababca');const pId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='p');const sId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='s');
  assert.ok(trace.frames[20].bindings.every(b=>!(b.sourceName==='j'&&b.targetName==='p')));
  assert.ok(trace.frames[21].bindings.some(b=>b.sourceName==='j'&&b.targetName==='p'));
- const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/algorithm.html');await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');await page.click('[data-tab="tab-canvas"]');
+ const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/algorithm.html');await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);await page.click('[data-tab="tab-canvas"]');
  const check=async doc=>page.evaluate(async({doc,pId,sId})=>{
   asmApplyTraceDocument(doc);await ASMTracePlayer.renderStable(20);
   const sample=()=>{

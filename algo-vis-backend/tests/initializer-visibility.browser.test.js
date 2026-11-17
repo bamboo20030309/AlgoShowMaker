@@ -71,7 +71,7 @@ test('initializer visibility controls joined entry; pointer assignment moves con
         const listener = e => {
           if (e.detail.phase !== 'start') return;
           const slot = e.detail.slot;
-          slots.push({ name: e.detail.event.name, expression: e.detail.event.expression,
+          slots.push({type:e.detail.event.type, name: e.detail.event.name, expression: e.detail.event.expression,
             duration: slot.duration, transfer: slot.declarationInitializerTransfer,
             direct: slot.declarationInitializerDirect, member: slot.initializerEvent?.expression,
             start: slot.start, end: slot.end, motionStart: slot.motionStart, at: elapsed,
@@ -98,7 +98,7 @@ test('initializer visibility controls joined entry; pointer assignment moves con
                 source: node.dataset.traceTransferSourceKey, cell: Boolean(node.querySelector('rect')),
                 transform: node.getAttribute('transform')
               })), formula: document.querySelectorAll('.asm-trace-calculation-popup').length,
-              comparisons: document.querySelectorAll('.asm-trace-compare-operator').length });
+              comparisons: document.querySelectorAll('.asm-trace-selection-label, .asm-trace-selection-value').length });
             if (step === 'cancel' && active && elapsed >= active.at
               + (active.motionStart - active.start + 260) / (mode === 'saved' ? 2 : 1)) {
               interrupted = read('i');
@@ -152,9 +152,9 @@ test('initializer visibility controls joined entry; pointer assignment moves con
     assert.ok(entry.samples.some(sample => sample.active === 'fromNew'
       && sample.copies.some(copy => copy.source.includes('newSource') && copy.cell)),
     'a source that entered earlier in the same frame is available for copying');
-    assert.ok(entry.slots.some(slot => slot.name === 'selected' && slot.transfer && slot.duration === 3040));
-    assert.ok(entry.samples.some(sample => sample.active === 'selected' && sample.comparisons > 0),
-      'joining initialization preserves min/max comparison before transferring its selected result');
+    assert.ok(entry.slots.some(slot => slot.name === 'selected' && slot.transfer && slot.duration === 1480),JSON.stringify(entry.slots));
+    assert.ok(entry.samples.some(sample => sample.comparisons > 0),
+      'independent selection is presented before transferring its selected result');
     const kPositions = new Set(entry.samples.filter(sample => sample.active === 'k').map(sample => sample.k.x.toFixed(2)));
     assert.ok(kPositions.size <= 2, 'pointer enters at its target instead of travelling from an unbound slot');
     assert.ok(entry.samples.filter(sample => sample.active === 'k')

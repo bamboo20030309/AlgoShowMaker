@@ -47,7 +47,7 @@ for(int i=0;i<n;i++)cout<<p[i]<<' ';
   assert.deepEqual(Array.from(trace.frames.at(-1).state[pId].data.items,x=>Number(x.value)),[0,0,1,2,3,4,0,1]);
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());
   const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(base+'/algorithm.html');await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');await page.click('[data-tab="tab-canvas"]');
+  await page.goto(base+'/algorithm.html');await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);await page.click('[data-tab="tab-canvas"]');
   const inspect=async (document,index)=>{
     await page.evaluate(async ({document,index})=>{asmApplyTraceDocument(document);await ASMTracePlayer.renderStable(index);setCamera(180,0,2,false);},{document,index});
     await page.waitForFunction(()=>!document.querySelector('#asm-trace-root [data-asm-lod-pending]'));

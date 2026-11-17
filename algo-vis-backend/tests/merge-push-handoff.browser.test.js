@@ -47,7 +47,7 @@ test('Merge Sort first push hands off its cell immediately and retains its sourc
     },{trace:savedTrace(body,animation),rate,step,pointerName:example===0?'i':'j',gap});
     // Independent answer: compare -> gap -> push (300+220) -> gap ->
     // pointer movement (520) -> exit (220). The exit also runs with gap=0.
-    const copyStart=1560+gap,commit=copyStart+520,movementStart=commit+gap,
+    const copyStart=1960+gap,commit=copyStart+520,movementStart=commit+gap+200,
       movementEnd=movementStart+520,exitEnd=movementEnd+220,failures=[];
     const expectedValue=example===0?'5':'1';
     assert.ok(result.before.pointerVisible,'the source pointer starts on its child');

@@ -21,15 +21,16 @@ test('CRLF archive recovery turns red, preserves LF coordinates and saves the re
  let release;const gate=new Promise(r=>release=r);let submitted=0;
  await page.route('**/api/compile/jobs',async route=>{submitted++;await gate;await route.continue();});
  await page.goto(base+'/slides.html');
- await page.waitForFunction(()=>document.querySelector('#cloudSaveStatus')?.dataset.traceState==='updating');
- assert.equal(await page.locator('#cloudSaveStatus .cloud-status-dot').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(255, 59, 48)');
+ await page.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='loading');
+ for(let n=0;n<100&&!submitted;n++)await new Promise(r=>setTimeout(r,20));assert.equal(submitted,1,'the imported recipe must be scheduled for execution');
  release();
- await page.waitForFunction(()=>document.body.dataset.localDeckSave==='saved'&&document.querySelector('#cloudSaveStatus')?.dataset.traceState==='',null,{timeout:40000});
+ await page.waitForFunction(()=>document.body.dataset.localDeckSave==='saved'&&document.body.dataset.asmdeckRebuild==='ready',null,{timeout:40000});
+ await page.waitForFunction(()=>document.querySelector('iframe.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length);
  const repaired=await page.evaluate(async()=>{
   const store=ASMSlideStorage.create(indexedDB,localStorage);
   const deck=await store.loadDeck('asm_reveal_fabric_deck_v5',[],{lazyTraces:true});
   const a=deck.groups[0].slides[0].animation;
-  return {animation:a,trace:await store.loadTrace(a.traceRef)};
+  return {animation:a,trace:document.querySelector('iframe.algorithm-slide-frame').contentWindow.ASMTracePlayer.getDocument()};
  });
  assert.equal(repaired.trace.sourceCode,code);
  assert.equal(repaired.animation.code,code.replace(/\n/g,'\r\n'),'editor text remains intact');
@@ -42,7 +43,7 @@ test('CRLF archive recovery turns red, preserves LF coordinates and saves the re
   assert.equal(lines.at(-1).length+1,s.column,`${event.type}: column`);
  }
  await page.reload();await page.waitForFunction(()=>document.querySelector('iframe.algorithm-slide-frame')?.contentDocument?.querySelector('#asm-trace-root [data-trace-variable]'));
- assert.equal(submitted,1,'saved repaired trace does not recompile on reopen');
+ await page.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='ready');assert.equal(submitted,2,'reopen executes the saved recipe again');assert.ok(repaired.animation.executableRef?.id);assert.equal(repaired.animation.traceRef,undefined);
  assert.deepEqual(errors,[]);
 });
 
@@ -52,15 +53,16 @@ test('published quick sort uses aligned source spans and highlights the actual s
  for(const slide of body.deck.groups.flatMap(g=>g.slides).filter(s=>s.animation)){
   assert.ok(verifySourceCoordinates(savedTrace(body,slide.animation))>100);
  }
+ const animationId=body.deck.groups.flatMap(g=>g.slides).find(s=>s.animation)?.id;
  const {base}=await startIsolatedServer(t);
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());
  const page=await browser.newPage();let jobs=0;
  page.on('request',r=>{if(r.method()==='POST'&&/\/(compile|api\/compile\/jobs)$/.test(new URL(r.url()).pathname))jobs++;});
- await page.goto(base+'/slides.html?sample=quick-sort');await page.waitForFunction(()=>document.body.classList.contains('sample-deck-ready'));
- await page.evaluate(()=>{const s=document.querySelector('section[data-slide-id="quick-teaching-23"]');const i=Reveal.getIndices(s);Reveal.slide(i.h,i.v);});
- await page.waitForFunction(()=>document.querySelector('iframe[data-slide-id="quick-teaching-23"]')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length);
- const result=await page.evaluate(async()=>{
-  const w=document.querySelector('iframe[data-slide-id="quick-teaching-23"]').contentWindow;
+ await page.goto(base+'/slides.html?sample=quick-sort');await page.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='ready');
+ await page.evaluate(id=>{const s=document.querySelector('section[data-slide-id="'+id+'"]');const i=Reveal.getIndices(s);Reveal.slide(i.h,i.v);},animationId);
+ await page.waitForFunction(id=>document.querySelector('iframe[data-slide-id="'+id+'"]')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length,animationId);
+ const result=await page.evaluate(async id=>{
+  const w=document.querySelector('iframe[data-slide-id="'+id+'"]').contentWindow;
   const trace=w.ASMTracePlayer.getDocument();
   const index=trace.frames.findIndex(f=>f.events.some(e=>e.type==='swap'&&e.source?.text.includes('swap(arr[i], arr[j])')));
   if(index<0)throw Error('missing expected swap');
@@ -69,8 +71,8 @@ test('published quick sort uses aligned source spans and highlights the actual s
   w.ASMTraceCodePresenter.renderFrame(trace,frame);
   w.ASMTraceCodePresenter.setActiveEvent(event.id,'start');
   return {active:[...w.document.querySelectorAll('.asm-trace-code-event-span.is-active')].map(e=>e.textContent).join(''),source:trace.sourceCode.slice(event.source.from,event.source.to)};
- });
+ },animationId);
  assert.equal(result.source,'swap(arr[i], arr[j])');
  assert.match(result.active,/swap\(arr\[i\], arr\[j\]\)/);
- assert.equal(jobs,0,'current published sample must not compile');
+ assert.ok(jobs>=1,'published recipes execute from their cached binary');
 });

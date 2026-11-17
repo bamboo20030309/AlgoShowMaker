@@ -72,7 +72,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
     assert.ok(Math.abs(standaloneCamera.panXRatio) > .01);
     await compilePage.evaluate(() => ASMTraceStudio.open());
     assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()),
-      { panXRatio: 0, panYRatio: 0, zoomFactor: 1 }, 'studio has its own temporary camera');
+      standaloneCamera, 'Studio shares the existing canvas camera');
     const studioBox = await compilePage.locator('#arraySvg').boundingBox();
     await compilePage.mouse.move(studioBox.x + studioBox.width / 2, studioBox.y + studioBox.height / 2);
     await compilePage.mouse.wheel(0, -120);
@@ -80,7 +80,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
     await compilePage.waitForTimeout(220);
     const studioCamera = await compilePage.evaluate(() => getPresentationCameraTransform());
     await compilePage.evaluate(() => ASMTraceStudio.close());
-    assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()), standaloneCamera);
+    assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()), studioCamera);
     await compilePage.evaluate(() => ASMTraceStudio.open());
     assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()), studioCamera);
     await compilePage.evaluate(() => ASMTraceStudio.close());
@@ -202,7 +202,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
       return camera && Math.abs(camera.panXRatio - expected.panXRatio) < 1e-6
         && Math.abs(camera.panYRatio - expected.panYRatio) < 1e-6
         && Math.abs(camera.zoomFactor - expected.zoomFactor) < 1e-6;
-    }, saved);
+    }, {panXRatio:0,panYRatio:0,zoomFactor:1});
     const downloadEvent = page.waitForEvent('download');
     await page.click('#exportDeckBtn');
     const exported = await archive.decode(new Blob([fs.readFileSync(await (await downloadEvent).path())]));
@@ -225,7 +225,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
     await legacyPage.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length > 1);
     await legacyPage.click('#modeToggleBtn');
     let legacyRuntime = legacyPage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
-    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1.2);
+    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1);
     const legacyTrace = await legacyRuntime.evaluate(() => ASMTracePlayer.getDocument());
     assert.equal(legacyTrace.studio.eventSettings.autoFixedEnabled, false);
     assert.equal(legacyTrace.studio.codePanelFontSize, 19);
@@ -237,7 +237,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
     await legacyPage.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length > 1);
     if (await legacyPage.locator('body').evaluate(body => body.classList.contains('asm-edit-mode'))) await legacyPage.click('#modeToggleBtn');
     legacyRuntime = legacyPage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
-    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1.2);
+    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1);
     await legacyRuntime.evaluate(() => resetTemporaryCamera());
     assert.equal(await legacyRuntime.evaluate(() => getPresentationCameraTransform().zoomFactor), 1);
     await legacyContext.close();

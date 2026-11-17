@@ -14,7 +14,7 @@ test('plain RUN releases old animation, then edited KMP source creates its own t
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + '/algorithm.html');
-  await page.waitForFunction(() => document.body.dataset.defaultAnimationCache === 'stored');
+  await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
   const full = fs.readFileSync(path.join(__dirname, 'fixtures/kmp-toggle.cpp'), 'utf8');
   const plain = full.split('\n').filter(line => !/^\s*\/\/\s*@/.test(line)).join('\n');
   const edited = full.replace('int n = s.size();', 'int n = (int)s.size();');
@@ -31,7 +31,7 @@ test('plain RUN releases old animation, then edited KMP source creates its own t
     const response = await pending;
     assert.equal(response.ok(), true);
     const request = response.request().postDataJSON();
-    assert.equal(request.code, code);
+    assert.equal(require('../public/trace-provenance').sourceText(request.code), require('../public/trace-provenance').sourceText(code));
     assert.equal(request.trace.enabled, expectedTrace);
     const data = await response.json();
     assert.equal(data.error, '');
@@ -60,11 +60,11 @@ test('plain RUN releases old animation, then edited KMP source creates its own t
   await assertCleared();
   const second = await run(full, true);
   assert.equal(second.traceDocument.frames.length, 34);
-  assert.equal(await page.evaluate(() => ASMTracePlayer.getDocument().sourceCode), full);
+  assert.equal(require('../public/trace-provenance').sourceText(await page.evaluate(() => ASMTracePlayer.getDocument().sourceCode)), require('../public/trace-provenance').sourceText(full));
   assert.equal(await page.evaluate(() => CodeScript.get_frame_count()), 34);
   const third = await run(edited, true);
   assert.notEqual(third.cache.executableId, second.cache.executableId, 'edited source must not reuse the old binary');
-  assert.equal(await page.evaluate(() => ASMTracePlayer.getDocument().sourceCode), edited);
+  assert.equal(require('../public/trace-provenance').sourceText(await page.evaluate(() => ASMTracePlayer.getDocument().sourceCode)), require('../public/trace-provenance').sourceText(edited));
   await run(plain, false, 'aaaa\n', '0 1 2 3');
   await assertCleared();
 

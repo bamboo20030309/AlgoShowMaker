@@ -8142,6 +8142,14 @@
 
   function bindSlideViewportPan() {
     const surface = document.querySelector('body > .reveal');
+    // Cell right-click belongs to the structure/table menu. Capturing it for
+    // viewport panning retargets contextmenu to the surface and loses the cell.
+    const cellContextTarget = event => {
+      const element = widgetAtEvent(event);
+      const widget = element && getWidget(element.dataset.widgetId).widget;
+      return widget && isCellGridWidget(widget)
+        && (structureCellFromEvent(event, element) || event.target.closest?.('[data-tree-node-id]'));
+    };
     const finish = () => {
       if (!slideViewportDrag) return;
       slideViewportDrag = null;
@@ -8154,6 +8162,7 @@
     window.addEventListener('pointerdown', event => {
       if (customOverviewOpen || !surface?.contains(event.target) || isSlideZoomTypingTarget(event.target)) return;
       if (event.button === 2 && !document.body.classList.contains('asm-edit-mode')) return;
+      if (event.button === 2 && cellContextTarget(event)) return;
       if (event.button !== 1 && event.button !== 2 && !(event.button === 0 && slideViewportSpace)) return;
       const frame = currentSlideViewportFrame();
       if (!frame) return;
@@ -8188,6 +8197,7 @@
     surface?.addEventListener('pointerleave', () => { if (!slideViewportDrag) slideViewportMouse = null; });
     window.addEventListener('contextmenu', event => {
       if (!customOverviewOpen && document.body.classList.contains('asm-edit-mode') && surface?.contains(event.target)) {
+        if (cellContextTarget(event)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
       }
@@ -10505,7 +10515,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-146';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-147';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10547,7 +10557,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-146';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-147';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10797,7 +10807,7 @@
         // 尚未載入（或瀏覽器不支援 moveBefore 而重新載入）：等嵌入頁就緒，再送入動畫。
         const ready = waitForFrameMessage(frame, 'asm-embed-ready', 20000);
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-146' + (isLocalCopy() ? '&localOnly=1' : '');
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-147' + (isLocalCopy() ? '&localOnly=1' : '');
         }
         await ready;
         await sendAlgorithmAnimationToFrame(frame, slide);
@@ -10806,7 +10816,7 @@
       const assembleFrom = animate && kept ? rectInEditorStage(slideRect) : null;
       const chrome = assembleFrom ? playAlgorithmEditorChrome('open') : null;
       const reply = waitForFrameMessage(frame, 'asm-embed-mode-changed', 3000);
-      frame.contentWindow?.postMessage({ type: 'asm-embed-set-mode', mode: 'editor',
+      frame.contentWindow?.postMessage({ type: 'asm-embed-set-mode', mode: 'editor', editorSessionKey: slideId,
         cameraSurface: algorithmCameraSurface(frame, slideId), assembleFrom }, window.location.origin);
       await reply;
       if (chrome) {

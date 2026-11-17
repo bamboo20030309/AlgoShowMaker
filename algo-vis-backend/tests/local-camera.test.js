@@ -39,7 +39,7 @@ test('cloud projection strips old temporary cameras for both inline results and 
     const projected = await Storage.project({ groups: [{ slides: [{ animation }] }] });
     assert.equal(projected.deck.groups[0].slides[0].animation.presentationCamera, undefined);
     assert.equal(animation.presentationCamera, camera, 'projection must not mutate the input');
-    assert.equal(projected.references[0].view.studio.eventSettings.autoFixedEnabled, false);
-    if (inline) assert.equal(projected.references[0].view.studio.cameraRules[0].centerX, 321);
+    assert.equal(projected.deck.groups[0].slides[0].animation.traceView.studio.eventSettings.autoFixedEnabled, false);
+    if (inline) assert.equal(projected.deck.groups[0].slides[0].animation.traceView.studio.cameraRules[0].centerX, 321);
   }
 });

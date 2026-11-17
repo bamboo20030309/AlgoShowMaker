@@ -2,7 +2,7 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');
 const {chromium}=require('playwright');const {startIsolatedServer}=require('./helpers/isolated-server');
 test('RUN reports syntax, analysis, trace and drawing failures without hiding them behind successful output',{timeout:120000},async t=>{
- const {base}=await startIsolatedServer(t);const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/algorithm.html');await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');
+ const {base}=await startIsolatedServer(t);const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/algorithm.html');await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
  const good='#include <iostream>\nint main(){int n=1;\n// @frame n\nstd::cout<<n;}';
  async function run(code=good){await page.evaluate(code=>{aceEditor.setValue(code,-1);window.__runDone=false;window.addEventListener('asm:compile-finished',()=>window.__runDone=true,{once:true});document.querySelector('#runBtn').click();},code);await page.waitForFunction(()=>window.__runDone,{},{timeout:60000});return page.locator('#compileWarnings').textContent();}
  async function expectNotice(pattern){await page.click('[data-tab="tab-debug"]');assert.match(await page.locator('#compileWarnings').textContent(),pattern);assert.equal(await page.locator('#compileWarnings').isVisible(),true);await page.click('[data-tab="tab-debug"]');assert.equal(await page.locator('#compileWarnings').isVisible(),true);await page.click('[data-tab="tab-canvas"]');assert.equal(await page.locator('#compileWarnings').isVisible(),false);}
@@ -24,7 +24,7 @@ test('pipeline warnings appear only in debug records and reset on the next RUN',
  const {base}=await startIsolatedServer(t);
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());
  const page=await browser.newPage();await page.goto(base+'/algorithm.html');
- await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');
+ await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
  assert.equal(await page.locator('#tab-debug #compileWarnings').count(),1);
  await page.evaluate(()=>{ASMCompileWarnings.report('語法樹','測試解析警告');ASMCompileWarnings.report('動畫解析','測試動畫警告');});
  await page.click('[data-tab="tab-canvas"]');assert.equal(await page.locator('#compileWarnings').isVisible(),false);

@@ -149,7 +149,7 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
       initialFramesUseFullRange: true,
       initialSpeech: ['當前格等於上方', '加上左方', '減掉左上方', '加上自己'],
       innerLabels: 0,
-      markers: []
+      markers: ['c','r']
     });
     assert.deepEqual(errors, []);
   } finally {

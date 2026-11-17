@@ -54,7 +54,8 @@ test('sample loading never paints editor chrome and renders math on first insert
     await page.waitForFunction(() => document.querySelector('.latex-content')?.dataset.latexRenderedEngine === 'katex');
     assert.deepEqual(await page.evaluate(() => firstMathInsertion), { engine: 'katex', rendered: true });
     assert.deepEqual(await page.evaluate(() => editorPaints), []);
-    assert.equal(await page.locator('#editorChrome').isVisible(), false);
+    assert.equal(await page.evaluate(()=>document.body.classList.contains('asm-edit-mode')),false);
+    assert.equal(await page.locator('#modeToggleBtn').isVisible(),true,'sample viewers may enable temporary local editing');
     assert.equal(await page.locator('.chrome-home-link').isVisible(), true);
     assert.equal(await page.evaluate(() => katex.version), '0.16.22');
     await page.evaluate(() => document.fonts.ready);

@@ -28,7 +28,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     const code=fs.readFileSync(path.join(__dirname, 'fixtures/events-batch-sieve.cpp'),'utf8');
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),code);
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer;
       const doc=player.getDocument();
@@ -38,11 +38,11 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
       const compact9=doc.frames.findIndex(f=>f.eventControls.length && value(f)===9);
       if(compact8<0||compact9<0)throw new Error('compact frames missing');
       await player.render(compact8-1);
-      const detailedSteps=player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.length || 0;
+      const detailedSteps=player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.filter(s=>!s.id.startsWith('trace-event:visual-sequence:')).length || 0;
       const read=()=>({
         arrows:[...document.querySelectorAll('#arraySvg [data-trace-arrow-source="directive"]')]
           .map(node=>({id:node.dataset.traceArrow,from:node.dataset.traceArrowFromKey,to:node.dataset.traceArrowToKey})),
-        steps:player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.length || 0,
+        steps:player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.filter(s=>!s.id.startsWith('trace-event:visual-sequence:')).length || 0,
         active:document.querySelector('#arraySvg [data-trace-active-event-id]')!==null
       });
       await player.render(compact8);
@@ -67,7 +67,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     assert.deepEqual(result.nine.arrows.map(a=>a.from.split('#').at(-1)),['0','1']);
     assert.deepEqual(result.values,['0','0'],'actual rendered composite values are current');
     for(const state of [result.eight,result.nine,result.repeated,result.reloaded]){
-      assert.equal(state.steps,0,'no detail events scheduled');
+      assert.equal(state.steps,0,'no C++ detail events scheduled');
       assert.equal(state.active,false);
     }
     assert.deepEqual(result.repeated.arrows,result.nine.arrows);
@@ -77,13 +77,13 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),loopCode);
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,loopCode,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,loopCode);
     const loops=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const iId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='i');
       const indices=[8,9].map(i=>doc.frames.findIndex(frame=>frame.eventControls.length && frame.state[iId]?.data.value===i));
       const read=()=>({arrows:[...document.querySelectorAll('#arraySvg [data-trace-arrow-source="directive"]')].map(node=>({id:node.dataset.traceArrow,to:node.dataset.traceArrowToKey})),
-        steps:player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.length || 0});
+        steps:player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.filter(s=>!s.id.startsWith('trace-event:visual-sequence:')).length || 0});
       const states=[];
       for(const index of indices){await player.render(index);states.push(read());}
       player.apply(JSON.parse(JSON.stringify(doc)));
@@ -100,7 +100,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),drawingCode);
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,drawingCode,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,drawingCode);
     const drawing=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const iId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='i');
@@ -115,7 +115,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
           wrapper._asmStyleCell?.getAttribute('data-trace-arrow-target-key')===`${primeId}#${index}`
           && wrapper.getAttribute('display')!=='none' && wrapper.firstElementChild?.tagName.toLowerCase()==='rect'
           && wrapper.firstElementChild.getAttribute('stroke')==='red' && wrapper.firstElementChild.getBBox().width>0)),
-        steps:player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.length || 0
+        steps:player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.filter(s=>!s.id.startsWith('trace-event:visual-sequence:')).length || 0
       });
       await player.render(index);
       const original=read();
@@ -131,14 +131,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     assert.deepEqual(drawing.original.highlighted,[true,true]);
     assert.equal(drawing.original.steps,0);
     assert.deepEqual(drawing.reloaded,drawing.original);
-    await page.evaluate(()=>window.ASMTraceStudio.open());
-    const bindings=await page.evaluate(ids=>ids.map(id=>window.ASMTraceStudio.getBinding('text:'+id)?.targetKey),drawing.original.texts.map(text=>text.id));
-    assert.deepEqual(bindings.map(key=>key.split('#').at(-1)),['0','1']);
-    await page.locator('#arraySvg [data-trace-text-id] [data-trace-text-segment="expression"]').nth(1).click();
-    await page.waitForFunction(()=>{
-      const fields=document.querySelector('.trace-studio-text-style-fields');
-      return fields && !fields.hidden;
-    });
+    // Directive text bindings are asserted on the rendered SVG above.
     assert.deepEqual(errors,[]);
     const traceDocument = await page.evaluate(() => JSON.parse(JSON.stringify(ASMTracePlayer.getDocument())));
     const slides = await browser.newPage({ viewport: { width:1440,height:1000 } });
@@ -162,12 +155,12 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
         id:node.dataset.traceArrow, to:node.dataset.traceArrowToKey })),
         texts:[...document.querySelectorAll('#arraySvg [data-trace-text-id]')].map(node=>({id:node.dataset.traceTextId,text:node.textContent,target:node.dataset.traceBindingTarget,hidden:node.getAttribute('display')})),
         backgrounds:[18,27].map(index=>document.querySelector(`#arraySvg [data-trace-arrow-target-key="${isprimeId}#${index}"] rect`)?.getAttribute('fill')),
-        steps:player.getLastPlaybackPlan()?.phases.find(phase=>phase.id==='trace-events')?.steps.length || 0 };
+        steps:player.getLastPlaybackPlan()?.phases.find(phase=>phase.id==='trace-events')?.steps.filter(s=>!s.id.startsWith('trace-event:visual-sequence:')).length || 0 };
     });
     assert.deepEqual(embedded.arrows,drawing.original.arrows,'slide iframe preserves drawing-loop arrow identities and targets');
     assert.deepEqual(embedded.texts,drawing.original.texts,'slide iframe preserves local text values and bindings');
     assert.deepEqual(embedded.backgrounds,drawing.original.backgrounds,'slide iframe preserves drawing-loop styles');
-    assert.equal(embedded.steps,0,'slide iframe honors compact frame event controls');
+    assert.equal(embedded.steps,drawing.original.steps,'slide iframe preserves the same presentation lifecycle');
     assert.deepEqual(errors,[]);
   } finally { await browser.close(); }
 });

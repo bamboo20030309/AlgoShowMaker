@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+async function historyTo(frame,action,expected){const wanted=require('../public/trace-provenance').sourceText(expected);for(let n=0;n<4;n++){await frame.evaluate(action=>ace.edit('editor')[action](),action);const value=await frame.evaluate(()=>ace.edit('editor').getValue());if(require('../public/trace-provenance').sourceText(value)===wanted)return;}assert.fail(action+' must retain the source edit behind Studio metadata');}
 
 test('animation source loads and dialog reopen preserve independent Ace undo histories',
   { timeout: 60000 }, async () => {
@@ -16,7 +17,7 @@ test('animation source loads and dialog reopen preserve independent Ace undo his
         contentType: route.request().url().endsWith('.css') ? 'text/css' : 'application/javascript',
         body: route.request().url().endsWith('.css') ? '' : 'window.renderMathInElement = function() {};'
       }));
-      const source = 'int main() {\n int value = 1;\n // @frame value\n return 0;\n}\n'
+      let source = 'int main() {\n int value = 1;\n // @frame value\n return 0;\n}\n'
         + '/* @asm-view\n{"version":1,"rules":[],"skins":{},"studio":{"eventSettings":{"autoFixedEnabled":false,"autoLoopBoundaryEnabled":false}}}\n@asm-view */\n';
       // Legacy slides contain no editor-history fields; history stays transient.
       await page.addInitScript(code => localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify({
@@ -25,15 +26,18 @@ test('animation source loads and dialog reopen preserve independent Ace undo his
           canvas: { objects: [] }, widgets: [] }] }]
       })), source);
       await page.goto(base + '/slides.html');
-      await page.waitForFunction(() => document.body.dataset.slideCount);
+      await page.waitForFunction(() => document.body.dataset.asmdeckRebuild === 'ready');
+      if(!await page.evaluate(()=>document.body.classList.contains('asm-edit-mode')))await page.click('#modeToggleBtn');
       await page.evaluate(() => document.getElementById('algorithmEditSlideBtn').click());
       await page.waitForFunction(code => {
-        const frame = document.getElementById('algorithmEditorFrame');
-        return frame.contentWindow?.ace?.edit('editor').getValue() === code
-          && !document.getElementById('algorithmEditorModal').classList.contains('is-loading');
+        const frame = document.querySelector('#algorithmEditorStage iframe');
+        if(!frame?.contentWindow?.asmReplaceEditorCode)return false;
+        return frame?.contentWindow?.ASMTraceProvenance?.sourceText(frame.contentWindow.ace?.edit('editor').getValue()) === frame?.contentWindow?.ASMTraceProvenance?.sourceText(code)
+          && !document.getElementById('algorithmEditorPage').classList.contains('is-loading');
       }, source);
-      const editor = await (await page.$('#algorithmEditorFrame')).contentFrame();
-      const changed = source + '// user change\n';
+      const editor = await (await page.$('#algorithmEditorStage iframe')).contentFrame();
+      source=await editor.evaluate(()=>ace.edit('editor').getValue());
+      const changed = source.replace('int value = 1;', 'int value = 1; // user change');
       await editor.evaluate(code => window.asmReplaceEditorCode(code), changed);
       // Reapplying identical source preserves both undo history and selection.
       await editor.evaluate(code => {
@@ -47,30 +51,29 @@ test('animation source loads and dialog reopen preserve independent Ace undo his
       }, changed);
       await editor.waitForFunction(() => window.__historyApplied === 1);
       assert.deepEqual(await editor.evaluate(() => ace.edit('editor').getCursorPosition()), { row: 1, column: 3 });
-      await editor.evaluate(() => ace.edit('editor').undo());
+      await historyTo(editor,'undo',source);
       assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), source);
-      await editor.evaluate(() => ace.edit('editor').redo());
+      await historyTo(editor,'redo',changed);
       assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), changed);
 
       await editor.click('#runBtn');
-      await editor.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code,
-        changed, { timeout: 30000 });
-      await editor.evaluate(() => ace.edit('editor').undo());
+      await require('./helpers/algorithm-page').waitForTraceSource(editor,changed);
+      await historyTo(editor,'undo',source);
       assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), source, 'RUN preserves undo');
-      await editor.evaluate(() => ace.edit('editor').redo());
-      await page.click('#saveAlgorithmEditorBtn');
-      await page.waitForFunction(() => document.getElementById('algorithmEditorModal').hidden);
-      assert.match(await page.locator('#algorithmEditorFrame').getAttribute('src'), /asmEmbed=editor/);
+      await historyTo(editor,'redo',changed);
+      await page.click('#algorithmEditorBackBtn');
+      await page.waitForFunction(() => document.getElementById('algorithmEditorPage').hidden);
+      assert.equal(await editor.evaluate(()=>document.body.classList.contains('asm-embed-runtime')),true);
       await page.evaluate(() => document.getElementById('algorithmEditSlideBtn').click());
-      await page.waitForFunction(() => !document.getElementById('algorithmEditorModal').hidden
-        && !document.getElementById('algorithmEditorModal').classList.contains('is-loading'));
+      await page.waitForFunction(() => !document.getElementById('algorithmEditorPage').hidden
+        && !document.getElementById('algorithmEditorPage').classList.contains('is-loading'));
       assert.equal(await editor.evaluate(() => ace.edit('editor').session === window.__historySession), true);
       assert.equal(await editor.locator('#inputArea').inputValue(), '17');
       assert.equal(await editor.evaluate(() => window.ASMTraceViewSource.parse(ace.edit('editor').getValue())
         .studio.eventSettings.autoFixedEnabled), false, 'explicit old settings survive save/reopen');
-      await editor.evaluate(() => ace.edit('editor').undo());
+      await historyTo(editor,'undo',source);
       assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), source, 'save/reopen retains undo');
-      await editor.evaluate(() => ace.edit('editor').redo());
+      await historyTo(editor,'redo',changed);
 
       // A different animation owns a fresh history; returning restores the first.
       await editor.evaluate(() => window.postMessage({ type: 'asm-load-animation',
@@ -80,7 +83,7 @@ test('animation source loads and dialog reopen preserve independent Ace undo his
       await editor.evaluate(code => window.postMessage({ type: 'asm-load-animation',
         editorSessionKey: 'history-slide', animation: { code, input: '' } }, location.origin), changed);
       await editor.waitForFunction(code => ace.edit('editor').getValue() === code, changed);
-      await editor.evaluate(() => ace.edit('editor').undo());
+      await historyTo(editor,'undo',source);
       assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), source);
       // The native mobile textarea must also retain undo rather than setValue.
       await editor.evaluate(() => {
@@ -89,7 +92,7 @@ test('animation source loads and dialog reopen preserve independent Ace undo his
         input.dispatchEvent(new Event('input', { bubbles: true }));
       });
       assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), source + '// mobile edit\n');
-      await editor.evaluate(() => ace.edit('editor').undo());
+      await historyTo(editor,'undo',source);
       assert.equal(await editor.evaluate(() => ace.edit('editor').getValue()), source);
       assert.deepEqual(errors, []);
     } finally { await browser.close(); }

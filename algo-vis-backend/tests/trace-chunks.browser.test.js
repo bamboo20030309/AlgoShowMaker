@@ -9,7 +9,7 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
  const server=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),ASM_REGRESSION:'1',JWT_SECRET:require('node:crypto').randomBytes(32).toString('hex')},windowsHide:true,stdio:'ignore'});
  let browser;
  try{
-  for(let i=0;i<100;i++){try{if((await fetch(base+'/algorithm.html')).ok)break;}catch{}await new Promise(r=>setTimeout(r,200));}
+  for(let i=0;i<100;i++){try{if((await fetch(base+'/algorithm.html?asmEmbed=editor&localOnly=1')).ok)break;}catch{}await new Promise(r=>setTimeout(r,200));}
   browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];
   page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
@@ -27,8 +27,7 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
   await page.evaluate(code=>{aceEditor.setValue(code,-1);window.__traceStart=performance.now();document.getElementById('runBtn').click();},source);
   const response=await replyPromise;
   assert.equal(response.headers()['content-encoding'],'gzip');
-  await page.waitForFunction(code=>ASMTracePlayer.getDocument()?.sourceCode===code
-   && Object.values(ASMTracePlayer.getDocument()?.variables||{}).some(v=>v.name==='grid'),source,{timeout:90000});
+  await require('./helpers/algorithm-page').waitForTraceSource(page,source).catch(async e=>{console.error(await page.evaluate(()=>({output:document.getElementById('outputArea').textContent,debug:document.getElementById('debugArea').textContent,actual:ASMTracePlayer.getDocument()?.sourceCode?.length,expected:aceEditor.getValue().length})));throw e;});
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   const result=await page.evaluate(()=>{
    const doc=ASMTracePlayer.getDocument(),frame=doc.frames[0];

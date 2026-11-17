@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const { startIsolatedServer } = require('./helpers/isolated-server');
 
 // Real shipped archives, not a mock catalog: guard the public names and saved traces.
-test('official gallery thumbnails and saved Merge Sort/Queens decks open without compiler requests', { timeout: 120000 }, async t => {
+test('official gallery thumbnails and saved Merge Sort/Queens decks execute their recipes', { timeout: 120000 }, async t => {
   const { base } = await startIsolatedServer(t);
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   t.after(() => browser.close());
@@ -31,7 +31,7 @@ test('official gallery thumbnails and saved Merge Sort/Queens decks open without
     assert.ok(await card.locator('.deck-cover-image').evaluate(image => image.complete && image.naturalWidth > 0));
     const view = await browser.newPage(); view.on('pageerror', error => errors.push(error.message));
     await view.route(/\/(compile|trace\/analyze|api\/compile\/jobs)(\?|$)/, route => {
-      if (route.request().method() === 'POST') { dynamic.push(route.request().url()); return route.abort(); }
+      if (route.request().method() === 'POST') dynamic.push(route.request().url());
       return route.continue();
     });
     await view.goto(`${base}/slides.html?sample=${id}`);
@@ -39,5 +39,5 @@ test('official gallery thumbnails and saved Merge Sort/Queens decks open without
     assert.ok(await view.locator('.algorithm-slide-frame').count() > 0, 'saved animations are attached');
     await view.close();
   }
-  assert.deepEqual(dynamic, [], 'prebuilt public decks must not recompile'); assert.deepEqual(errors, []);
+  assert.ok(dynamic.some(url=>url.includes('/compile')), 'opened decks execute their recipes'); assert.deepEqual(errors, []);
 });

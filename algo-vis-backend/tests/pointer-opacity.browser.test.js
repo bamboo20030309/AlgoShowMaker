@@ -30,7 +30,7 @@ return 0;}`);
       for (const fill of ['rgba(240,10,30,0.25)', 'rgba(240,10,30,0)']) {
         const saved = JSON.parse(JSON.stringify(trace));
         saved.frames[0].bindings.forEach(binding => { delete binding.implicitIndex; });
-        saved.studio.objectStyles = { [saved.frames[0].id]: { [customKey]: { fill } } };
+        saved.frames[0].bindings[0].pointerColor=fill;
         saved.studio.eventSettings = { ...(saved.studio.eventSettings || {}), autoFixedEnabled: false };
         const loaded = window.ASMTracePlayer.apply(saved);
         await window.ASMTracePlayer.render(0, { stable: true });

@@ -60,32 +60,12 @@ test('algorithm slide embeds expose and switch the original result tabs',
         await page.goto(`${base}/algorithm.html?asmEmbed=${mode}`, { waitUntil: 'networkidle' });
         await page.waitForFunction(expected => document.body.classList.contains(`asm-embed-${expected}`), mode);
 
-        if (mode === 'runtime') {
-          await page.waitForFunction(() => (
-            getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor
-              === 'rgb(255, 255, 255)'
-          ));
+        if(mode==='runtime'){
+          assert.equal(await page.locator('#subTabs').isVisible(),false,'runtime is canvas-only');
+          assert.equal(await page.locator('#tab-canvas').evaluate(el=>el.classList.contains('active')),true);
+          await page.close();continue;
         }
-
-        assert.equal(await page.locator('#subTabs').isVisible(), true,
-          `${mode} embed displays the result tab frame`);
-        if (mode === 'runtime') {
-          const backgrounds = await page.evaluate(() => ({
-            tabs: getComputedStyle(document.getElementById('subTabs')).backgroundColor,
-            slide: getComputedStyle(document.querySelector('.controls')).backgroundColor,
-            active: getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor,
-            underline: getComputedStyle(
-              document.querySelector('#subTabs .tab-btn.active'),
-              '::after'
-            ).backgroundColor
-          }));
-          assert.equal(backgrounds.tabs, backgrounds.slide,
-            'runtime tab frame uses the same background as the slide controls below');
-          assert.equal(backgrounds.active, backgrounds.slide,
-            'the active runtime tab continues the slide background');
-          assert.equal(backgrounds.underline, 'rgb(0, 122, 204)',
-            'the active runtime tab restores the original blue underline');
-        }
+        assert.equal(await page.locator('#subTabs').isVisible(),true,'editor exposes result tabs');
         await page.locator('.tab-btn[data-tab="tab-input"]').click();
         assert.equal(await page.locator('#tab-input').evaluate(element => element.classList.contains('active')), true,
           `${mode} embed can select input`);

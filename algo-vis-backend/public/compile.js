@@ -272,6 +272,7 @@ async function runProgram() {
         }
         const incomingTraceDocument = {
           ...data.traceDocument,
+          ...(data.cache?.executableId ? { executableRef: { id: data.cache.executableId } } : {}),
           sourceCode: typeof data.traceDocument.sourceCode === 'string'
             && data.traceDocument.sourceCode
             ? data.traceDocument.sourceCode

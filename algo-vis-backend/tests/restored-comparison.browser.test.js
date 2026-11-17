@@ -43,7 +43,7 @@ result=a[i]==a[i];
    source.frames[1].events=source.frames[1].events.filter(matches);
    if(mode==='saved-legacy')for(const f of source.frames)for(const e of f.events)delete e.semantics;
    source.studio||={};source.studio.eventSettings={gapMs:0,readHighlightEnabled:false};
-   source.studio.objectStyles||={};source.studio.objectStyles[source.frames[1].id]={[id+'#0']:{fill:'#123456'}};
+   for(const f of source.frames)f.styles.push({id:'authored-copy-color',targetVariableId:id,selector:{type:'index',indexExpression:'0'},styleType:'background',color:'#123456'});
    const key=await ASMSlideStorage.digest(ASMSlideStorage.canonical(source));await store.putTrace(key,source);
    const doc=ASMTracePlayer.apply(await store.loadTrace(key));
    const root=()=>document.querySelector('#asm-trace-root');

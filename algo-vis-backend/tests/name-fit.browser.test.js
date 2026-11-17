@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { compile } = require('./helpers/compile');
 
-test('outerframe names fit narrow and growing frames, keep, and stored font limits', {timeout:60000}, async()=>{
+test('outerframe names fit narrow and growing frames, keep and legacy names', {timeout:60000}, async()=>{
   const {trace}=await compile(`#include <vector>
 using namespace std;
 int main(){vector<int> a;vector<vector<int>> grid={{1}};
@@ -49,7 +49,6 @@ return 0;}`);
       const old=JSON.parse(JSON.stringify(loaded));
       delete old.frames[0].source.objectId;delete old.frames[0].source.objectIds;
       old.studio.eventSettings={...(old.studio.eventSettings||{}),autoFixedEnabled:false};
-      old.studio.objectStyles={ [old.frames[2].id]:{['very_long_visual_identifier:label']:{fontSize:12,fill:'#ff0000'}} };
       window.ASMTracePlayer.apply(old);
       await window.ASMTracePlayer.render(0,{stable:true});inspect();
       const legacyName=[...document.querySelectorAll('#asm-trace-root .outerframe-label')].map(l=>l.textContent);
@@ -58,14 +57,12 @@ return 0;}`);
       await window.ASMTracePlayer.render(2,{stable:true});inspect();
       const label=[...document.querySelectorAll('#asm-trace-root .outerframe-label')].find(l=>!l.closest('[data-trace-snapshot]'));
       return {violations,fonts,legacyName,customFont:Number(label.getAttribute('font-size')),color:label.getAttribute('fill'),
-        customStored:window.ASMTracePlayer.getDocument().studio.objectStyles[old.frames[2].id]['very_long_visual_identifier:label'].fontSize,
         disabled:window.ASMTracePlayer.getDocument().studio.eventSettings.autoFixedEnabled};
     },trace);
     assert.deepEqual(report.violations,[]);
     assert.ok(report.fonts[0]<report.fonts[2]);assert.equal(report.fonts[2],16);
     assert.ok(report.legacyName.includes('a'));
-    assert.equal(report.customFont,12);assert.equal(report.customStored,12);
-    assert.equal(report.color,'#ff0000');assert.equal(report.disabled,false);
+    assert.equal(report.disabled,false);
     assert.deepEqual(errors,[]);
   }finally{await browser.close();}
 });

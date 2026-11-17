@@ -456,6 +456,7 @@
       keepLastFocus: frame.keepLastFocus === true
     })) : [];
     const normalized = {
+      ...(source.executableRef && typeof source.executableRef.id === 'string' ? { executableRef: clone(source.executableRef) } : {}),
       schemaVersion: source.schemaVersion || '1.0',
       generatedAt: source.generatedAt || '',
       loopRecords: Array.isArray(source.loopRecords) ? clone(source.loopRecords) : [],

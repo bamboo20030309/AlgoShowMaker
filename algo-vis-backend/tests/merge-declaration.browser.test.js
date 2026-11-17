@@ -43,7 +43,7 @@ test('saved Merge Sort frame 26 joins each initialized declaration and preserves
       const listener = e => {
         if (e.detail.phase !== 'start' || !selected.includes(e.detail.event)) return;
         events.push({ type: e.detail.event.type, name: e.detail.event.name, expression: e.detail.event.expression,
-          at: elapsed, start: e.detail.slot.start, end: e.detail.slot.end, duration: e.detail.slot.duration,
+          at: elapsed, start: e.detail.slot.start, promptStart: e.detail.slot.promptStart, end: e.detail.slot.end, duration: e.detail.slot.duration,
           text: [...document.querySelectorAll('#traceCodePanel .is-active')].map(node => node.textContent).join('').replace(/\s+/g, '') });
       };
       window.addEventListener('asm:trace-active-event', listener);
@@ -81,21 +81,21 @@ test('saved Merge Sort frame 26 joins each initialized declaration and preserves
     assert.deepEqual(events.map(event => event.duration), [220, 220]);
     for (const event of events) {
       const during = result.samples.filter(sample => sample.at >= event.at
-        && sample.at < event.at + event.duration / settings.rate);
+        && sample.at < event.at + (200 + event.duration) / settings.rate);
       assert.ok(during.length > 3);
       assert.ok(during.every(sample => sample.text === event.text),
         `highlight must stay whole for the entire event: ${JSON.stringify({ settings, event, during })}`);
     }
     for (let i = 1; i < events.length; i++) {
       const expectedGap = settings.expectedGap ?? settings.gap;
-      assert.equal(events[i].start - events[i - 1].end, expectedGap);
+      assert.equal(events[i].promptStart - events[i - 1].end, expectedGap);
       assert.ok(Math.abs(events[i].at - events[i - 1].at
-        - (events[i - 1].duration + expectedGap) / settings.rate) <= 10,
+        - (events[i - 1].duration + expectedGap + 200) / settings.rate) <= 10,
       'wall-clock playback follows speed while logical event clocks stay unchanged');
-      const gap = result.samples.filter(sample => sample.at >= events[i - 1].at + events[i - 1].duration / settings.rate
+      const gap = result.samples.filter(sample => sample.at >= events[i - 1].at + (200 + events[i - 1].duration) / settings.rate
         && sample.at < events[i].at);
       assert.ok(gap.every(sample => sample.text === ''),
-        'the configured gap stays free of yellow highlighting, including after a panel rebuild');
+        'the configured gap stays free of yellow highlighting: '+JSON.stringify({settings,events,gap}));
     }
   }
 });

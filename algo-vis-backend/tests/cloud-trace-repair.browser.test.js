@@ -8,7 +8,7 @@ const Storage = require('../public/slides-storage');
 global.ASMTraceProvenance = require('../public/trace-provenance');
 const archive = require('../public/asmdeck');
 
-test('cloud save repairs an unseen animation and manual RUN updates cloud/export IDs together', { timeout: 120000 }, async t => {
+test('cloud save repairs an unseen animation and manual RUN updates cloud/export executable recipes', { timeout: 120000 }, async t => {
   const { base } = await startIsolatedServer(t);
   const code = '#include <iostream>\nint main(){int n;std::cin>>n;\n// @frame n\nstd::cout<<n;}';
   const original = { groups: [{ id: 'g', slides: [1,2].map(n => ({ id: 's'+n, kind: 'algorithm-animation',
@@ -58,45 +58,46 @@ test('cloud save repairs an unseen animation and manual RUN updates cloud/export
     }
     return route.fulfill({ json: { slide: { title: 'Repair fixture', deck } } });
   });
-  context.on('request', request => { if (new URL(request.url()).pathname === '/compile') compiles++; });
+  context.on('request', request => { if (['/compile','/api/compile/jobs'].includes(new URL(request.url()).pathname)) compiles++; });
   const page = await context.newPage();
   await page.goto(base + '/slides.html?deck=repair-deck');
-  await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
+  await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved' && document.body.dataset.asmdeckRebuild === 'ready');
   const player = await (await page.waitForSelector('.algorithm-slide-frame')).contentFrame();
-  await player.waitForFunction(() => ASMTracePlayer.getDocument()?.frames?.length > 0);
+  await player.waitForFunction(() => window.ASMTracePlayer?.getDocument()?.frames?.length > 0);
   await page.waitForFunction(() => document.getElementById('cloudSaveStatus').dataset.state === 'saved')
     .catch(async error => { console.error(await page.locator('#cloudSaveStatus').textContent()); throw error; });
   // Wait for the real cloud commit, not only an intermediate local status.
   for (let attempt=0; !committed && attempt<100; attempt++) await new Promise(resolve => setTimeout(resolve,100));
   assert.ok(committed);
   assert.equal(compiles, 2, 'only current and unseen missing results are rebuilt');
-  assert.equal(committed.references.length, 2);
-  const oldKey = committed.references.find(ref => ref.slideIndex === 0).key;
+  assert.equal(committed.references.length, 0);
+  const oldKey = committed.deck.groups[0].slides[0].animation.executableRef.id;
   assert.notEqual(oldKey, '1'.repeat(64));
   if (!await page.evaluate(() => document.body.classList.contains('asm-edit-mode'))) await page.click('#modeToggleBtn');
   await page.click('#algorithmEditSlideBtn');
-  const editor = await (await page.waitForSelector('#algorithmEditorFrame')).contentFrame();
-  await editor.waitForFunction(() => ASMTracePlayer.getDocument()?.frames?.length > 0);
+  const editor = await (await page.waitForSelector('#algorithmEditorStage iframe')).contentFrame();
+  await editor.waitForFunction(() => window.ASMTracePlayer?.getDocument()?.frames?.length > 0);
   if (await editor.getByRole('button', { name: '返回程式碼', exact: true }).isVisible()) await editor.getByRole('button', { name: '返回程式碼', exact: true }).click();
   const changed = code.replace('std::cout<<n;', 'std::cout<<n+1;');
   await editor.evaluate(code => { aceEditor.setValue(code,-1); document.getElementById('inputArea').value='23'; }, changed);
   await editor.click('#runBtn');
-  await editor.waitForFunction(code => ASMTracePlayer.getDocument()?.sourceCode === code && !document.getElementById('runBtn').disabled, changed);
+  await editor.waitForFunction(code => window.ASMTraceProvenance?.sourceText(ASMTracePlayer.getDocument()?.sourceCode||'') === window.ASMTraceProvenance?.sourceText(code) && !document.getElementById('runBtn').disabled, changed);
   assert.equal((await editor.locator('#outputArea').textContent()).trim(), '24');
   const beforeCommit = commits;
-  await page.click('#saveAlgorithmEditorBtn');
-  await page.waitForFunction(() => document.getElementById('algorithmEditorModal').hidden && document.body.dataset.localDeckSave === 'saved');
+  await page.click('#algorithmEditorBackBtn');
+  await page.waitForFunction(() => document.getElementById('algorithmEditorPage').hidden && document.body.dataset.localDeckSave === 'saved');
   for (let attempt=0; commits===beforeCommit && attempt<100; attempt++) await new Promise(resolve => setTimeout(resolve,100));
   assert.ok(commits>beforeCommit);
-  const newKey = committed.references.find(ref => ref.slideIndex === 0).key;
+  const newKey = committed.deck.groups[0].slides[0].animation.executableRef.id;
   assert.notEqual(newKey, oldKey);
   const downloadEvent = page.waitForEvent('download'); await page.click('#exportDeckBtn');
   const exported = await archive.decode(new Blob([fs.readFileSync(await (await downloadEvent).path())]));
-  assert.equal(exported.deck.groups[0].slides[0].animation.traceRef, newKey);
-  assert.equal(exported.deck.groups[0].slides[1].animation.traceRef, committed.references.find(ref => ref.slideIndex === 1).key);
+  assert.equal(exported.deck.groups[0].slides[0].animation.executableRef.id, newKey);
+  assert.equal(exported.deck.groups[0].slides[1].animation.executableRef.id, committed.deck.groups[0].slides[1].animation.executableRef.id);
   assert.equal(exported.deck.groups[0].slides[0].animation.input, '23');
   await page.reload();
   const reopened = await (await page.waitForSelector('.algorithm-slide-frame')).contentFrame();
-  await reopened.waitForFunction(code => ASMTracePlayer.getDocument()?.sourceCode === code, changed);
-  assert.equal(compiles, 3, 'reload uses the committed results after the single manual RUN');
+  await reopened.waitForFunction(code => window.ASMTraceProvenance?.sourceText(ASMTracePlayer.getDocument()?.sourceCode||'') === window.ASMTraceProvenance?.sourceText(code), changed);
+  await page.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='ready');
+  assert.equal(compiles, 5, 'reload executes both committed recipes after one manual RUN');
 });

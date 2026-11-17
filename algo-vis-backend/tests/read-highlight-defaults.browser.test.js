@@ -11,7 +11,7 @@ test('read emphasis defaults off, uses pure red when enabled, and preserves save
    // Actual IndexedDB round trip, with a separate client and external Trace ID.
    const deck={groups:[{id:'g',slides:[{id:'s',kind:'algorithm-animation',animation:{mode:'trace',code:doc.sourceCode,input:'',traceDocument:doc}}]}]};
    // Reopen the same named database; no in-memory Trace is supplied.
-   const dbName='read-settings-'+variant.name+'-'+Date.now();const first=ASMSlideStorage.create(indexedDB,localStorage,dbName);await first.saveDeck('d',JSON.stringify(deck));const second=ASMSlideStorage.create(indexedDB,localStorage,dbName);const compact=await second.loadDeck('d',[],{lazyTraces:true});const animation=await ASMSlideTraceStore.create(ASMSlideStorage,second).materializeAnimation(compact.groups[0].slides[0].animation);doc=animation.traceDocument;
+   const dbName='read-settings-'+variant.name+'-'+Date.now();const first=ASMSlideStorage.create(indexedDB,localStorage,dbName);await first.saveDeck('d',JSON.stringify(deck));const second=ASMSlideStorage.create(indexedDB,localStorage,dbName);const compact=await second.loadDeck('d',[],{lazyTraces:true});const animation=await ASMDeck.rebuildMissingAnimation(compact.groups[0].slides[0].animation);doc=animation.traceDocument;
    ace.edit('editor').setValue(doc.sourceCode,-1);ASMTraceEditor.loadAnimation({mode:'trace',code:doc.sourceCode,input:'',traceDocument:doc},{openStudio:false});await CodeScript.goto(0);ASMTraceStudio.showTab('events');const toggle=document.querySelector('.trace-read-highlight-toggle');const checked=toggle.checked;ASMTraceStudio.showTab('source');
    // Code highlight has its own lead-in. Observe the owner's complete event,
    // rather than assuming its visual phase has started at wall-clock 120 ms.
@@ -48,18 +48,16 @@ arr[j+1]=key;
   for(const f of source.frames)for(const e of f.events){e.enabled=true;e.autoAnimationDisabled=false;}
   const player=ASMTracePlayer;player.apply(source);window.asmGetAnimationPlaybackRate=()=>1;
   const camera=window.ASMTraceCamera;window.ASMTraceCamera={...camera,apply(){},transitionDuration:()=>0};
-  const slots=[];const listener=e=>{if(e.detail?.phase==='start'){const s=e.detail.slot;slots.push({type:s.event.type,name:source.variables[s.event.targets.find(t=>t.role==='target')?.variableId]?.name,duration:s.duration});}};
+  const slots=[];const listener=e=>{if(e.detail?.phase==='start'){const s=e.detail.slot;slots.push({type:s.event.type,name:source.variables[s.event.targets.find(t=>t.role==='target')?.variableId]?.name,duration:s.duration,initializer:s.initializerEvent?.type});}};
   window.addEventListener('asm:trace-active-event',listener);
   await player.render(0,{animatePositions:false,animateEvents:false});await player.render(1);
-  const pending=player.render(2);await new Promise(r=>setTimeout(r,100));
-  const target=[...document.querySelectorAll('.asm-trace-event-emphasis')].map(n=>n.getAttribute('stroke'));
-  const transfers=[...document.querySelectorAll('.asm-trace-assign-transfer')].map(n=>({rects:n.querySelectorAll('rect').length,value:n.textContent}));
-  const read=[...document.querySelectorAll('.asm-trace-read-highlight')].map(n=>n.getAttribute('stroke'));
+  let done=false;let target=[],transfers=[],read=[];const pending=player.render(2).finally(()=>done=true);
+  while(!done){await new Promise(requestAnimationFrame);const nodes=[...document.querySelectorAll('.asm-trace-assign-transfer')];if(nodes.length){transfers=nodes.map(n=>({rects:n.querySelectorAll('rect').length,value:n.textContent}));read=[...document.querySelectorAll('.asm-trace-read-highlight')].map(n=>n.getAttribute('stroke'));target=[...document.querySelectorAll('.asm-trace-event-emphasis')].map(n=>n.getAttribute('stroke'));}}
   await pending;window.removeEventListener('asm:trace-active-event',listener);window.ASMTraceCamera=camera;return {slots,target,read,transfers};
  },trace);
  assert.equal(result.slots.find(s=>s.type==='declare'&&s.name==='j')?.duration,220,JSON.stringify(result));
- assert.equal(result.slots.find(s=>s.type==='declare'&&s.name==='key')?.duration,220,JSON.stringify(result));
- assert.equal(result.slots.find(s=>s.type==='assign'&&s.name==='key')?.duration,1260,JSON.stringify(result));
+ assert.equal(result.slots.find(s=>s.type==='declare'&&s.name==='key')?.duration,1480,JSON.stringify(result));
+ assert.ok(!result.slots.some(s=>s.type==='assign'&&s.name==='key'),'initializer must not replay separately');
  assert.deepEqual(result.target,[]);assert.deepEqual(result.read,['red']);
  assert.ok(result.transfers.some(n=>n.rects>0&&n.value.includes('8')),JSON.stringify(result));
 });

@@ -18,11 +18,11 @@ test('workshop prefix animation with a missing ID rebuilds once, renders and sur
   await context.route('**/missing-test.asmdeck', route => route.fulfill({ body: buffer }));
   await context.route('**/api/user/preferences/event-settings', route => route.fulfill({ json: { eventSettings: {} } }));
   let compiles = 0;
-  context.on('request', request => { if (new URL(request.url()).pathname === '/compile') compiles++; });
+  context.on('request', request => { if (['/compile','/api/compile/jobs'].includes(new URL(request.url()).pathname)) compiles++; });
   const page = await context.newPage();
   await page.goto(base + '/slides.html?sample=missing-test');
   const player = await (await page.waitForSelector('.algorithm-slide-frame')).contentFrame();
-  await player.waitForFunction(() => ASMTracePlayer.getDocument()?.frames?.length > 0);
+  await player.waitForFunction(() => window.ASMTracePlayer?.getDocument()?.frames?.length > 0);
   await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
   assert.equal(compiles, 1);
   const trace = await player.evaluate(() => ASMTracePlayer.getDocument());
@@ -32,7 +32,7 @@ test('workshop prefix animation with a missing ID rebuilds once, renders and sur
   assert.ok(await player.locator('svg').count(), 'actual player canvas exists');
   await page.reload();
   const reopened = await (await page.waitForSelector('.algorithm-slide-frame')).contentFrame();
-  await reopened.waitForFunction(() => ASMTracePlayer.getDocument()?.frames?.length > 0);
-  assert.equal(compiles, 1, 'reopen uses the saved replacement Trace');
+  await reopened.waitForFunction(() => window.ASMTracePlayer?.getDocument()?.frames?.length > 0);
+  assert.equal(compiles, 2, 'reopen executes the recipe again');
   assert.equal((await reopened.evaluate(() => ASMTracePlayer.getDocument())).studio.eventSettings.autoFixedEnabled, false);
 });

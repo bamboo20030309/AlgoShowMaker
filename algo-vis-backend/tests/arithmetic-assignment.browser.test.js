@@ -14,146 +14,7 @@ const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('visible-source initialization has a blank declaration followed by an independent whole-cell assignment', { timeout: 45000 }, async () => {
-  const base = process.env.ASM_TEST_BASE_URL;
-  assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
-  });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
-    await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build, TWEEN_BUILD);
-    const result = await page.evaluate(async () => {
-      const code = `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  int a = 7;
-  vector<int> num = {4, 7};
-  // @frame a,num
-  int x = a;
-  vector<int> copy = num;
-  // @frame a,num,x,copy
-}`;
-      const analyzed = await fetch('/trace/analyze', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
-      }).then(response => response.json());
-      const watches = [...new Set(analyzed.frameDirectives.flatMap(frame => frame.variableIds))];
-      const compiled = await fetch('/compile', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, input: '', trace: { enabled: true, watches, sliceMode: 'manual' } })
-      }).then(response => response.json());
-      const trace = window.ASMTraceModel.normalizeTraceDocument(compiled.traceDocument || compiled.trace);
-      const frame = trace.frames[1];
-      const xId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'x');
-      const copyId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'copy');
-      const declaration = frame.events.find(event => (
-        event.type === 'declare' && event.targets?.some(target => target.variableId === xId)
-      ));
-      const initializer = frame.events.find(event => (
-        event.type === 'assign' && event.declarationInitializer === true
-        && event.targets?.some(target => target.variableId === xId)
-      ));
-      const copyDeclaration = frame.events.find(event => (
-        event.type === 'declare' && event.targets?.some(target => target.variableId === copyId)
-      ));
-      const copyInitializer = frame.events.find(event => event.type === 'assign'
-        && event.targets?.some(target => target.role === 'target' && target.variableId === copyId));
-      await window.ASMTraceRenderers.renderFrame(trace, trace.frames[0], null, {
-        animatePositions: false, animateEvents: false
-      });
-      window.asmGetAnimationPlaybackRate = () => 4;
-      window.ASMTraceDebugRecorder = { isRecording: () => true };
-      const slots = [];
-      const listener = e => { if (e.detail.phase === 'start') slots.push({ id:e.detail.event.id,
-        start:e.detail.slot.start, duration:e.detail.slot.duration, end:e.detail.slot.end }); };
-      window.addEventListener('asm:trace-active-event',listener);
-      const samples = [];
-      let settled = false;
-      const transition = window.ASMTraceRenderers.renderFrame(trace, frame, trace.frames[0], {
-        direction: 1, animatePositions: true, animateEvents: true
-      }).finally(() => { settled = true; });
-      for (let count = 0; count < 360 && !settled; count += 1) {
-        await new Promise(resolve => requestAnimationFrame(resolve));
-        const object = document.querySelector(`[data-trace-variable="${xId}"]`);
-        const copyObject = document.querySelector(`[data-trace-variable="${copyId}"]`);
-        samples.push({
-          eventId: document.querySelector('[data-trace-active-event-id]')?.dataset.traceActiveEventId || '',
-          values: object ? [...object.querySelectorAll('.asm-trace-motion text')]
-            .map(node => node.textContent) : null,
-          transfers: [...document.querySelectorAll('.asm-trace-assign-transfer text')]
-            .map(node => node.textContent),
-          copiedCells: [...document.querySelectorAll('.asm-trace-assign-transfer')]
-            .filter(node => node.querySelector('rect')).map(node => node.textContent),
-          falling: [...document.querySelectorAll('.asm-trace-assign-falling-value')]
-            .map(node => node.textContent),
-          copyValues: copyObject ? [...copyObject.querySelectorAll(
-            '[data-trace-index] text:not([data-trace-content-role="index"])'
-          )].map(node => node.textContent) : null
-        });
-      }
-      await transition;
-      window.removeEventListener('asm:trace-active-event',listener);
-      const finalObject = document.querySelector(`[data-trace-variable="${xId}"]`);
-      const finalCopy = document.querySelector(`[data-trace-variable="${copyId}"]`);
-      return {
-        declarationId: declaration?.id || '', initializerId: initializer?.id || '',
-        copyDeclarationId: copyDeclaration?.id || '', copyInitializerId:copyInitializer?.id || '', samples,slots,
-        initializer: initializer ? {
-          enabled: initializer.enabled, disabled: initializer.autoAnimationDisabled,
-          targets: initializer.targets, payload: initializer.payload
-        } : null,
-        finalValues: finalObject ? [...finalObject.querySelectorAll('text')]
-          .map(node => node.textContent) : [],
-        finalCopyValues: finalCopy ? [...finalCopy.querySelectorAll(
-          '[data-trace-index] text:not([data-trace-content-role="index"])'
-        )].map(node => node.textContent) : [],
-        rows: frame.events.filter(event => window.ASMTraceEvents.showInspector(event, trace) !== false)
-          .filter(event => event.targets?.some(target => target.variableId === xId))
-          .filter(event => ['declare', 'assign'].includes(event.type))
-          .map(event => event.type)
-      };
-    });
-    const declarationSamples = result.samples.filter(sample => sample.eventId === result.declarationId);
-    assert.ok(result.declarationId && result.initializerId);
-    const initializerSamples=result.samples.filter(sample=>sample.eventId===result.initializerId);
-    assert.deepEqual(result.rows, ['declare','assign']);
-    const declarationSlot=result.slots.find(slot=>slot.id===result.declarationId);
-    const initializerSlot=result.slots.find(slot=>slot.id===result.initializerId);
-    assert.equal(declarationSlot.duration,180);
-    assert.equal(initializerSlot.duration,300);
-    assert.equal(initializerSlot.start,declarationSlot.end);
-    assert.ok(declarationSamples.length>0);
-    assert.ok(declarationSamples.every(sample=>!sample.values?.includes('7')&&!sample.transfers.length),
-      'the declaration is blank and does not also perform the assignment');
-    assert.ok(initializerSamples.some(sample => (
-      !sample.values?.includes('7') && sample.transfers.includes('7') && sample.copiedCells.some(text=>text.includes('7'))
-    )),
-      JSON.stringify({ initializer: result.initializer, initializerSamples }));
-    assert.ok(result.finalValues.includes('7'),
-      'x receives 7 when the transfer lands');
-    const copyDeclarationSamples=result.samples.filter(sample=>sample.eventId===result.copyDeclarationId);
-    assert.ok(copyDeclarationSamples.length>0&&copyDeclarationSamples.every(sample=>!sample.transfers.length),
-      'container declaration is separate from its initialization transfer');
-    const copySamples = result.samples.filter(sample => sample.eventId === result.copyInitializerId);
-    const copyDeclarationSlot=result.slots.find(slot=>slot.id===result.copyDeclarationId);
-    const copyInitializerSlot=result.slots.find(slot=>slot.id===result.copyInitializerId);
-    assert.equal(copyDeclarationSlot.duration,180);
-    assert.equal(copyInitializerSlot.duration,300);
-    assert.equal(copyInitializerSlot.start,copyDeclarationSlot.end);
-    assert.ok(copySamples.some(sample => (
-      !sample.copyValues?.includes('4') && !sample.copyValues?.includes('7')
-      && sample.transfers.includes('4') && sample.transfers.includes('7')
-    )), JSON.stringify(copySamples));
-    assert.deepEqual(result.finalCopyValues, ['4', '7']);
-    assert.deepEqual(errors, []);
-  } finally {
-    await browser.close();
-  }
-});
+// Joined initialization is covered by initializer-visibility and declaration-cell-copy.
 
 test('push_back copies a visible source cell into the new destination cell', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
@@ -166,7 +27,7 @@ test('push_back copies a visible source cell into the new destination cell', { t
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
+    await page.goto(`${base}/algorithm.html?asmEmbed=runtime`);
     await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build, TWEEN_BUILD);
     const result = await page.evaluate(async () => {
       const code = `#include <bits/stdc++.h>
@@ -340,7 +201,7 @@ int main() {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      await page.goto(`${base}/algorithm.html`);
+      await page.goto(`${base}/algorithm.html?asmEmbed=runtime`);
       const samples = await page.evaluate(async ({ sourceTrace, targetId }) => {
         window.ASMTracePlayer.apply(sourceTrace);
         const previous = sourceTrace.frames[0];
@@ -390,7 +251,7 @@ test('binary arithmetic transfers operand values and compound addition carries i
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
+    await page.goto(`${base}/algorithm.html?asmEmbed=runtime`);
     await page.waitForFunction(() => window.ASMTraceRenderers && window.ASMTraceModel);
     const result = await page.evaluate(async () => {
       const code = `#include <bits/stdc++.h>
@@ -461,7 +322,7 @@ int main() {
     ]);
     for (const [expression,values] of Object.entries({
       'result=a+b':['12','3'],'result=a-b':['12','3'],'result=a*b':['12','3'],'result=a/b':['12','3'],
-      'result+=b':['+3'],'result-=b':['3'],'result*=b':['3'],'result/=b':['3'],
+      'result+=b':['+3'],'result-=b':['-3'],'result*=b':['*3'],'result/=b':['/3'],
       'result=a+b-c+d':['12','3','4','5'],'result=a*b/c*d':['12','3','4','5']
     })) {
       assert.ok(result.samples[expression]?.includes(JSON.stringify([...values].sort())), JSON.stringify(result));
@@ -483,7 +344,7 @@ test('mixed constants retain operand numbers and their operators over the destin
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
+    await page.goto(`${base}/algorithm.html?asmEmbed=runtime`);
     await page.waitForFunction(() => window.ASMTraceRenderers && window.ASMTraceModel);
     const result = await page.evaluate(async () => {
       const code = `#include <bits/stdc++.h>

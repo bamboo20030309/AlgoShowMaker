@@ -335,48 +335,7 @@ test('slide runtime rebases the visible frame before reporting geometry ready', 
   assert.equal(messages.filter(message => message.type === 'asm-animation-geometry-ready').length, 1);
 });
 
-test('the slide editor recompiles an outdated saved trace and migrates its Studio settings', async () => {
-  const { c, send, messages, input } = context('editor');
-  const code = 'int main() { for (int i = 0; i < 2; i++) {} }';
-  const oldTrace = savedTrace();
-  oldTrace.sourceCode = code;
-  oldTrace.provenance = {
-    engineVersion: 1,
-    formatVersion: 1,
-    sourceFingerprint: 'old',
-    inputFingerprint: 'old'
-  };
-  c.ASMTraceProvenance = {
-    status(trace, loadedCode, loadedInput) {
-      assert.equal(trace.frames.length, oldTrace.frames.length);
-      assert.equal(loadedCode, code);
-      assert.equal(loadedInput, 'fixture input');
-      return { kind: 'outdated' };
-    }
-  };
-  let clicked = 0;
-  let migrationRequested = false;
-  const runButton = {
-    classList: { contains: () => false },
-    click() {
-      clicked++;
-      migrationRequested = c.__asmMigrateTraceSettingsOnNextRun === true;
-      c.dispatchEvent(new c.CustomEvent('asm:compile-finished'));
-    }
-  };
-  c.document.getElementById = id => id === 'inputArea' ? input : id === 'runBtn' ? runButton : null;
-  c.ASMTraceEditor = { loadAnimation() {} };
-  c.load('slides-embed.js');
-  send({ type: 'asm-load-animation', animation: {
-    mode: 'trace', code, input: 'fixture input', traceDocument: oldTrace
-  } });
-  await Promise.resolve();
-  assert.equal(clicked, 1);
-  assert.equal(migrationRequested, true);
-  assert.equal(messages.filter(message => message.type === 'asm-animation-applied').length, 1,
-    'the parent reveals the editor only after the automatic refresh finishes');
-});
-
+// Freshness recovery is exercised through the actual recipe pipeline in cloud-trace-repair.
 test('saving flushes pending edits before capturing both code and playback data', () => {
   const { c, send, messages } = context();
   const trace = savedTrace();

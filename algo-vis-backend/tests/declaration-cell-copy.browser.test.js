@@ -34,15 +34,7 @@ test('insertion key initializer copies the visible cell, preserves its source an
       const trace = player.getDocument();
       const keyId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'key');
       const arrId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr');
-      // Customize through saved Studio styles so the visible source keeps the
-      // same authored stroke when the next frame is rendered and reopened.
-      trace.studio ||= {}; trace.studio.objectStyles ||= {};
-      trace.frames.forEach(f => {
-        trace.studio.objectStyles[f.id] ||= {};
-        trace.studio.objectStyles[f.id][arrId + '#1'] = {
-          ...trace.studio.objectStyles[f.id][arrId + '#1'], stroke: '#8844aa'
-        };
-      });
+      for(const f of trace.frames)f.styles.push({id:'authored-source-color',targetVariableId:arrId,selector:{type:'index',indexExpression:'1'},styleType:'background',color:'#8844aa'});
       const frameIndex = trace.frames.findIndex(f => f.events.some(e => e.type === 'assign'
         && e.targets?.some(x => x.role === 'target' && x.variableId === keyId)));
       const frame = trace.frames[frameIndex];
@@ -67,6 +59,7 @@ test('insertion key initializer copies the visible cell, preserves its source an
         };
         return { hasCell: Boolean(transfer?.querySelector('rect')), transfer: bounds(transfer),
           stroke: transfer?.querySelector('rect')?.getAttribute('stroke'),
+          fill: transfer?.querySelector('rect')?.getAttribute('fill'),
           sourceStroke: sourceCell?.querySelector('rect')?.getAttribute('stroke'),
           source: bounds(sourceCell), target: bounds(key),
           value: transfer?.querySelector('text')?.textContent ?? null,
@@ -91,7 +84,7 @@ test('insertion key initializer copies the visible cell, preserves its source an
     else {
       assert.ok(copies.length >= 2, mode + ': visible frame and value must move together: ' + JSON.stringify(result.samples.slice(0, 15)));
       assert.ok(copies.every(s => s.sourceValue === '8' && Number(s.sourceOpacity) > 0), mode + ': source is copied, not removed');
-      assert.ok(copies.every(s => s.stroke === '#8844aa'), mode + ': copying preserves the existing cell style');
+      assert.ok(copies.every(s => s.fill === '#8844aa'), mode + ': copying preserves the existing cell style');
       assert.ok(copies.every(s => s.sourceStroke === s.stroke), mode + ': copied stroke matches the visible source');
       assert.ok(copies.some(s => Math.hypot(s.transfer.x - copies[0].transfer.x, s.transfer.y - copies[0].transfer.y) > 3), mode + ': cell actually moves');
     }

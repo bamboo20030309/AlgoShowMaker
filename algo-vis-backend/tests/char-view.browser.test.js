@@ -48,7 +48,7 @@ cout<<s;
   t.after(()=>browser.close());
   const page=await browser.newPage(); const errors=[]; page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/algorithm.html');
-  await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');
+  await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
   await page.click('[data-tab="tab-canvas"]');
   const inspect = async index => {
     await page.evaluate(async ({trace,index})=>{window.asmApplyTraceDocument(trace);await ASMTracePlayer.renderStable(index);},{trace,index});
@@ -114,7 +114,7 @@ test('KMP uses char(s) without a copied display array', {timeout:90000}, async t
     .replace('int main()', '// @defaults\n// @camera focus s zoom(2)\n// @enddefaults\nint main()');
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());
   const page=await browser.newPage();await page.goto(base+'/algorithm.html');
-  await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');
+  await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
   await page.evaluate(code=>{aceEditor.setValue(code,-1);document.querySelector('#inputArea').value='abababca';
     window.__charDone=false;window.addEventListener('asm:compile-finished',()=>window.__charDone=true,{once:true});document.querySelector('#runBtn').click();},source);
   await page.waitForFunction(()=>window.__charDone);

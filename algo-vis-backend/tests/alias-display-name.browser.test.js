@@ -29,7 +29,8 @@ return 0;}`);
         .map(node => node.textContent);
       const loaded = window.ASMTracePlayer.apply(trace);
       loaded.studio.eventSettings = { ...(loaded.studio.eventSettings || {}), autoFixedEnabled: false };
-      loaded.studio.objectStyles = { [loaded.frames[1].id]: { result: { fill: 'rgba(255,0,0,0.25)' } } };
+      const numId=Object.keys(loaded.variables).find(id=>loaded.variables[id].name==='num');
+      loaded.frames[1].styles.push({id:'authored-alias',targetVariableId:numId,selector:{type:'index',indexExpression:'1'},styleType:'background',color:'rgba(255,0,0,0.25)'});
       const saved = JSON.parse(JSON.stringify(loaded));
       window.ASMTracePlayer.apply(saved);
       const aliasFrames = [];
@@ -51,7 +52,7 @@ return 0;}`);
       await window.ASMTracePlayer.render(0, { stable: true });
       return { aliasFrames, names, legacyLabels, reopenedLabels: labels(),
         disabled: reopened.studio.eventSettings.autoFixedEnabled,
-        custom: reopened.studio.objectStyles[reopened.frames[1].id].result.fill };
+        custom: reopened.frames[1].styles.find(s=>s.id==='authored-alias').color };
     }, trace);
     for (const labels of results.aliasFrames.slice(0,2)) {
       for (const name of ['result','pending','table','value']) assert.ok(labels.includes(name), JSON.stringify(labels));

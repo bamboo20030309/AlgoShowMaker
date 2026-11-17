@@ -38,11 +38,11 @@ int main() {
     await page.waitForFunction(source => window.ASMTracePlayer.getDocument()?.sourceCode === source,
       code, { timeout: 30000 });
 
-    await page.click('#eventSettingsBtn');
+    await page.evaluate(()=>ASMTraceStudio.showTab('events'));
     assert.deepEqual(
       await page.locator('.trace-event-settings-row strong').allTextContents(),
       [
-        '宣告／物件入場', '物件退場／手動退場', '比較', '賦值', '交換',
+        '宣告／物件入場', '物件退場／手動退場', '取大', '取小', '比較', '賦值', '輸入賦值事件', '交換',
         '陣列操作', '輸出', '流程跳轉', '呼叫函式', '進入函式', '離開函式'
       ]
     );
@@ -53,7 +53,7 @@ int main() {
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '跳出迴圈' }).count(), 0);
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '繼續下一輪' }).count(), 0);
     const assignmentRows = page.locator('.trace-event-settings-row')
-      .filter({ hasText: '賦值' });
+      .filter({ has: page.getByText('賦值',{exact:true}) });
     assert.equal(await assignmentRows.count(), 1, 'assign and write share one settings row');
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '直接／初始化賦值' }).count(), 0);
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '數值更新／複合賦值' }).count(), 0);
@@ -83,7 +83,7 @@ int main() {
     ));
     assert.deepEqual(savedSettings, {
       autoFixedEnabled: false,
-      autoLoopBoundaryEnabled: true
+      autoLoopBoundaryEnabled: true, readHighlightEnabled:false, readHighlightColor:'red'
     });
 
     await page.evaluate(() => window.ASMTraceStudio?.close?.());
