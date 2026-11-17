@@ -3,7 +3,7 @@
 AlgoShowMaker 是一套演算法教學與簡報製作工具。你可以在 C++ 程式碼中加入少量視覺化指令，執行後產生可播放、可編輯的動畫，再把動畫、文字、LaTeX、程式碼與資料結構排成教學投影片。
 
 - 介面語言：繁體中文
-- 穩定版本：AV_V4.12.1
+- 穩定版本：AV_V4.13
 - 專案首頁：[GitHub](https://github.com/bamboo20030309/AlgoShowMaker)
 
 ## 核心功能
@@ -140,7 +140,7 @@ npm run test:inventory
 - [安裝與部署指南](docs/guides/setup.md)
 - [驗證集使用手冊](docs/guides/validation.md)／[事件與動畫驗證](docs/guides/event-validation.md)
 - [驗證集設計與覆蓋範圍](docs/development/validation-design.md)
-- [AV_V4.12.1 版本說明](docs/releases/v4.12.1.md)
+- [AV_V4.13 版本說明](docs/releases/v4.13.md)
 
 ## 授權
 
