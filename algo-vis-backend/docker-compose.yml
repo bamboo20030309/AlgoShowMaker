@@ -4,7 +4,7 @@
 services:
   # MongoDB 服務
   mongo:
-    image: mongo:4.4
+    image: mongo:latest
     container_name: mongodb_container
     restart: unless-stopped
     ports:
