@@ -15,10 +15,14 @@
   let preservedViewportCamera = null;
   let viewportSize = '';
   let viewportGeometryReady = false;
+  // 最近一次重新排版的文件、幀與大小；一般換幀繪製後清除，確保之後的重排照常執行。
+  let lastRebase = { document: null, key: "" };
   let runtimeVisibilityConfirmed = false;
   let activePlaybackPlan = null;
   let lastPlaybackPlan = null;
   let viewportRebasePendingAfterPlayback = false;
+  const hiddenPresentationReasons = new Set();
+  let suspendedPlayback = null;
 
   // ---------------------------------------------------------------------------
   // 區段：frame 與鏡頭狀態
@@ -29,7 +33,7 @@
 
   function applyPlaybackCamera(frame, previousFrame = null, delayMs = 0) {
     clearTimeout(cameraTimer);
-    if (!frame || window.document.body.classList.contains('asm-trace-studio-open')) return;
+    if (!frame) return;
     cameraTimer = setTimeout(() => {
       if (document?.frames?.[currentFrame]?.id !== frame.id) return;
       window.ASMTraceCamera.apply(document, frame, previousFrame);
@@ -45,13 +49,8 @@
       else window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
       return;
     }
-    if (window.document.body.classList.contains('asm-trace-studio-open')
-      && window.ASMTraceStudio?.refreshViewport) {
-      window.ASMTraceStudio.refreshViewport();
-      return;
-    }
     if (isRuntimeEmbed() && runtimeVisibilityConfirmed) {
-      rebaseCurrentFrame().catch(error => console.error('Trace viewport rebase failed', error));
+      rebaseCurrentFrame({ ifChanged: true }).catch(error => console.error('Trace viewport rebase failed', error));
       return;
     }
     window.ASMTraceCamera?.apply?.(document, document.frames[currentFrame], null, false);
@@ -75,6 +74,14 @@
     const canvas = window.document.getElementById('arraySvg');
     const rect = canvas?.getBoundingClientRect?.();
     if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) return Promise.resolve(false);
+    // 同一份文件、同一幀、同樣大小已經重新排過：不再重排（返回投影片時「尺寸改變」與「變為可見」
+    // 會各要求一次，第二次重排會讓畫面多閃一下）。
+    const rebaseKey = `${currentFrame}:${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    if (options.ifChanged && lastRebase.document === document && lastRebase.key === rebaseKey) {
+      viewportRebasePendingAfterPlayback = false;
+      return Promise.resolve(true);
+    }
+    lastRebase = { document, key: rebaseKey };
     viewportRebasePendingAfterPlayback = false;
     window.ASMTraceFrameTween?.cancel?.();
     const frame = document.frames[currentFrame];
@@ -90,6 +97,8 @@
         if (window.restoreCameraViewport) window.restoreCameraViewport(camera);
         else window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
       } else window.ASMTraceCamera?.apply?.(document, frame, null, false);
+      // 重排後立刻補上格子裡的數字，不等下一幀。
+      window.ASMStructureLOD?.flush?.();
       window.dispatchEvent(new CustomEvent('asm:trace-geometry-ready', {
         detail: { document, frame, index: currentFrame }
       }));
@@ -124,6 +133,7 @@
   // ---------------------------------------------------------------------------
   function render(index, options = {}) {
     preservedViewportCamera = null;
+    lastRebase = { document: null, key: '' };
     if (!document || !frameCount()) return Promise.resolve();
     const next = Math.max(0, Math.min(frameCount() - 1, index));
     const requestedFrom = Number.isInteger(options.fromIndex) ? options.fromIndex : currentFrame;
@@ -220,6 +230,7 @@
   // ---------------------------------------------------------------------------
   function installCodeScript() {
     window.CodeScript = {
+      isTracePlayer: true,
       next() { return nextKey(1); },
       next_stable() { return renderStable(currentFrame + 1); },
       prev() { return renderStable(currentFrame - 1); },
@@ -246,6 +257,8 @@
   // 區段：文件載入與公開 API
   // ---------------------------------------------------------------------------
   function apply(source) {
+    suspendedPlayback = null;
+    window.resetArrows?.();
     if (!window.__asmApplyingBuiltinDefault) {
       window.ASMDefaultAlgorithm?.cancel?.('external-trace');
     }
@@ -268,6 +281,7 @@
   // A normal run has no replacement animation. Release the old document and
   // stop its timers as well as its SVG, so navigation cannot revive that run.
   function clear() {
+    suspendedPlayback = null;
     window.ASMPlaybackNavigation?.pause?.();
     window.ASMTraceFrameTween?.cancel?.();
     clearTimeout(cameraTimer);
@@ -289,6 +303,32 @@
     window.initFrameInfoFromCodeScript?.();
     window.syncCurrentFrameFromCodeScript?.();
   }
+
+  function setPresentationVisible(visible, reason = 'canvas') {
+    if (!visible) {
+      if (!hiddenPresentationReasons.size && document?.frames?.length) {
+        suspendedPlayback = { document, frame: currentFrame, plan: activePlaybackPlan,
+          paused: Boolean(window.ASMTraceFrameTween?.isPaused?.()),
+          playing: Boolean(window.ASMPlaybackNavigation?.isPlaying?.()) };
+        clearTimeout(cameraTimer);
+        window.ASMPlaybackNavigation?.pause?.();
+        window.ASMTraceFrameTween?.pause?.();
+      }
+      hiddenPresentationReasons.add(reason);
+      return;
+    }
+    hiddenPresentationReasons.delete(reason);
+    if (hiddenPresentationReasons.size || !suspendedPlayback) return;
+    const previous = suspendedPlayback; suspendedPlayback = null;
+    if (previous.document !== document || previous.frame !== currentFrame
+      || (previous.plan && previous.plan !== activePlaybackPlan) || previous.paused) return;
+    if (previous.playing) window.ASMPlaybackNavigation?.play?.();
+    else window.ASMTraceFrameTween?.resume?.();
+  }
+
+  window.document.addEventListener?.('visibilitychange', () => setPresentationVisible(!window.document.hidden, 'document'));
+  window.addEventListener?.('pagehide', () => setPresentationVisible(false, 'page'));
+  window.addEventListener?.('pageshow', () => setPresentationVisible(true, 'page'));
 
   function setRules(rules) {
     if (!document) return;
@@ -315,6 +355,7 @@
 
   window.asmApplyTraceDocument = apply;
   window.ASMTracePlayer = {
+    setPresentationVisible,
     apply,
     clear,
     render,

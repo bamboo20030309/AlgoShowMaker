@@ -3,7 +3,7 @@
 AlgoShowMaker 是一套演算法教學與簡報製作工具。你可以在 C++ 程式碼中加入少量視覺化指令，執行後產生可播放、可編輯的動畫，再把動畫、文字、LaTeX、程式碼與資料結構排成教學投影片。
 
 - 介面語言：繁體中文
-- 穩定版本：AV_V4.12.1
+- 穩定版本：AV_V4.13
 - 專案首頁：[GitHub](https://github.com/bamboo20030309/AlgoShowMaker)
 
 ## 核心功能
@@ -13,8 +13,8 @@ AlgoShowMaker 是一套演算法教學與簡報製作工具。你可以在 C++ �
 - 使用 `@frame`、`@style`、`@move` 等指令控制畫面與事件。
 - 在 Trace Studio 檢查執行步驟、事件與資料變化。
 - 在投影片編輯器混合動畫、文字、LaTeX、程式碼、圖片與形狀。
-- 提供範例演算法投影片，可直接學習與編輯；修改保存在本機，不改動公開教材。
-- 範例動畫使用預建 Trace 與快取，後端以編譯佇列管理多人請求。
+- 提供範例演算法投影片，可直接學習與暫時編輯；重新整理還原官方版本，修改可匯出保留。
+- 動畫只快取相容的原生執行檔；載入投影片後從前往後逐份執行，Trace 只留在本次頁面記憶體，後端以佇列管理多人請求。
 - 支援專案儲存、分享、匯入與匯出；觀看分享連結也可編輯本機副本，不改動原檔。
 - 首頁只載入卡片與封面快取；新 `.asmdeck` 可單獨讀取封面，舊檔仍可匯入。
 
@@ -56,7 +56,7 @@ cd algo-vis-backend
 npm start
 ```
 
-開啟 `http://localhost:3000`。若需要 Windows、Docker、MongoDB 或部署設定，請參考 [安裝與部署指南](SETUP_GUIDE.md)。
+開啟 `http://localhost:3000`。若需要 Windows、Docker、MongoDB 或部署設定，請參考 [安裝與部署指南](docs/guides/setup.md)。
 
 ## 建立第一段動畫
 
@@ -84,7 +84,7 @@ int main() {
 }
 ```
 
-常用指令包含 `@frame`、`@style`、`@text`、`@keep`、`@arrow` 與 `@camera`。完整語法、作用範圍與範例集中在 [演算法視覺化指令手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)。
+常用指令包含 `@frame`、`@style`、`@text`、`@keep`、`@arrow` 與 `@camera`。完整語法、作用範圍與範例集中在 [演算法視覺化指令手冊](docs/reference/algorithm-visualization-directives.md)。
 
 ## 製作教學投影片
 
@@ -129,17 +129,19 @@ npm run test:inventory
 
 依改動選最小相關測試；純前端／投影片修改不啟動演算法動畫集。續跑會保留有效的通過結果，只重跑失敗、未完成或因依賴修改而失效的項目。
 
-指令、隔離環境、報告與故障處理見 [驗證集使用手冊](docs/驗證集使用手冊.md)。大型驗證由主代理依風險執行，PR 目前不會自動觸發。
+指令、隔離環境、報告與故障處理見 [驗證集使用手冊](docs/guides/validation.md)。大型驗證由主代理依風險執行，PR 目前不會自動觸發。
 
 ## 相關文件
 
-- [演算法視覺化指令手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)
-- [AI 教材製作 skill](skills/algoshowmaker-authoring/SKILL.md)／[單檔精簡指南](skills/algoshowmaker-authoring/QUICKSTART.md)
-- [安裝與部署指南](SETUP_GUIDE.md)
-- [驗證集使用手冊](docs/驗證集使用手冊.md)
-- [驗證集設計與覆蓋範圍](docs/驗證集設計.md)
-- [AV_V4.12.1 版本說明](docs/releases/v4.12.1.md)
+- [文件分類索引](docs/README.md)
+- [AI 協作、教材 skill 與交付紀錄](docs/ai/README.md)
+- [演算法視覺化指令手冊](docs/reference/algorithm-visualization-directives.md)
+- [AI 教材製作 skill](docs/ai/skills/algoshowmaker-authoring/SKILL.md)／[單檔精簡指南](docs/ai/skills/algoshowmaker-authoring/QUICKSTART.md)
+- [安裝與部署指南](docs/guides/setup.md)
+- [驗證集使用手冊](docs/guides/validation.md)／[事件與動畫驗證](docs/guides/event-validation.md)
+- [驗證集設計與覆蓋範圍](docs/development/validation-design.md)
+- [AV_V4.13 版本說明](docs/releases/v4.13.md)
 
 ## 授權
 
-本專案採用 [MIT License](LICENSE)。
+本專案採用 [MIT License](LICENSE)。第三方套件各自的授權、原始碼來源與完整聲明見 [第三方授權](THIRD_PARTY_NOTICES.md)，網站首頁也提供同名入口。

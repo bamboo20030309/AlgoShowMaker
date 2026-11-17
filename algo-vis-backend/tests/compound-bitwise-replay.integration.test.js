@@ -6,8 +6,7 @@ const { chromium } = require('playwright');
 
 test('compound bit rows retain committed intermediate values instead of exposing frame-final bits',
   { timeout: 90000 }, async () => {
-    const sample = fs.readFileSync(path.join(__dirname,
-      '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
+    const sample = fs.readFileSync(path.join(__dirname, '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
     assert.ok(sample.includes('int P = ((1 << N) - 1) & ~(L | M | R);'));
     const split = sample.replace('int P = ((1 << N) - 1) & ~(L | M | R);',
       'int P = L | M | R;\n    P = ((1 << N) - 1) & ~P;');
@@ -43,7 +42,9 @@ int main() {
         await page.waitForFunction(() => !document.getElementById('runBtn').classList.contains('loading'),
           null, { timeout: 30000 });
         const appliedSource = await page.evaluate(() => ASMTracePlayer.getDocument()?.sourceCode || '');
-        assert.equal(appliedSource.replace(/\r\n/g, '\n'), code.replace(/\r\n/g, '\n'),
+        // RUN may synchronize the trailing Studio settings. Compare all executable
+        // code/directives through the production normalizer, not UI-only metadata.
+        assert.equal(require('../public/trace-provenance').sourceText(appliedSource), require('../public/trace-provenance').sourceText(code),
           `${name} applies the code that was compiled`);
         const probes = await page.evaluate(async final => {
           const doc = ASMTracePlayer.getDocument();

@@ -84,6 +84,11 @@
     const verticalGap = gaps.vertical;
     const colW = baseBoxSize + horizontalGap;  // 每格水平步進（格子寬 + 水平間距）
     const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + verticalGap;
+    // Preserve the authored wrapping policy separately from today's row size.
+    // Otherwise shrinking 4 cells to 3 incorrectly reconstructs the old row
+    // as a 3-column matrix during its exit animation.
+    g.setAttribute('data-outerframe-columns', String(
+      isFinite(itemsPerRow) && itemsPerRow >= 1 ? itemsPerRow : Infinity));
     if (!isFinite(itemsPerRow) || itemsPerRow < 1) itemsPerRow = ranged_array.length;
     let cols = Math.min(ranged_array.length, itemsPerRow);                              //列寬
     let rows = Math.ceil(ranged_array.length / itemsPerRow);                            //行高
@@ -205,14 +210,16 @@
 
     // 1. 讀取佈局資訊
     const itemsPerRow = parseInt(g.getAttribute('data-items-per-row') || '1', 10);
-    const startIdx    = parseInt(g.getAttribute('data-index-start') || '0', 0);
+    const startIdx    = parseInt(g.getAttribute('data-index-start') || '0', 10);
     
     // [重要] 讀取實際行高 (因為如果有 index 標籤，行高會大於 baseBoxSize)
     // 如果沒屬性，就 fallback 回 baseBoxSize
     const rowH = parseFloat(g.getAttribute('data-row-height') || baseBoxSize);
 
     // 2. 計算相對索引 (例如 range=[5,10], 傳入 index=5, 實際要是第 0 格)
-    const localIndex = index;
+    // resolvePos and native Pos carry the original absolute data index.
+    // Only the geometry uses a zero-based index within the displayed range.
+    const localIndex = Number(index) - startIdx;
     
     // 如果 index 不在範圍內，這裡暫時回傳 0,0 (或可依需求處理)
     // if (localIndex < 0) return { x: 0, y: 0 };

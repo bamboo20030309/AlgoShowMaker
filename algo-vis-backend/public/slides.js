@@ -71,6 +71,8 @@
     return isCellGridType(widget?.type);
   }
 
+  const KNOWN_WIDGET_TYPES = new Set(['latex', 'code', 'structure', 'table', 'video']);
+
   const TABLE_UNSUPPORTED_STRUCTURE_STYLE_FIELDS = [
     'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
     'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
@@ -201,45 +203,55 @@
   const DRAFT_KEY = deckUid ? `${STORAGE_KEY}:deck:${deckUid}`
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
-  const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, async key => {
-    if (sampleId || (!deckUid && !shareToken)) {
-      const response = await fetch(`/deck-traces/${encodeURIComponent(key)}.json`);
-      if (!response.ok) throw Object.assign(new Error(`動畫 Trace 讀取失敗（HTTP ${response.status}）`), {
-        code: response.status === 404 ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
-      });
-      return response.json();
-    }
-    const response = await fetch(`${remoteDeckEndpoint()}/traces/${encodeURIComponent(key)}`, {
-      headers: deckUid ? { Authorization: `Bearer ${authToken()}` } : {}
-    });
-    const result = await response.json();
-    if (!response.ok) throw Object.assign(new Error(result.error || '動畫載入失敗'), {
-      code: response.status === 404 || result.code === 'RESOURCE_INCOMPLETE' ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
-    });
-    return result.trace;
-  }, async animation => {
-    setCloudStatus('loading', '動畫結果遺失，正在重新編譯執行…');
+  const traceRefreshStates = new Map();
+  let lastCloudStatus = { state: 'loading', text: '正在載入…' };
+  const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, null, async animation => {
+    setCloudStatus('loading', '動畫需要更新，正在取得新版結果…');
     try {
-      const rebuilt = await window.ASMDeck.rebuildMissingAnimation(animation);
-      const current = orderedDeckSlides().filter(entry => entry.slide.animation === animation);
-      if (!current.length) return rebuilt; // Never overwrite a newer edit/import.
-      const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation: rebuilt }] }] },
-        { upload: canSaveRemoteDeck() });
-      // Keep the same object identity so waiting iframe messages remain valid.
-      for (const key of Object.keys(animation)) delete animation[key];
-      Object.assign(animation, detached.groups[0].slides[0].animation);
-      delete animation.cacheKind;
-      await saveDeck({ history: false });
-      return rebuilt;
+      return await rebuildSlideAnimation(animation);
     } catch (error) {
       setCloudStatus('error', `動畫自動重建失敗：${error.message}`);
-      throw new Error(`Trace 遺失後自動重建失敗：${error.message}；請在編輯器修正後 RUN`);
+      throw new Error(`Trace 自動更新失敗：${error.message}；請按重試，或在編輯器 RUN`);
+    }
+  }, {
+    status: async (trace, animation) => {
+      await window.ASMTraceVersionCheck.check();
+      return window.ASMTraceProvenance.status(trace, animation.code, animation.input);
+    },
+    onState: (animation, status) => {
+      if (status.kind === 'current') traceRefreshStates.delete(animation);
+      else traceRefreshStates.set(animation, status);
+      renderCloudStatus();
     }
   });
+  // 用投影片保存的程式與輸入重新產生動畫：成功才換掉結果並存檔（公開範例只寫本機副本），
+  // 失敗時拋出錯誤、原動畫原封不動。過期自動更新與畫布 RUN 共用此流程。
+  async function rebuildSlideAnimation(animation) {
+    const queued = progressiveRebuildSession?.entries.find(entry => entry.slide.animation === animation && ['pending', 'running'].includes(entry.state));
+    if (queued) {
+      const prepared = await queued.finished;
+      return traceStore.materializeAnimation(prepared);
+    }
+    const sourceRevision = JSON.stringify(animation);
+    const rebuilt = await window.ASMDeck.rebuildMissingAnimation(animation);
+    if (window.ASMTraceProvenance.status(rebuilt.traceDocument, rebuilt.code, rebuilt.input).kind !== 'current') {
+      throw new Error('更新結果版本仍不相符，請重新整理後重試');
+    }
+    const current = orderedDeckSlides().filter(entry => entry.slide.animation === animation);
+    if (!current.length || JSON.stringify(animation) !== sourceRevision) return rebuilt; // Never overwrite a newer edit/import.
+    const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation: rebuilt }] }] },
+      { upload: canSaveRemoteDeck() });
+    // Keep the same object identity so waiting iframe messages remain valid.
+    for (const key of Object.keys(animation)) delete animation[key];
+    Object.assign(animation, detached.groups[0].slides[0].animation);
+    delete animation.cacheKind;
+    await saveDeck({ history: false });
+    return rebuilt;
+  }
   let deck = normalizeDeck(clone(defaultDeck));
   let lastSavedDeckJson = null;
   let archiveCover = {};
-  try { archiveCover = JSON.parse(localStorage.getItem(`${DRAFT_KEY}:cover`) || '{}'); } catch {}
+  if (!sampleId) try { archiveCover = JSON.parse(localStorage.getItem(`${DRAFT_KEY}:cover`) || '{}'); } catch {}
   let coverSourceKey = archiveCover.thumbnailSourceHash || null;
   let coverThumbnail = archiveCover.thumbnail || '';
 
@@ -252,7 +264,7 @@
     }
     archiveCover.thumbnail = coverThumbnail;
     archiveCover.thumbnailSourceHash = coverSourceKey;
-    try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
+    if (!sampleId) try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
     return coverThumbnail;
   }
   let localSaveRevision = 0;
@@ -326,6 +338,11 @@
   let textEditSession = null;
   let textEditSaveTimer = null;
   let editingAlgorithmSlideId = null;
+  // 編輯動畫時搬進完整頁面的那個投影片動畫 iframe，以及它原本在投影片中的位置。
+  let editingAlgorithmFrame = null;
+  let editingAlgorithmFrameHome = null;
+  let algorithmEditorBusy = false;
+  let pendingAlgorithmEditorSave = null;
   let pendingAlgorithmExportSnapshot = null;
   let modeLayoutAnimationTimer = null;
   let activeFabricAutoAnimation = null;
@@ -390,6 +407,7 @@
   const sampleShareStatus = document.getElementById('sampleShareStatus');
   const copySampleShareUrlBtn = document.getElementById('copySampleShareUrlBtn');
   const sharedAccessBadge = document.getElementById('sharedAccessBadge');
+  if (sampleId) sharedAccessBadge?.remove();
   const shareDialog = document.getElementById('shareDialog');
   const shareForm = document.getElementById('shareForm');
   const closeShareDialogBtn = document.getElementById('closeShareDialogBtn');
@@ -470,6 +488,19 @@
   const overviewSidebarPanel = document.getElementById('overviewSidebarPanel');
   const overviewDeleteSlideBtn = document.getElementById('overviewDeleteSlideBtn');
   const latexEditorPanel = document.getElementById('latexEditorPanel');
+  const videoEditorPanel = document.getElementById('videoEditorPanel');
+  const videoUrlInput = document.getElementById('videoUrlInput');
+  const videoUrlStatus = document.getElementById('videoUrlStatus');
+  const videoStartInput = document.getElementById('videoStartInput');
+  const videoEndInput = document.getElementById('videoEndInput');
+  const videoTitleInput = document.getElementById('videoTitleInput');
+  const videoAutoplayInput = document.getElementById('videoAutoplayInput');
+  const videoMutedInput = document.getElementById('videoMutedInput');
+  const videoInsertDialog = document.getElementById('videoInsertDialog');
+  const videoInsertUrl = document.getElementById('videoInsertUrl');
+  const videoInsertPoster = document.getElementById('videoInsertPoster');
+  const videoInsertStatus = document.getElementById('videoInsertStatus');
+  const confirmVideoInsertBtn = document.getElementById('confirmVideoInsertBtn');
   const codeEditorPanel = document.getElementById('codeEditorPanel');
   const structureEditorPanel = document.getElementById('structureEditorPanel');
   const tableEditorPanel = document.getElementById('tableEditorPanel');
@@ -543,9 +574,12 @@
   const fragmentStyleSelect = document.getElementById('fragmentStyleSelect');
   const fragmentIndexInput = document.getElementById('fragmentIndexInput');
   const algorithmEditSlideBtn = document.getElementById('algorithmEditSlideBtn');
-  const algorithmEditorModal = document.getElementById('algorithmEditorModal');
-  const algorithmEditorFrame = document.getElementById('algorithmEditorFrame');
-  const algorithmEditorStatus = document.getElementById('algorithmEditorStatus');
+  const algorithmSidebarBlock = document.getElementById('algorithmSidebarBlock');
+  const algorithmSlideInput = document.getElementById('algorithmSlideInput');
+  const algorithmSlideRunBtn = document.getElementById('algorithmSlideRunBtn');
+  const algorithmSlideStatus = document.getElementById('algorithmSlideStatus');
+  const algorithmSlideError = document.getElementById('algorithmSlideError');
+  const algorithmEditAlert = algorithmEditSlideBtn?.querySelector('.algorithm-edit-alert');
   let aceCodeEditor = null;
   let editingCodeWidgetId = null;
 
@@ -685,19 +719,20 @@
     const serializedDeck = JSON.stringify(deck);
     if (lastSavedDeckJson !== null && lastSavedDeckJson !== serializedDeck) archiveCover.updatedAt = new Date().toISOString();
     lastSavedDeckJson = serializedDeck;
-    try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
+    if (!sampleId) try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
     const revision = ++localSaveRevision;
     document.body.dataset.localDeckRevision = String(revision);
     document.body.dataset.lastDeckSaveCloud = String(cloud);
     document.body.dataset.lastDeckSaveHistory = String(pushHistory);
     document.body.dataset.localDeckSave = 'pending';
     document.body.dataset.localDeckChars = String(serializedDeck.length);
-    const localSave = draftStore.saveDeck(DRAFT_KEY, serializedDeck, traceStore.retainedKeys(), {
+    document.body.dataset.deckPersistence = sampleId ? 'page' : 'persistent';
+    const localSave = (sampleId ? Promise.resolve() : draftStore.saveDeck(DRAFT_KEY, serializedDeck, traceStore.retainedKeys(), {
       allowMissingTraces: true
-    }).then(() => {
+    })).then(() => {
       if (revision === localSaveRevision) {
         document.body.dataset.localDeckSave = 'saved';
-        if (isLocalCopy() || (!deckUid && !shareToken)) setCloudStatus('saved', sampleId ? '範例本機副本已儲存' : '本機已儲存');
+        if (isLocalCopy() || (!deckUid && !shareToken)) setCloudStatus('saved', sampleId ? '僅本次開啟，重新整理後還原' : '本機已儲存');
       }
       return true;
     }).catch(error => {
@@ -725,7 +760,19 @@
   }
 
   function setCloudStatus(state, text) {
+    lastCloudStatus = { state, text };
+    renderCloudStatus();
+  }
+
+  function renderCloudStatus() {
     if (!cloudSaveStatus) return;
+    const { state } = lastCloudStatus;
+    let { text } = lastCloudStatus;
+    const liveAnimations = new Set(orderedDeckSlides().map(entry => entry.slide.animation));
+    for (const animation of traceRefreshStates.keys()) if (!liveAnimations.has(animation)) traceRefreshStates.delete(animation);
+    const traceState = [...traceRefreshStates.values()][0];
+    cloudSaveStatus.dataset.traceState = traceState?.kind || '';
+    if (traceState && state !== 'error') text = traceState.message || '動畫需要更新';
     cloudSaveStatus.dataset.state = state;
     const label = cloudSaveStatus.querySelector('.cloud-status-text');
     if (label) label.textContent = text;
@@ -756,9 +803,9 @@
     document.body.classList.toggle('shared-view-only', !canEdit);
     document.body.classList.toggle('shared-edit-access', canEdit);
     if (!canEdit) document.body.classList.remove('asm-edit-mode');
-    if (sharedAccessBadge) {
+    if (sharedAccessBadge && !sampleId) {
       sharedAccessBadge.hidden = false;
-      sharedAccessBadge.textContent = sampleId ? '範例本機副本' : isLocalCopy() ? '分享本機副本' : canEdit ? '共享編輯模式' : '觀賞模式';
+      sharedAccessBadge.textContent = isLocalCopy() ? '分享本機副本' : canEdit ? '共享編輯模式' : '觀賞模式';
     }
   }
 
@@ -769,14 +816,14 @@
   async function loadCloudDeck(localDeck) {
     if (sampleId) {
       setCloudStatus('loading', '正在載入公開投影片…');
-      const catalogResponse = await fetch('/guest-decks.json');
+      const catalogResponse = await fetch('/guest-decks.json', { cache: 'no-store' });
       if (!catalogResponse.ok) throw new Error('公開投影片清單載入失敗');
       const catalog = await catalogResponse.json();
       const entry = catalog.decks.find(item => item.id === sampleId);
       if (!entry) throw new Error('找不到指定的公開投影片');
-      // Each sample has its own browser draft. Never replace local edits on reload.
-      if (!localDeck) {
-        const response = await fetch(entry.archive);
+      // Samples always open the current official archive; edits live only in memory.
+      {
+        const response = await fetch(entry.archive, { cache: 'no-cache' });
         if (!response.ok) throw new Error('公開投影片載入失敗');
         const archive = await window.ASMDeck.decode(await response.blob());
         deck = normalizeDeck(await traceStore.detachDeck(archive.deck));
@@ -820,7 +867,7 @@
     // only their token-scoped browser draft, while edit links keep cloud syncing.
     sharedAccess = shareToken ? (data.access === 'view' ? 'local' : data.access) : null;
     if (isLocalCopy()) document.body.classList.remove('asm-edit-mode');
-    deck = normalizeDeck(await traceStore.detachDeck(isLocalCopy() && localDeck ? localDeck : data.slide.deck));
+    deck = normalizeDeck(window.ASMAnimationRecipe.deck(isLocalCopy() && localDeck ? localDeck : data.slide.deck));
     cloudDeckTitle = data.slide.title || '未命名投影片';
     if (!isLocalCopy() || !localDeck) {
       let card = {};
@@ -841,50 +888,40 @@
   }
 
   function progressiveRebuildLabel(session, active = null) {
-    if (!session.total) return session.mode === 'sample' ? '範例本機副本已儲存' : '精簡投影片已匯入';
+    if (!session.total) return session.mode === 'sample' ? '僅本次開啟，重新整理後還原' : '投影片動畫已準備完成';
     if (session.completed >= session.total) {
       if (session.mode === 'sample') return session.pending
         ? `公開投影片・${session.pending} 張動畫需要重新 RUN`
-        : '範例本機副本已儲存';
+        : '僅本次開啟，重新整理後還原';
       return session.pending
-        ? `投影片已匯入；${session.pending} 張動畫請修正程式後 RUN`
-        : '精簡投影片已匯入';
+        ? `投影片已載入；${session.pending} 張動畫請修正程式後 RUN`
+        : '投影片動畫已準備完成';
     }
     const progress = `${session.completed}/${session.total}`;
     const current = active?.slide?.id === getSlide()?.id ? '目前頁' : '背景';
     return session.mode === 'sample'
       ? `公開投影片已開啟・${current}動畫 ${progress}`
-      : `投影片已匯入・${current}動畫 ${progress}`;
+      : `投影片已載入・${current}動畫 ${progress}`;
   }
 
   function updateProgressiveRebuildStatus(session, active = null) {
     if (progressiveRebuildSession !== session) return;
+    // 依序重建的某張完成後，側欄 RUN 與狀態跟著更新（重建期間顯示為執行中）。
+    const current = getSlide();
+    if (current?.kind === 'algorithm-animation') renderAlgorithmRunState(current);
     document.body.dataset.asmdeckRebuild = session.completed >= session.total ? 'ready' : 'loading';
     document.body.dataset.asmdeckRebuildProgress = `${session.completed}/${session.total}`;
     setCloudStatus(session.completed >= session.total ? 'saved' : 'loading', progressiveRebuildLabel(session, active));
   }
 
-  function prioritizeProgressiveRebuild(h = currentH, v = currentV) {
+  function prioritizeProgressiveRebuild() {
+    // Navigation must not reorder the sequential preparation queue.
     const session = progressiveRebuildSession;
-    // Once rebuilding is finished, the status belongs to persistence. Merely
-    // changing slides must not replace pending/saving/error with "imported".
-    if (!session || session.completed >= session.total) return;
-    const focus = orderedDeckSlides().findIndex(entry => entry.h === h && entry.v === v);
-    if (focus >= 0) session.focusOrder = focus;
-    updateProgressiveRebuildStatus(session, session.active);
+    if (session && session.completed < session.total) updateProgressiveRebuildStatus(session, session.active);
   }
 
   function nextProgressiveRebuildEntry(session) {
-    return session.entries
-      .filter(entry => entry.state === 'pending')
-      .sort((left, right) => {
-        const leftDistance = Math.abs(left.order - session.focusOrder);
-        const rightDistance = Math.abs(right.order - session.focusOrder);
-        if (leftDistance !== rightDistance) return leftDistance - rightDistance;
-        const leftBehind = left.order < session.focusOrder ? 1 : 0;
-        const rightBehind = right.order < session.focusOrder ? 1 : 0;
-        return leftBehind - rightBehind || left.order - right.order;
-      })[0] || null;
+    return session.entries.find(entry => entry.state === 'pending') || null;
   }
 
   async function runProgressiveRebuild(session) {
@@ -895,13 +932,14 @@
       session.active = entry;
       updateProgressiveRebuildStatus(session, entry);
       try {
+        const sourceRevision = JSON.stringify(entry.slide.animation);
         const animation = await window.ASMDeck.rebuildAnimation(entry.slide.animation);
         if (progressiveRebuildSession !== session) return;
         const cacheKind = animation.cacheKind || 'run';
         delete animation.cacheKind;
         delete animation.rebuild;
         const current = getSlideById(entry.slide.id);
-        if (current) {
+        if (current && JSON.stringify(current.animation) === sourceRevision) {
           const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation }] }] }, { upload: canSaveRemoteDeck() });
           if (progressiveRebuildSession !== session) return;
           current.animation = detached.groups[0].slides[0].animation;
@@ -909,6 +947,7 @@
         }
         session.stats[cacheKind] += 1;
         entry.state = 'ready';
+        entry.resolve(current?.animation || animation);
       } catch (error) {
         if (progressiveRebuildSession !== session) return;
         const current = getSlideById(entry.slide.id);
@@ -919,6 +958,7 @@
         session.pending += 1;
         session.stats.pending += 1;
         entry.state = 'failed';
+        entry.reject(error);
       }
       session.completed += 1;
       session.active = null;
@@ -927,17 +967,22 @@
     }
     if (progressiveRebuildSession !== session) return;
     document.body.dataset.asmdeckLastImportStats = JSON.stringify(session.stats);
-    await saveDeck({ history: false, cloud: session.mode === 'import' });
+    await saveDeck({ history: false, cloud: session.mode === 'import' || (session.mode === 'load' && canSaveRemoteDeck()) });
     updateProgressiveRebuildStatus(session);
   }
 
   function startProgressiveDeckRebuild({ mode = 'import' } = {}) {
+    if (progressiveRebuildSession) for (const entry of progressiveRebuildSession.entries) if (entry.state === 'pending' || entry.state === 'running') entry.reject(new Error('投影片已切換'));
     const allSlides = orderedDeckSlides();
     const entries = allSlides.map((entry, order) => ({ ...entry, order, state: 'pending' }))
       .filter(entry => entry.slide.kind === 'algorithm-animation'
-        && entry.slide.animation?.rebuild
+        && entry.slide.animation?.code?.trim()
         && !entry.slide.animation?.traceRef
         && !entry.slide.animation?.traceDocument?.frames?.length);
+    for (const entry of entries) {
+      entry.finished = new Promise((resolve, reject) => { entry.resolve = resolve; entry.reject = reject; });
+      entry.finished.catch(() => {});
+    }
     const currentOrder = allSlides.findIndex(entry => entry.h === currentH && entry.v === currentV);
     const session = {
       generation: ++progressiveRebuildGeneration,
@@ -1159,8 +1204,8 @@
   }
 
   function editorAnimationExportSnapshot() {
-    if (!editingAlgorithmSlideId || algorithmEditorModal?.hidden) return Promise.resolve(null);
-    if (!algorithmEditorFrame?.contentWindow) {
+    if (!editingAlgorithmSlideId || !editingAlgorithmFrame) return Promise.resolve(null);
+    if (!editingAlgorithmFrame.contentWindow) {
       return Promise.reject(new Error('演算法編輯視窗尚未載入，請稍後再匯出。'));
     }
     const requestId = randomId();
@@ -1171,11 +1216,11 @@
       }, 10000);
       const slideId = editingAlgorithmSlideId;
       pendingAlgorithmExportSnapshot = {
-        requestId, source: algorithmEditorFrame.contentWindow, slideId,
+        requestId, source: editingAlgorithmFrame.contentWindow, slideId,
         resolve(animation) { clearTimeout(timer); pendingAlgorithmExportSnapshot = null;
           resolve({ slideId, animation }); }
       };
-      algorithmEditorFrame.contentWindow.postMessage({
+      editingAlgorithmFrame.contentWindow.postMessage({
         type: 'asm-request-export-animation-snapshot', requestId
       }, window.location.origin);
     });
@@ -1188,6 +1233,7 @@
       let blob = null;
       if (!blob) {
         const draft = await editorAnimationExportSnapshot();
+        // Export saves source/settings even while the sequential run is pending.
         const projected = await window.ASMDeck.project(deck, draft,
           { includePrebuiltTraces: false });
         projected.cover = { ...archiveCover, title: cloudDeckTitle,
@@ -1217,8 +1263,8 @@
   async function importDeckJsonText(text) {
     const parsed = JSON.parse(text);
     const importedDeck = parsed && parsed.deck ? parsed.deck : parsed;
-    const nextDeck = normalizeDeck(await traceStore.detachDeck(importedDeck, { upload: canSaveRemoteDeck() }));
-    await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
+    const nextDeck = normalizeDeck(window.ASMAnimationRecipe.deck(importedDeck));
+    if (!sampleId) await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
       { allowMissingTraces: true });
     const previousDeck = deck;
     deck = nextDeck;
@@ -1227,6 +1273,7 @@
     saveDeck();
     if (canRestoreDeckInPlace(previousDeck, deck)) restoreDeckInPlace(previousDeck);
     else renderDeck();
+    startProgressiveDeckRebuild({ mode: 'import' });
   }
 
   let deckImportInProgress = false;
@@ -1240,7 +1287,7 @@
         if (packageData.cover) archiveCover = { ...packageData.cover };
         const nextDeck = normalizeDeck(await traceStore.detachDeck(packageData.deck, { upload: canSaveRemoteDeck() }));
         const previousDeck = deck;
-        await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
+        if (!sampleId) await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
           { allowMissingTraces: true });
         deck = nextDeck;
         currentH = 0; currentV = 0;
@@ -1621,26 +1668,6 @@
     return segments.filter(segment => segment.type !== 'speech' || segment.text);
   }
 
-  function slideTextEntries(slide) {
-    if (!slide) return [];
-    const canvas = fabricCanvases.get(slide.id);
-    const roots = canvas ? canvas.getObjects() : (slide.canvas?.objects || []);
-    const entries = [];
-    const visit = (object, parentLeft = 0, parentTop = 0) => {
-      if (!object || object.visible === false) return;
-      const left = parentLeft + (Number(object.left) || 0);
-      const top = parentTop + (Number(object.top) || 0);
-      const type = String(object.type || '').toLowerCase();
-      if (typeof object.text === 'string' && type.includes('text') && object.text.trim()) {
-        entries.push({ text: object.text.trim(), object, left, top });
-      }
-      const children = Array.isArray(object._objects) ? object._objects : object.objects;
-      if (Array.isArray(children)) children.forEach(child => visit(child, left, top));
-    };
-    roots.forEach(object => visit(object));
-    return entries.sort((a, b) => a.top - b.top || a.left - b.left);
-  }
-
   function automaticTtsScript(slide) {
     return ttsNarrationEntries(slide)
       .map(entry => entry.autoText)
@@ -1937,6 +1964,7 @@
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
+    if (videoEditorPanel) videoEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
     if (tableEditorPanel) tableEditorPanel.hidden = true;
@@ -2691,7 +2719,6 @@
     };
     if (slide.kind === 'algorithm-animation') {
       normalized.kind = 'algorithm-animation';
-      window.ASMLocalCamera?.migrate(`slides:runtime:${DRAFT_KEY}:${id}:presentation:playback`, slide.animation?.presentationCamera);
       normalized.animation = normalizeAlgorithmAnimation(slide.animation);
     }
     return normalized;
@@ -2914,17 +2941,44 @@
     return treeData.nodes.map(node => node.value).join(', ');
   }
 
+  // Widgets written by a newer version must survive this version untouched:
+  // keep every field, show an inert placeholder, and only normalize geometry.
+  function normalizeUnsupportedWidget(widget, index) {
+    return {
+      ...widget,
+      id: widget.id || randomId(),
+      x: Number.isFinite(widget.x) ? widget.x : 160,
+      y: Number.isFinite(widget.y) ? widget.y : 160,
+      w: Number.isFinite(widget.w) ? widget.w : 320,
+      h: Number.isFinite(widget.h) ? widget.h : 180,
+      angle: Number.isFinite(widget.angle) ? widget.angle : 0,
+      skewX: Number.isFinite(widget.skewX) ? widget.skewX : 0,
+      layerIndex: Number.isFinite(Number(widget.layerIndex)) ? Number(widget.layerIndex) : WIDGET_LAYER_ABOVE_BASE + index,
+      ...normalizeAnimationSettings(widget)
+    };
+  }
+
+  function isUnsupportedWidget(widget) {
+    return !!widget && typeof widget.type === 'string' && !!widget.type && !KNOWN_WIDGET_TYPES.has(widget.type);
+  }
+
   function normalizeWidgets(widgets) {
     return Array.isArray(widgets) ? widgets.map((widget, index) => {
+      if (isUnsupportedWidget(widget)) return normalizeUnsupportedWidget(widget, index);
       const legacyTable = widget.type === 'table'
         || (widget.type === 'structure' && widget.structureMode === 'table');
       const type = legacyTable
         ? 'table'
         : widget.type === 'code'
         ? 'code'
+        : widget.type === 'video'
+        ? 'video'
         : (widget.type === 'structure' ? 'structure' : 'latex');
-      const defaultWidth = type === 'code' ? 560 : (isCellGridType(type) ? 640 : 320);
-      const defaultHeight = type === 'code' ? 220 : (isCellGridType(type) ? 300 : 96);
+      const videoAspect = type === 'video' && widget.aspect === '9:16' ? '9:16' : '16:9';
+      const defaultWidth = type === 'code' ? 560 : (isCellGridType(type) ? 640
+        : (type === 'video' ? window.ASMSlideVideo.DEFAULT_SIZE[videoAspect].w : 320));
+      const defaultHeight = type === 'code' ? 220 : (isCellGridType(type) ? 300
+        : (type === 'video' ? window.ASMSlideVideo.DEFAULT_SIZE[videoAspect].h : 96));
       const defaultFontSize = type === 'code' ? 21 : (isCellGridType(type) ? 18 : 34);
       const normalized = {
         id: widget.id || randomId(),
@@ -2949,6 +3003,11 @@
       if (type === 'latex') {
         normalized.cropX = Number.isFinite(widget.cropX) ? widget.cropX : 0;
         normalized.cropY = Number.isFinite(widget.cropY) ? widget.cropY : 0;
+      }
+      if (type === 'video') {
+        // content is regenerated as the readable fallback older builds show.
+        Object.assign(normalized, window.ASMSlideVideo.normalizeFields(widget));
+        normalized.manualSize = true;
       }
       if (isCellGridType(type)) {
         Object.assign(normalized, {
@@ -3186,6 +3245,10 @@
       highlightCodeWidget(el);
     } else if (isCellGridWidget(widget)) {
       paintStructureWidget(el, widget);
+    } else if (widget.type === 'video') {
+      paintVideoWidgetIfChanged(el, widget);
+    } else if (isUnsupportedWidget(widget)) {
+      paintWidgetElement(el, widget);
     } else {
       // In-place import/history restore must refresh the source before rendering.
       paintWidgetElement(el, widget);
@@ -3588,6 +3651,8 @@
     el.classList.toggle('structure-widget', isCellGridWidget(widget));
     el.classList.toggle('code-widget', widget.type === 'code');
     el.classList.toggle('latex-widget', widget.type === 'latex');
+    el.classList.toggle('video-widget', widget.type === 'video');
+    el.classList.toggle('unsupported-widget', isUnsupportedWidget(widget));
     el.dataset.manualSize = widget.manualSize ? 'true' : 'false';
     el.style.left = `${widget.x}px`;
     el.style.top = `${widget.y}px`;
@@ -3597,7 +3662,8 @@
     el.style.zIndex = String(Math.round(Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE));
     applyAnimationAttributes(el, widget);
     const contentChanged = !previousWidget || [
-      'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
+      'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY',
+      'videoId', 'startSeconds', 'endSeconds', 'muted', 'title'
     ].some(key => previousWidget[key] !== widget[key]);
     const structureChanged = isCellGridWidget(widget) && (!previousWidget || [
       'structureMode', 'structureName', 'indexMode', 'indexBase', 'segmentDomainLength', 'itemsPerRow', 'gap', 'cellSize',
@@ -3657,6 +3723,13 @@
       content.className = 'widget-content structure-content';
       el.appendChild(content);
       window.AlgoStructureRenderer?.render(content, widget);
+    } else if (widget.type === 'video') {
+      paintVideoFacade(el, widget);
+    } else if (isUnsupportedWidget(widget)) {
+      const content = document.createElement('div');
+      content.className = 'widget-content unsupported-content';
+      content.textContent = `此版本不支援的元件（${String(widget.type).slice(0, 40)}），內容會原樣保留`;
+      el.appendChild(content);
     } else {
       const content = document.createElement('div');
       content.className = 'widget-content latex-content';
@@ -3748,16 +3821,18 @@
       canvas.__asmRasterScale = scale;
       canvas.setDimensions({ width: canvas.width, height: canvas.height });
       canvas.lowerCanvasEl.dataset.rasterScale = String(scale);
-      canvas.requestRenderAll();
+      // Resizing clears the bitmap. Paint in this same task so the compositor
+      // never presents an empty canvas between resizing and the next RAF.
+      canvas.renderAll();
     }
   }
 
-  function scheduleFabricResolution() {
+  function scheduleFabricResolution(settleZoom = false) {
     cancelAnimationFrame(fabricResolutionFrame);
-    fabricResolutionFrame = requestAnimationFrame(refreshFabricResolution);
+    if (settleZoom !== true) fabricResolutionFrame = requestAnimationFrame(refreshFabricResolution);
     clearTimeout(fabricResolutionTimer);
     // Mode and zoom transforms animate for 320ms; redraw again at their final size.
-    fabricResolutionTimer = setTimeout(refreshFabricResolution, 400);
+    fabricResolutionTimer = setTimeout(refreshFabricResolution, settleZoom === true ? 180 : 400);
   }
   // -----------------------------------------------------------------------------
   // Fabric 畫布建立與事件接線
@@ -3854,6 +3929,29 @@
     const proto = Fabric?.IText?.prototype;
     if (!proto || proto.__asmCompositionUnderlinePatched || typeof proto.renderSelection !== 'function') return;
     const original = proto.renderSelection;
+    const originalCompositionEnd = proto.onCompositionEnd;
+    proto.onCompositionEnd = function (...args) {
+      const result = originalCompositionEnd.apply(this, args);
+      const textarea = this.hiddenTextarea;
+      // Fabric 5 only flips inCompositionMode. A confirming Enter may have no
+      // subsequent input event, so clear the transient overlay here, including
+      // dashed strokes outside Fabric's usual text-area clearing rectangle.
+      // Keep native selection (UTF-16) separate from Fabric's grapheme offsets.
+      if (textarea && textarea.value === this.text) {
+        const selection = this.fromStringToGraphemeSelection(
+          textarea.selectionStart, textarea.selectionEnd, this.text
+        );
+        this.selectionStart = selection.selectionStart;
+        this.selectionEnd = selection.selectionEnd;
+      }
+      this.compositionStart = this.compositionEnd = textarea?.selectionStart ?? 0;
+      if (this.isEditing) {
+        this.initDelayedCursor();
+        refreshEditingTextCursor(this);
+        this.canvas?.requestRenderAll();
+      }
+      return result;
+    };
     proto.renderSelection = function (boundaries, ctx) {
       if (!this.inCompositionMode) return original.call(this, boundaries, ctx);
       try {
@@ -4161,6 +4259,7 @@
       showFabricObjectEditor(canvas.getActiveObject());
     });
     canvas.on('after:render', () => {
+      syncPresentationTextLayer(canvas);
       drawEditingTextControls(canvas);
       if (canvas === currentFabricCanvas()) updateGroupSelectionOverlay();
     });
@@ -5260,6 +5359,10 @@
   // 工具列動作建立具預設樣式的 Fabric 或 widget 物件，完成後統一選取、存檔並刷新編輯面板。
   // -----------------------------------------------------------------------------
   function addObject(kind, point, text = 'New text', richText = null) {
+    if (kind === 'video') {
+      openVideoInsertDialog();
+      return;
+    }
     if (kind === 'latex' || kind === 'code' || kind === 'table') {
       addWidget(kind, point);
       return;
@@ -5604,7 +5707,8 @@
   // 把 Fabric 與 HTML widget 轉成同一套邊界資料；拖曳只顯示暫時導線，落點後才寫回 deck。
   // -----------------------------------------------------------------------------
   function snapCandidateBounds(canvas, excludedFabric = new Set(), excludedWidgetIds = new Set()) {
-    const candidates = [];
+    // 投影片本身也是貼齊目標：所有物件（文字、圖片、圖形、影片、程式碼…）都會貼齊四邊與中線。
+    const candidates = [snapBounds({ kind: 'slide', id: 'slide', left: 0, top: 0, width: SLIDE_W, height: SLIDE_H })];
     canvas?.getObjects().forEach(object => {
       if (!object.visible || excludedFabric.has(object)) return;
       const bounds = object.getBoundingRect(true, true);
@@ -5721,7 +5825,9 @@
       }
     });
 
-    const byX = [...candidates].sort((a, b) => a.left - b.left);
+    // 等距只比較物件之間的間隔，不把投影片外框當成一個物件。
+    const objects = candidates.filter(candidate => candidate.kind !== 'slide');
+    const byX = [...objects].sort((a, b) => a.left - b.left);
     if (allowX) {
       for (let index = 0; index < byX.length - 1; index += 1) {
         const first = byX[index];
@@ -5754,7 +5860,7 @@
       }
     }
 
-    const byY = [...candidates].sort((a, b) => a.top - b.top);
+    const byY = [...objects].sort((a, b) => a.top - b.top);
     if (allowY) {
       for (let index = 0; index < byY.length - 1; index += 1) {
         const first = byY[index];
@@ -5903,7 +6009,8 @@
     renderSnapGuides(result.guides, canvas);
   }
 
-  function applyFabricResizeSnap(event, canvas) {
+  // candidates／guideCanvas 供選取框（另一張 Fabric 畫布）共用：貼齊目標與導線都以投影片主畫布為準。
+  function applyFabricResizeSnap(event, canvas, { candidates: givenCandidates = null, guideCanvas = canvas } = {}) {
     const target = event?.target;
     const corner = event?.transform?.corner;
     if (!target || !corner || snapBypassRequested(event?.e)) {
@@ -5924,7 +6031,7 @@
       target.setCoords();
       target.dirty = true;
       canvas.requestRenderAll();
-      renderSnapGuides(locked.guides, canvas);
+      renderSnapGuides(locked.guides, guideCanvas);
       return;
     }
     delete event.transform.__asmUniformResizeSnap;
@@ -5937,7 +6044,7 @@
     }
     const activeObjects = new Set(canvas.getActiveObjects());
     const current = snapBounds(target.getBoundingRect(true, true));
-    const candidates = snapCandidateBounds(canvas, activeObjects, new Set());
+    const candidates = givenCandidates || snapCandidateBounds(canvas, activeObjects, new Set());
     const result = calculateResizeSnap(current, candidates, resizeEdge);
     if (!Number.isFinite(result.distanceX) && !Number.isFinite(result.distanceY)) {
       clearSnapGuides();
@@ -5975,7 +6082,7 @@
     const guides = uniform ? (useX ? result.xGuides : result.yGuides) : result.guides;
     if (uniform) {
       const pointerKey = useX ? 'clientX' : 'clientY';
-      const rect = fabricSlideRect(canvas);
+      const rect = fabricSlideRect(guideCanvas);
       event.transform.__asmUniformResizeSnap = {
         pointerKey, pointer: event.e?.[pointerKey],
         threshold: SNAP_THRESHOLD * (rect ? (useX ? rect.width / SLIDE_W : rect.height / SLIDE_H) : 1),
@@ -5983,7 +6090,7 @@
         guides
       };
     }
-    renderSnapGuides(guides, canvas);
+    renderSnapGuides(guides, guideCanvas);
   }
 
   function applyWidgetResizeSnap(widget, drag) {
@@ -6487,12 +6594,14 @@
     defaultToolPanel.hidden = false;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
+    if (videoEditorPanel) videoEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
     if (tableEditorPanel) tableEditorPanel.hidden = true;
     setStructureEditorActive(false);
     hideAnimationEditor();
     updateAlgorithmEditButton();
+    syncVideoPlayback();
   }
 
   function applyCodeFocusLines(code, focusLines, showLineNumbers) {
@@ -6506,6 +6615,7 @@
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = false;
     latexEditorPanel.hidden = true;
+    if (videoEditorPanel) videoEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
     if (tableEditorPanel) tableEditorPanel.hidden = true;
@@ -7330,10 +7440,141 @@
     hideStructureContextMenu();
   }
 
+  // -----------------------------------------------------------------------------
+  // 側欄的動畫區塊：編輯動畫、輸入與 RUN
+  // 輸入直接寫回投影片的動畫資料；改完約 1.5 秒或離開輸入框時自動重新執行（只改輸入時伺服器
+  // 重用快取的執行檔，不重新編譯）。失敗時保留原動畫，並在 RUN 旁提示到「編輯動畫」查看。
+  // -----------------------------------------------------------------------------
+  const slideRunStates = new Map();
+  const pendingSlideReruns = new Set();
+  const runningSlideAnimations = new Set();
+  const ALGORITHM_AUTO_RUN_MS = 1500;
+  let algorithmInputSaveTimer = null;
+  let algorithmAutoRunTimer = null;
+
+  function slideRunState(slide) {
+    if (!slide) return { state: 'current' };
+    if (runningSlideAnimations.has(slide.id)) return { state: 'running' };
+    const saved = slideRunStates.get(slide.id);
+    if (saved) return saved;
+    const queued = progressiveRebuildSession?.entries.find(entry => entry.slide.id === slide.id);
+    if (queued && ['pending', 'running'].includes(queued.state)) return { state: 'running' };
+    if (slide.animation?.rebuildError) return { state: 'error', message: slide.animation.rebuildError };
+    return { state: 'current' };
+  }
+
+  // 只保存執行配方的投影片沒有動畫結果，mode 會正規化成 legacy；真正的舊版腳本動畫是帶 scriptContent 的。
+  function slideIsRunnable(slide) {
+    const animation = slide?.animation;
+    return slide?.kind === 'algorithm-animation' && Boolean(animation?.code?.trim())
+      && !(animation.mode !== 'trace' && animation.scriptContent?.trim());
+  }
+
+  function renderAlgorithmRunState(slide = getSlide()) {
+    if (!algorithmSidebarBlock || slide?.kind !== 'algorithm-animation' || slide !== getSlide()) return;
+    const { state, message = '' } = slideRunState(slide);
+    const runnable = slideIsRunnable(slide);
+    algorithmSidebarBlock.dataset.runState = state;
+    if (algorithmSlideRunBtn) {
+      algorithmSlideRunBtn.disabled = state === 'running' || !runnable;
+      algorithmSlideRunBtn.classList.toggle('loading', state === 'running');
+      algorithmSlideRunBtn.setAttribute('aria-busy', String(state === 'running'));
+      algorithmSlideRunBtn.title = runnable
+        ? '用這張投影片的程式與輸入重新執行'
+        : '這張投影片還沒有可執行的程式；請先到「編輯動畫」撰寫';
+    }
+    if (algorithmSlideStatus) {
+      algorithmSlideStatus.textContent = !runnable ? '請先到「編輯動畫」撰寫程式'
+        : { current: '已是最新', stale: '輸入已修改，動畫尚未更新', running: '更新動畫中…', error: '' }[state] || '';
+    }
+    if (algorithmSlideError) {
+      algorithmSlideError.hidden = state !== 'error';
+      const detail = String(message || '').split('\n').map(line => line.trim()).find(Boolean) || '';
+      algorithmSlideError.querySelector('code').textContent = detail;
+      algorithmSlideError.querySelector('code').title = String(message || '');
+    }
+    if (algorithmEditAlert) algorithmEditAlert.hidden = state !== 'error';
+  }
+
+  function setSlideRunState(slide, state, message = '') {
+    if (!slide) return;
+    if (state === 'current') slideRunStates.delete(slide.id);
+    else slideRunStates.set(slide.id, { state, message });
+    renderAlgorithmRunState(slide);
+  }
+
   function updateAlgorithmEditButton() {
     const slide = getSlide();
     const isAlgorithm = slide?.kind === 'algorithm-animation';
-    if (algorithmEditSlideBtn) algorithmEditSlideBtn.hidden = !isAlgorithm;
+    if (algorithmSidebarBlock) algorithmSidebarBlock.hidden = !isAlgorithm;
+    if (!isAlgorithm) return;
+    if (algorithmSlideInput && document.activeElement !== algorithmSlideInput) {
+      algorithmSlideInput.value = slide.animation?.input || '';
+    }
+    renderAlgorithmRunState(slide);
+  }
+
+  function algorithmFrameForSlide(slide) {
+    return document.querySelector(`section.asm-slide[data-slide-id="${slide?.id}"] .algorithm-slide-frame`);
+  }
+
+  // 輸入改了就讓畫布上的紅點亮起（動畫需要更新），並讓編輯動畫頁看到同一份輸入。
+  function postAlgorithmInputToFrame(slide) {
+    const frame = algorithmFrameForSlide(slide);
+    frame?.contentWindow?.postMessage({ type: 'asm-runtime-set-input', input: slide.animation?.input || '' },
+      window.location.origin);
+  }
+
+  function scheduleAlgorithmAutoRun(slide, delay = ALGORITHM_AUTO_RUN_MS) {
+    clearTimeout(algorithmAutoRunTimer);
+    algorithmAutoRunTimer = setTimeout(() => {
+      algorithmAutoRunTimer = null;
+      if (getSlideById(slide.id) !== slide || slideRunState(slide).state !== 'stale') return;
+      requestSlideRun(slide);
+    }, Math.max(0, delay));
+  }
+
+  async function requestSlideRun(slide) {
+    clearTimeout(algorithmAutoRunTimer);
+    if (!slideIsRunnable(slide)) return;
+    if (runningSlideAnimations.has(slide.id)) {
+      // 執行中又改了輸入：這次完成後以最新內容再跑一次。
+      pendingSlideReruns.add(slide.id);
+      return;
+    }
+    await runSlideAnimation(algorithmFrameForSlide(slide), slide);
+    if (pendingSlideReruns.delete(slide.id) && getSlideById(slide.id) === slide) await requestSlideRun(slide);
+  }
+
+  function bindAlgorithmSidebar() {
+    algorithmSlideInput?.addEventListener('input', () => {
+      const slide = getSlide();
+      if (slide?.kind !== 'algorithm-animation') return;
+      slide.animation ||= normalizeAlgorithmAnimation();
+      slide.animation.input = algorithmSlideInput.value;
+      setSlideRunState(slide, 'stale');
+      postAlgorithmInputToFrame(slide);
+      clearTimeout(algorithmInputSaveTimer);
+      algorithmInputSaveTimer = setTimeout(() => saveDeck({ history: false }), 400);
+      scheduleAlgorithmAutoRun(slide);
+    });
+    // 一次輸入完成（離開輸入框）記成一筆復原歷史，並立刻執行尚未更新的修改。
+    algorithmSlideInput?.addEventListener('change', () => {
+      clearTimeout(algorithmInputSaveTimer);
+      saveDeck();
+    });
+    algorithmSlideInput?.addEventListener('blur', () => {
+      const slide = getSlide();
+      if (slide && slideRunState(slide).state === 'stale') scheduleAlgorithmAutoRun(slide, 0);
+    });
+    algorithmSlideRunBtn?.addEventListener('click', () => {
+      const slide = getSlide();
+      if (slide?.kind === 'algorithm-animation') requestSlideRun(slide);
+    });
+    document.getElementById('algorithmSlideErrorOpen')?.addEventListener('click', () => {
+      const slide = getSlide();
+      if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
+    });
   }
 
   // -----------------------------------------------------------------------------
@@ -7350,6 +7591,7 @@
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = found.widget.type !== 'latex';
+    if (videoEditorPanel) videoEditorPanel.hidden = found.widget.type !== 'video';
     codeEditorPanel.hidden = found.widget.type !== 'code';
     if (structureEditorPanel) structureEditorPanel.hidden = found.widget.type !== 'structure';
     if (tableEditorPanel) tableEditorPanel.hidden = found.widget.type !== 'table';
@@ -7369,7 +7611,10 @@
     } else if (found.widget.type === 'table') {
       populateTableEditor(found.widget);
       if (editorChrome) editorChrome.scrollTop = 0;
+    } else if (found.widget.type === 'video') {
+      populateVideoEditor(found.widget);
     }
+    syncVideoPlayback();
     showAnimationEditor(found.widget);
   }
 
@@ -7382,6 +7627,7 @@
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
+    if (videoEditorPanel) videoEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
     if (tableEditorPanel) tableEditorPanel.hidden = true;
@@ -7749,6 +7995,11 @@
         return;
       }
       window.AlgoStructureRenderer?.render(content, widget);
+    } else if (widget.type === 'video') {
+      paintVideoWidgetIfChanged(el, widget);
+    } else if (isUnsupportedWidget(widget)) {
+      paintWidgetElement(el, widget);
+      return;
     } else {
       let content = el.querySelector('.latex-content');
       if (!content) {
@@ -7803,7 +8054,8 @@
     if (slideZoomValue) slideZoomValue.value = `${Math.round(value * 100)}%`;
     if (slideZoomOutBtn) slideZoomOutBtn.disabled = value <= SLIDE_ZOOM_MIN;
     if (slideZoomInBtn) slideZoomInBtn.disabled = value >= SLIDE_ZOOM_MAX;
-    if (slideZoomResetBtn) slideZoomResetBtn.disabled = Math.abs(value - 1) < 0.001;
+    if (slideZoomResetBtn) slideZoomResetBtn.disabled = Math.abs(value - 1) < 0.001
+      && (customOverviewOpen || (Math.abs(slideViewportPan.x) < 0.001 && Math.abs(slideViewportPan.y) < 0.001));
   }
 
   function setOverviewViewportZoom(value) {
@@ -7826,18 +8078,51 @@
     }
   }
 
-  function setSlideViewportZoom(value) {
+  let slideViewportPan = { x: 0, y: 0 };
+  let slideViewportMouse = null;
+  let slideViewportDrag = null;
+  let slideViewportSpace = false;
+
+  function currentSlideViewportFrame() {
+    return reveal?.getCurrentSlide()?.querySelector('.asm-slide-frame-content');
+  }
+
+  function applySlideViewportPan() {
+    const style = document.documentElement.style;
+    style.setProperty('--slide-pan-x', `${slideViewportPan.x}px`);
+    style.setProperty('--slide-pan-y', `${slideViewportPan.y}px`);
+    if (!customOverviewOpen) refreshSlideZoomControls(slideViewportZoom);
+  }
+
+  function slideViewportParentScale(frame) {
+    return frame.closest('section.asm-slide').getBoundingClientRect().width / SLIDE_W || 1;
+  }
+
+  function setSlideViewportZoom(value, anchor = slideViewportMouse) {
     if (customOverviewOpen) {
       setOverviewViewportZoom(value);
       return;
     }
+    const frame = currentSlideViewportFrame();
+    const before = frame?.getBoundingClientRect();
+    const viewport = document.querySelector('body > .reveal')?.getBoundingClientRect();
+    const point = anchor || (viewport && { x: viewport.left + viewport.width / 2, y: viewport.top + viewport.height / 2 });
     slideViewportZoom = Math.round(clampSlideViewportZoom(value) * 100) / 100;
     document.documentElement.style.setProperty('--slide-user-zoom', String(slideViewportZoom));
     document.documentElement.style.setProperty('--edit-slide-zoom-scale', String(EDIT_SLIDE_BASE_SCALE * slideViewportZoom));
     document.body.dataset.slideZoom = String(slideViewportZoom);
+    if (before?.width && point) {
+      const after = frame.getBoundingClientRect();
+      const scale = slideViewportParentScale(frame);
+      // Keep the same logical slide point under the cursor. Pan is in slide
+      // coordinates, independent of Reveal's responsive outer scale.
+      slideViewportPan.x += (point.x - after.left - (point.x - before.left) * after.width / before.width) / scale;
+      slideViewportPan.y += (point.y - after.top - (point.y - before.top) * after.height / before.height) / scale;
+      applySlideViewportPan();
+    }
     refreshSlideZoomControls(slideViewportZoom);
     clearSnapGuides();
-    scheduleFabricResolution();
+    scheduleFabricResolution(true);
     requestAnimationFrame(() => {
       const canvas = currentFabricCanvas();
       if (canvas?.getActiveObject()) updateObjectToolbar(canvas.getActiveObject(), canvas);
@@ -7845,8 +8130,87 @@
     });
   }
 
-  function adjustSlideViewportZoom(delta) {
-    setSlideViewportZoom((customOverviewOpen ? overviewViewportZoom : slideViewportZoom) + delta);
+  function adjustSlideViewportZoom(delta, anchor = slideViewportMouse) {
+    setSlideViewportZoom((customOverviewOpen ? overviewViewportZoom : slideViewportZoom) + delta, anchor);
+  }
+
+  function resetSlideViewport() {
+    setSlideViewportZoom(1, null);
+    slideViewportPan = { x: 0, y: 0 };
+    applySlideViewportPan();
+  }
+
+  function bindSlideViewportPan() {
+    const surface = document.querySelector('body > .reveal');
+    // Cell right-click belongs to the structure/table menu. Capturing it for
+    // viewport panning retargets contextmenu to the surface and loses the cell.
+    const cellContextTarget = event => {
+      const element = widgetAtEvent(event);
+      const widget = element && getWidget(element.dataset.widgetId).widget;
+      return widget && isCellGridWidget(widget)
+        && (structureCellFromEvent(event, element) || event.target.closest?.('[data-tree-node-id]'));
+    };
+    const finish = () => {
+      if (!slideViewportDrag) return;
+      slideViewportDrag = null;
+      document.body.classList.remove('slide-viewport-panning');
+      const canvas = currentFabricCanvas();
+      canvas?.calcOffset();
+      if (canvas?.getActiveObject()) updateObjectToolbar(canvas.getActiveObject(), canvas);
+      updateAlignmentToolbar();
+    };
+    window.addEventListener('pointerdown', event => {
+      if (customOverviewOpen || !surface?.contains(event.target) || isSlideZoomTypingTarget(event.target)) return;
+      if (event.button === 2 && !document.body.classList.contains('asm-edit-mode')) return;
+      if (event.button === 2 && cellContextTarget(event)) return;
+      if (event.button !== 1 && event.button !== 2 && !(event.button === 0 && slideViewportSpace)) return;
+      const frame = currentSlideViewportFrame();
+      if (!frame) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      slideViewportDrag = { id: event.pointerId, x: event.clientX, y: event.clientY,
+        pan: { ...slideViewportPan }, scale: slideViewportParentScale(frame) };
+      surface.setPointerCapture(event.pointerId);
+      document.body.classList.add('slide-viewport-panning');
+    }, true);
+    window.addEventListener('pointermove', event => {
+      if (surface?.contains(event.target)) slideViewportMouse = { x: event.clientX, y: event.clientY };
+      if (!slideViewportDrag || event.pointerId !== slideViewportDrag.id) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      slideViewportPan.x = slideViewportDrag.pan.x + (event.clientX - slideViewportDrag.x) / slideViewportDrag.scale;
+      slideViewportPan.y = slideViewportDrag.pan.y + (event.clientY - slideViewportDrag.y) / slideViewportDrag.scale;
+      applySlideViewportPan();
+    }, true);
+    for (const type of ['pointerup', 'pointercancel']) window.addEventListener(type, event => {
+      if (!slideViewportDrag || event.pointerId !== slideViewportDrag.id) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
+      finish();
+    }, true);
+    window.addEventListener('mousedown', event => {
+      if (!slideViewportDrag) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    surface?.addEventListener('pointerleave', () => { if (!slideViewportDrag) slideViewportMouse = null; });
+    window.addEventListener('contextmenu', event => {
+      if (!customOverviewOpen && document.body.classList.contains('asm-edit-mode') && surface?.contains(event.target)) {
+        if (cellContextTarget(event)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    }, true);
+    window.addEventListener('keydown', event => {
+      if (event.code !== 'Space' || event.ctrlKey || event.metaKey || event.altKey || customOverviewOpen
+        || isSlideZoomTypingTarget(event.target) || event.target.closest?.('button, a, dialog, [role="button"]')) return;
+      slideViewportSpace = true;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    window.addEventListener('keyup', event => { if (event.code === 'Space') slideViewportSpace = false; }, true);
+    window.addEventListener('blur', () => { slideViewportSpace = false; finish(); });
   }
 
   function isSlideZoomTypingTarget(target) {
@@ -7860,7 +8224,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     const direction = event.deltaY < 0 ? 1 : -1;
-    adjustSlideViewportZoom(direction * SLIDE_ZOOM_STEP);
+    adjustSlideViewportZoom(direction * SLIDE_ZOOM_STEP, { x: event.clientX, y: event.clientY });
   }
 
   function handleSlideZoomKeydown(event) {
@@ -7868,13 +8232,48 @@
     const key = event.key;
     if (key === '0') {
       event.preventDefault();
-      setSlideViewportZoom(1);
+      resetSlideViewport();
     } else if (key === '+' || key === '=') {
       event.preventDefault();
       adjustSlideViewportZoom(SLIDE_ZOOM_STEP);
     } else if (key === '-' || key === '_') {
       event.preventDefault();
       adjustSlideViewportZoom(-SLIDE_ZOOM_STEP);
+    }
+  }
+
+  // Canvas text has no native selection. Reuse Fabric's own SVG export as
+  // an invisible, read-only text surface rather than recomputing glyph boxes.
+  // This DOM layer never enters canvas serialization, undo or deck storage.
+  function syncPresentationTextLayer(canvas) {
+    const wrapper = canvas.wrapperEl;
+    if (!wrapper) return;
+    let layer = wrapper.querySelector('.asm-presentation-text-layer');
+    if (document.body.classList.contains('asm-edit-mode')) { layer?.remove(); return; }
+    const chunks = [];
+    const visit = obj => {
+      if (obj.visible === false || obj.opacity === 0) return;
+      if (typeof obj.text === 'string' && obj.text) {
+        const parent = obj.group?.calcTransformMatrix?.() || [1,0,0,1,0,0];
+        const matrix = f().util.multiplyTransformMatrices(canvas.viewportTransform, parent);
+        chunks.push(`<g transform="matrix(${matrix.join(' ')})">${obj.toSVG()}</g>`);
+      } else obj.getObjects?.().forEach(visit);
+    };
+    canvas.getObjects().forEach(visit);
+    const markup = chunks.join('');
+    if (!layer) {
+      layer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      layer.classList.add('asm-presentation-text-layer');
+      layer.addEventListener('selectstart', event => event.stopPropagation());
+      layer.style.userSelect = 'text';
+      layer.setAttribute('aria-label', '投影片文字');
+      layer.setAttribute('width', canvas.width); layer.setAttribute('height', canvas.height);
+      layer.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`);
+      wrapper.append(layer);
+    }
+    if (layer.__asmTextMarkup !== markup) {
+      layer.innerHTML = markup; layer.__asmTextMarkup = markup;
+      layer.querySelectorAll('rect, image, path').forEach(node => { if (!node.closest('defs')) node.remove(); });
     }
   }
 
@@ -7913,6 +8312,8 @@
     }
     applyEditMode(enabled);
     syncAlgorithmFrameVisibility();
+    if (!enabled) nextVideoVisit();
+    syncVideoPlayback();
     if (!enabled) clearSnapGuides();
     updateAlignmentToolbar();
     if (reveal) setTimeout(() => reveal.layout(), 20);
@@ -7927,7 +8328,7 @@
     if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing() || event.button !== 0) return;
     const target = event.target;
     if (!target || !target.closest) return;
-    if (target.closest('.asm-slide-frame-content, #controlChrome, #editorChrome, #objectToolbar, #ttsObjectEditorPopover, #alignmentToolbar, #iroPopup, #structureContextMenu, #ttsTransport, #overviewChrome, #customOverview, #algorithmEditorModal, #codeEditorModal, .slide-edge-add')) return;
+    if (target.closest('.asm-slide-frame-content, #controlChrome, #editorChrome, #objectToolbar, #ttsObjectEditorPopover, #alignmentToolbar, #iroPopup, #structureContextMenu, #ttsTransport, #overviewChrome, #customOverview, #algorithmEditorPage, #codeEditorModal, .slide-edge-add')) return;
     const canvas = currentFabricCanvas();
     const hadFabricSelection = !!(canvas && canvas.getActiveObject());
     if (canvas && hadFabricSelection) {
@@ -7948,7 +8349,8 @@
     });
     slideZoomOutBtn?.addEventListener('click', () => adjustSlideViewportZoom(-SLIDE_ZOOM_STEP));
     slideZoomInBtn?.addEventListener('click', () => adjustSlideViewportZoom(SLIDE_ZOOM_STEP));
-    slideZoomResetBtn?.addEventListener('click', () => setSlideViewportZoom(1));
+    slideZoomResetBtn?.addEventListener('click', resetSlideViewport);
+    bindSlideViewportPan();
     document.addEventListener('wheel', handleSlideZoomWheel, { passive: false, capture: true });
     document.addEventListener('keydown', handleSlideZoomKeydown, true);
     setSlideViewportZoom(1);
@@ -8098,7 +8500,8 @@
       const slide = getSlide();
       if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
     });
-    document.getElementById('saveAlgorithmEditorBtn')?.addEventListener('click', saveAlgorithmEditor);
+    bindAlgorithmSidebar();
+    document.getElementById('algorithmEditorBackBtn')?.addEventListener('click', () => closeAlgorithmEditor());
     window.addEventListener('message', handleAlgorithmEmbedMessage);
     document.addEventListener('mousedown', clearSelectionWhenClickingOutsideSlide, true);
     slidesRoot.addEventListener('contextmenu', openStructureContextMenu);
@@ -8377,6 +8780,13 @@
   let nativeSelectionControls = null;
   let nativeSelectionMain = null;
   let nativeSelectionSnapshots = [], nativeSelectionChanged = false;
+  // 選取框拖曳／縮放時的貼齊目標：排除目前選取的物件本身。
+  function nativeSelectionSnapCandidates(canvas) {
+    const items = selectedAlignmentItems().items;
+    return snapCandidateBounds(canvas,
+      new Set(items.filter(item => item.kind === 'fabric').map(item => item.object)),
+      new Set(items.filter(item => item.kind === 'widget').map(item => item.widget.id)));
+  }
   function syncNativeSelectionControls(canvas, items) {
     if (!canvas) { nativeSelectionControls?.dispose(); nativeSelectionControls=null; nativeSelectionMain=null; return; }
     if (nativeSelectionMain !== canvas) {
@@ -8403,7 +8813,20 @@
           clearStructureCellSelection();
         },
         transform: matrix => applyNativeSelectionTransform(canvas, nativeSelectionSnapshots, matrix),
-        end: () => { if(nativeSelectionChanged) syncCurrentSlideCanvas(); updateAlignmentToolbar(); }
+        // 已選取（含 HTML 物件）的拖曳走這套選取框；與一般拖曳相同，貼齊其他物件與投影片邊界。
+        snapMove: (active, event) => {
+          if (snapBypassRequested(event)) { clearSnapGuides(); return; }
+          const result = calculateObjectSnap(active.getBoundingRect(true, true), nativeSelectionSnapCandidates(canvas));
+          if (result.dx || result.dy) {
+            active.set({ left: active.left + result.dx, top: active.top + result.dy });
+            active.setCoords();
+          }
+          renderSnapGuides(result.guides, canvas);
+        },
+        // 縮放與一般物件相同：拉動的邊或角貼齊其他物件與投影片邊界，等比縮放時沿導線鎖住。
+        snapResize: (event, selectionCanvas) => applyFabricResizeSnap(event, selectionCanvas,
+          { candidates: nativeSelectionSnapCandidates(canvas), guideCanvas: canvas }),
+        end: () => { clearSnapGuides(); if(nativeSelectionChanged) syncCurrentSlideCanvas(); updateAlignmentToolbar(); }
       }, FABRIC_BLEED);
       canvas.__asmSelectionControls = nativeSelectionControls.canvas;
     }
@@ -8958,6 +9381,12 @@
       const items = Array.from(event.clipboardData && event.clipboardData.items || []);
       const imageItem = items.find(item => item.type && item.type.startsWith('image/'));
       if (!imageItem) {
+        if (text && window.ASMSlideVideo.looksLikeYouTubeUrl(text) && getSlide()?.kind !== 'algorithm-animation') {
+          event.preventDefault();
+          exitWidgetEditorIfNeeded();
+          addVideoWidget(text.trim());
+          return;
+        }
         if (text) {
           event.preventDefault();
           exitWidgetEditorIfNeeded();
@@ -8993,9 +9422,9 @@
         closeCodeEditorModal();
         return;
       }
-      if (event.key === 'Escape' && algorithmEditorModal && !algorithmEditorModal.hidden) {
+      if (event.key === 'Escape' && editingAlgorithmFrame) {
         event.preventDefault();
-        saveAlgorithmEditor();
+        closeAlgorithmEditor();
         return;
       }
       if (event.key === 'Escape' && document.body.classList.contains('asm-edit-mode')) {
@@ -9359,10 +9788,6 @@
   function exitWidgetEditorIfNeeded() {
     if (!selectedWidgetIdsInCurrentSlide().length) return;
     clearWidgetSelection();
-  }
-
-  function pointHitsFabricObject(event) {
-    return !!fabricObjectAtPoint(event);
   }
 
   function fabricObjectAtPoint(event) {
@@ -10003,8 +10428,9 @@
   }
 
   function algorithmCameraSurface(frame, slideId) {
-    const view = frame === algorithmEditorFrame ? 'animation-editor'
-      : document.body.classList.contains('asm-edit-mode') ? 'slide-editor' : 'presentation';
+    // 編輯動畫頁與投影片編輯畫面是同一個畫布，手動平移縮放共用同一份；放映另存一份。
+    const view = frame === editingAlgorithmFrame || document.body.classList.contains('asm-edit-mode')
+      ? 'slide-editor' : 'presentation';
     return `${DRAFT_KEY}:${slideId}:${view}`;
   }
 
@@ -10016,8 +10442,8 @@
     try { materialized = await traceStore.materializeAnimation(animation); }
     catch (error) {
       frame.classList.remove('is-loading');
-      if (frame === algorithmEditorFrame) {
-        if (algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫載入失敗：${error.message}`;
+      if (frame === editingAlgorithmFrame) {
+        setAlgorithmEditorStatus(`動畫載入失敗：${error.message}`);
         // Missing immutable results must still allow editing the saved source and RUN.
         const { traceRef, traceView, traceDocument, ...source } = animation;
         frame.contentWindow.postMessage({ type: 'asm-load-animation', editorSessionKey: slide.id, cameraSurface: algorithmCameraSurface(frame, slide.id),
@@ -10026,13 +10452,28 @@
       const placeholder = frame.closest('section.asm-slide')?.querySelector('.algorithm-slide-placeholder');
       if (placeholder) {
         placeholder.hidden = false;
-        placeholder.querySelector('span').textContent = `動畫載入失敗：${error.message}；切回本頁可重試`;
+        placeholder.querySelector('span').textContent = `動畫載入失敗：${error.message}`;
+        let retry = placeholder.querySelector('.trace-refresh-retry');
+        if (!retry) {
+          retry = document.createElement('button'); retry.className = 'trace-refresh-retry'; retry.textContent = '重試更新動畫';
+          retry.addEventListener('click', async () => {
+            retry.disabled = true;
+            traceStore.retry(slide.animation);
+            try { await sendAlgorithmAnimationToFrame(frame, slide); }
+            finally { retry.disabled = false; }
+          });
+          placeholder.appendChild(retry);
+        }
       }
       frame.dataset.traceLoadFailed = 'true';
       return;
     }
     if (!frame.isConnected || frame.contentWindow !== targetWindow
       || (slide.animation !== animation && !preparedAnimation)) return;
+    if (!preparedAnimation && (materialized.code !== slide.animation.code || materialized.input !== slide.animation.input)) return;
+    delete frame.dataset.traceLoadFailed;
+    const placeholder = frame.closest('section.asm-slide')?.querySelector('.algorithm-slide-placeholder');
+    if (placeholder) placeholder.hidden = true;
     frame.contentWindow.postMessage({
       type: 'asm-load-animation',
       editorSessionKey: slide.id, cameraSurface: algorithmCameraSurface(frame, slide.id),
@@ -10074,7 +10515,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-45';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-147';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10090,6 +10531,8 @@
 
   function refreshAlgorithmSlideInPlace(slide) {
     if (!slide || slide.kind !== 'algorithm-animation') return;
+    // 動畫物件可能被整個換掉（載入時依序重建），側欄的狀態與輸入跟著更新。
+    if (slide === getSlide()) updateAlgorithmEditButton();
     const section = document.querySelector(`section.asm-slide[data-slide-id="${slide.id}"]`);
     const frame = section?.querySelector('.algorithm-slide-frame');
     const placeholder = section?.querySelector('.algorithm-slide-placeholder');
@@ -10114,7 +10557,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-45';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-147';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10132,6 +10575,43 @@
   // 演算法 iframe 通訊
   // 以 slideId 與 frame 來源核對訊息，把編輯結果與可見性送到正確的嵌入頁，避免背景 iframe 搶走狀態。
   // -----------------------------------------------------------------------------
+  // 畫布 RUN：重新產生這張投影片的動畫。成功後換上新動畫（從第 0 幀開始），
+  // 失敗時保留原動畫，並把錯誤摘要交給 iframe 顯示在畫布上方。
+  async function runSlideAnimation(frame, slide) {
+    if (runningSlideAnimations.has(slide.id)) return;
+    const ranCode = slide.animation?.code;
+    const ranInput = slide.animation?.input;
+    runningSlideAnimations.add(slide.id);
+    setSlideRunState(slide, 'running');
+    const runFrame = frame?.isConnected ? frame : algorithmFrameForSlide(slide) || editingAlgorithmFrame;
+    runFrame?.contentWindow?.postMessage({ type: 'asm-runtime-run-state', state: 'running' }, window.location.origin);
+    try {
+      await rebuildSlideAnimation(slide.animation);
+      if (getSlideById(slide.id) !== slide) return;
+      if (slide.animation?.code !== ranCode || slide.animation?.input !== ranInput) {
+        // 執行期間又被修改：結果不套用（rebuildSlideAnimation 不覆寫較新的修改），稍後以最新內容重跑。
+        slideRunStates.set(slide.id, { state: 'stale' });
+        pendingSlideReruns.add(slide.id);
+        return;
+      }
+      slideRunStates.delete(slide.id);
+      if (slide.animation) delete slide.animation.rebuildError;
+      const target = frame?.isConnected ? frame : algorithmFrameForSlide(slide);
+      if (target?.contentWindow) {
+        await sendAlgorithmAnimationToFrame(target, slide);
+        sendAlgorithmFrameVisibility(target);
+      } else {
+        refreshAlgorithmSlideInPlace(slide);
+      }
+    } catch (error) {
+      slideRunStates.set(slide.id, { state: 'error', message: error?.message || String(error) });
+    } finally {
+      runningSlideAnimations.delete(slide.id);
+      renderAlgorithmRunState(slide);
+      runFrame?.contentWindow?.postMessage({ type: 'asm-runtime-run-state', state: 'done' }, window.location.origin);
+    }
+  }
+
   async function handleAlgorithmEmbedMessage(event) {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-export-animation-snapshot'
@@ -10141,10 +10621,6 @@
       return;
     }
     if (event.data.type === 'asm-animation-applied') {
-      if (event.source === algorithmEditorFrame?.contentWindow && event.data.mode === 'editor') {
-        algorithmEditorModal?.classList.remove('is-loading');
-        if (algorithmEditorStatus) algorithmEditorStatus.textContent = '動畫已載入。';
-      }
       if (event.data.mode === 'runtime') {
         const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
           .find(frame => frame.contentWindow === event.source);
@@ -10166,10 +10642,6 @@
       return;
     }
     if (event.data.type === 'asm-embed-ready') {
-      if (event.source === algorithmEditorFrame?.contentWindow) {
-        sendAlgorithmAnimationToFrame(algorithmEditorFrame, getSlideById(editingAlgorithmSlideId));
-        return;
-      }
       const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
         .find(frame => frame.contentWindow === event.source);
       if (runtimeFrame) {
@@ -10178,59 +10650,740 @@
       }
       return;
     }
-    if (!['asm-animation-compiled', 'asm-save-animation'].includes(event.data.type)
-      || event.source !== algorithmEditorFrame?.contentWindow) return;
+    if (!editingAlgorithmFrame || event.source !== editingAlgorithmFrame.contentWindow) return;
     const slide = getSlideById(editingAlgorithmSlideId);
     if (!slide || slide.kind !== 'algorithm-animation') return;
     if (event.data.type === 'asm-animation-compiled') {
-      if (algorithmEditorStatus) algorithmEditorStatus.textContent = 'Algorithm editor status updated.';
+      setAlgorithmEditorStatus('動畫已更新');
       return;
     }
-    let detached;
+    if (event.data.type === 'asm-embed-run-state') {
+      if (event.data.state === 'running') {
+        slideRunStates.set(slide.id, { state: 'running' });
+        setAlgorithmEditorStatus('執行中…');
+      } else if (event.data.ok) {
+        slideRunStates.delete(slide.id);
+        if (slide.animation) delete slide.animation.rebuildError;
+        setAlgorithmEditorStatus('動畫已更新');
+      } else {
+        slideRunStates.set(slide.id, { state: 'error', message: event.data.message || '執行失敗' });
+        setAlgorithmEditorStatus('執行失敗，詳見「輸出」與「除錯記錄」');
+      }
+      renderAlgorithmRunState(slide);
+      return;
+    }
+    if (event.data.type === 'asm-embed-input-changed') {
+      // 編輯頁裡改了輸入：投影片資料與編輯欄的輸入框保持同一份。
+      slide.animation ||= normalizeAlgorithmAnimation();
+      slide.animation.input = String(event.data.input ?? '');
+      if (algorithmSlideInput) algorithmSlideInput.value = slide.animation.input;
+      setAlgorithmEditorStatus('尚未更新：輸入已修改');
+      return;
+    }
+    if (event.data.type === 'asm-save-animation') pendingAlgorithmEditorSave?.(event.data.animation);
+  }
+
+  // -----------------------------------------------------------------------------
+  // 編輯動畫：同一個畫布展開成完整頁面
+  // 投影片上的 runtime iframe 以 moveBefore 搬進全螢幕頁面（不重新載入），切換成 editor 模式；
+  // 過場只改 transform／clip-path：第一幀與投影片上的畫布重疊，接著畫布往右放大、左側編輯區
+  // 一起靠過來。返回時反向播放、存回投影片並把 iframe 搬回原位；改過但沒 RUN 就在背景重新執行。
+  // -----------------------------------------------------------------------------
+  const algorithmEditorPage = document.getElementById('algorithmEditorPage');
+  const algorithmEditorStage = document.getElementById('algorithmEditorStage');
+  const algorithmEditorBackBtn = document.getElementById('algorithmEditorBackBtn');
+  const algorithmEditorTitle = document.getElementById('algorithmEditorTitle');
+  const ALGORITHM_EDITOR_TRANSITION_MS = 720;
+  const ALGORITHM_EDITOR_EASING = 'cubic-bezier(.22, 1, .36, 1)';
+
+  function setAlgorithmEditorStatus(text) {
+    const status = document.getElementById('algorithmEditorStatus');
+    if (status) status.textContent = text || '';
+  }
+
+  function prefersReducedMotion() {
+    return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function moveFramePreservingState(parent, frame, before = null) {
+    if (typeof parent.moveBefore === 'function') {
+      try { parent.moveBefore(frame, before); return true; } catch {}
+    }
+    parent.insertBefore(frame, before);
+    return false;
+  }
+
+  function waitForFrameMessage(frame, type, timeoutMs) {
+    return new Promise(resolve => {
+      const done = data => { clearTimeout(timer); window.removeEventListener('message', listener); resolve(data); };
+      const listener = event => {
+        if (event.origin === window.location.origin && event.source === frame.contentWindow
+          && event.data?.type === type) done(event.data);
+      };
+      const timer = setTimeout(() => done(null), timeoutMs);
+      window.addEventListener('message', listener);
+    });
+  }
+
+  async function setFrameEmbedMode(frame, mode, slideId) {
+    const reply = waitForFrameMessage(frame, 'asm-embed-mode-changed', 2000);
+    frame.contentWindow?.postMessage({ type: 'asm-embed-set-mode', mode,
+      cameraSurface: algorithmCameraSurface(frame, slideId) }, window.location.origin);
+    return reply;
+  }
+
+  // 父頁只負責背景淡入與標題列滑入；畫布移動、左側展開、分頁落下在 iframe 內播放（組裝式過場）。
+  function playAlgorithmEditorChrome(direction) {
+    const opening = direction === 'open';
+    const options = { duration: ALGORITHM_EDITOR_TRANSITION_MS, easing: ALGORITHM_EDITOR_EASING, fill: 'both' };
+    const backdrop = algorithmEditorPage.querySelector('.algorithm-editor-backdrop');
+    const bar = algorithmEditorPage.querySelector('.algorithm-editor-bar');
+    const animations = [
+      backdrop.animate(opening ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0 }], options),
+      bar.animate(opening
+        ? [{ transform: 'translateY(-100%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }]
+        : [{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-100%)', opacity: 0 }], options)
+    ];
+    return { animations, finished: Promise.all(animations.map(animation => animation.finished.catch(() => {}))) };
+  }
+
+  // 投影片上的畫布位置，換算成全螢幕頁面中 iframe 的座標。
+  function rectInEditorStage(rect) {
+    const stage = algorithmEditorStage.getBoundingClientRect();
+    return { left: rect.left - stage.left, top: rect.top - stage.top, width: rect.width, height: rect.height };
+  }
+
+  // iframe 回到投影片後的位置：以打開時 iframe 與容器的相對位置，套到容器現在的位置與縮放。
+  function algorithmFrameHomeRect(home) {
+    const parent = home.parent.getBoundingClientRect();
+    const { frameRect, parentRect } = home;
+    if (!frameRect || !(parentRect?.width > 0)) return parent;
+    const ratio = parent.width / parentRect.width;
+    return {
+      left: parent.left + (frameRect.left - parentRect.left) * ratio,
+      top: parent.top + (frameRect.top - parentRect.top) * ratio,
+      width: frameRect.width * ratio,
+      height: frameRect.height * ratio
+    };
+  }
+
+  function algorithmSlideLabel(slideId) {
+    const position = slidePositions.get(slideId);
+    if (!position) return '編輯動畫';
+    const group = deck.groups[position.h];
+    const number = group?.slides.length > 1 ? `${position.h + 1}-${position.v + 1}` : `${position.h + 1}`;
+    return `編輯動畫・第 ${number} 張投影片`;
+  }
+
+  async function openAlgorithmEditor(slideId) {
+    const slide = getSlideById(slideId);
+    if (!algorithmEditorPage || !algorithmEditorStage || algorithmEditorBusy || editingAlgorithmFrame
+      || !slide || slide.kind !== 'algorithm-animation') return;
+    const frame = algorithmFrameForSlide(slide);
+    if (!frame) return;
+    algorithmEditorBusy = true;
     try {
-      detached = await traceStore.detachDeck({ groups: [{ slides: [{
-        animation: normalizeAlgorithmAnimation(event.data.animation)
-      }] }] }, { upload: canSaveRemoteDeck() });
-    } catch (error) {
-      if (algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫儲存失敗：${error.message}`;
-      return;
+      const loaded = frame.getAttribute('src')?.includes('asmEmbed=runtime') && !frame.hidden
+        && !frame.classList.contains('is-loading');
+      const slideRect = frame.getBoundingClientRect();
+      const animate = loaded && slideRect.width > 40 && !prefersReducedMotion();
+      if (animate) {
+        // 搬動前先讓 iframe 記下投影片上的取景，過場的起點才會和投影片上看到的完全一致。
+        const captured = waitForFrameMessage(frame, 'asm-embed-runtime-captured', 500);
+        frame.contentWindow?.postMessage({ type: 'asm-embed-capture-runtime' }, window.location.origin);
+        await captured;
+      }
+      editingAlgorithmFrameHome = { parent: frame.parentNode, next: frame.nextSibling, hidden: frame.hidden,
+        frameRect: slideRect, parentRect: frame.parentNode?.getBoundingClientRect?.() || null };
+      editingAlgorithmSlideId = slideId;
+      editingAlgorithmFrame = frame;
+      if (algorithmEditorTitle) algorithmEditorTitle.textContent = algorithmSlideLabel(slideId);
+      setAlgorithmEditorStatus(loaded ? '' : '正在準備編輯器…');
+      algorithmEditorPage.hidden = false;
+      document.body.classList.add('asm-algorithm-editor-open');
+      frame.hidden = false;
+      const kept = moveFramePreservingState(algorithmEditorStage, frame, null);
+      if (!loaded || !kept) {
+        // 尚未載入（或瀏覽器不支援 moveBefore 而重新載入）：等嵌入頁就緒，再送入動畫。
+        const ready = waitForFrameMessage(frame, 'asm-embed-ready', 20000);
+        if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-147' + (isLocalCopy() ? '&localOnly=1' : '');
+        }
+        await ready;
+        await sendAlgorithmAnimationToFrame(frame, slide);
+      }
+      frame.classList.remove('is-loading');
+      const assembleFrom = animate && kept ? rectInEditorStage(slideRect) : null;
+      const chrome = assembleFrom ? playAlgorithmEditorChrome('open') : null;
+      const reply = waitForFrameMessage(frame, 'asm-embed-mode-changed', 3000);
+      frame.contentWindow?.postMessage({ type: 'asm-embed-set-mode', mode: 'editor', editorSessionKey: slideId,
+        cameraSurface: algorithmCameraSurface(frame, slideId), assembleFrom }, window.location.origin);
+      await reply;
+      if (chrome) {
+        await chrome.finished;
+        chrome.animations.forEach(animation => animation.cancel());
+      }
+      setAlgorithmEditorStatus(slideRunState(slide).state === 'stale' ? '尚未更新：輸入已修改' : '');
+      algorithmEditorBackBtn?.focus({ preventScroll: true });
+    } finally {
+      algorithmEditorBusy = false;
     }
-    if (getSlideById(slide.id) !== slide) return;
+  }
+
+  function requestAlgorithmEditorSnapshot(frame) {
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { pendingAlgorithmEditorSave = null; resolve(null); }, 10000);
+      pendingAlgorithmEditorSave = animation => {
+        clearTimeout(timer);
+        pendingAlgorithmEditorSave = null;
+        resolve(animation || null);
+      };
+      frame.contentWindow?.postMessage({ type: 'asm-request-save-animation' }, window.location.origin);
+    });
+  }
+
+  // 存回投影片；回傳這次是否需要在背景重新執行（程式或輸入改過、但編輯頁裡沒有 RUN 成最新）。
+  async function applyAlgorithmEditorSnapshot(slide, snapshot) {
+    const animation = normalizeAlgorithmAnimation(snapshot);
+    const before = slide.animation || {};
+    const fresh = Boolean(animation.traceDocument?.frames?.length)
+      && window.ASMTraceProvenance?.status?.(animation.traceDocument, animation.code, animation.input)?.kind === 'current';
+    const changed = animation.code !== before.code || animation.input !== before.input;
+    const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation }] }] }, { upload: canSaveRemoteDeck() });
+    if (getSlideById(slide.id) !== slide) return false;
     slide.animation = detached.groups[0].slides[0].animation;
     saveDeck();
-    refreshAlgorithmSlideInPlace(slide);
-    closeAlgorithmEditor();
-    flashHint('Done');
+    return !fresh && (changed || slideRunState(slide).state === 'stale');
   }
 
-  function openAlgorithmEditor(slideId) {
-    const slide = getSlideById(slideId);
-    if (!algorithmEditorModal || !algorithmEditorFrame || !slide || slide.kind !== 'algorithm-animation') return;
-    editingAlgorithmSlideId = slideId;
-    if (algorithmEditorStatus) algorithmEditorStatus.textContent = '正在載入動畫…';
-    algorithmEditorModal.classList.add('is-loading');
-    algorithmEditorModal.hidden = false;
-    if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
-      sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
-    } else {
-      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-47' + (isLocalCopy() ? '&localOnly=1' : '');
+  async function closeAlgorithmEditor() {
+    const frame = editingAlgorithmFrame;
+    if (!frame || algorithmEditorBusy) return;
+    algorithmEditorBusy = true;
+    const slide = getSlideById(editingAlgorithmSlideId);
+    let rerun = false;
+    try {
+      setAlgorithmEditorStatus('正在存回投影片…');
+      const snapshot = await requestAlgorithmEditorSnapshot(frame);
+      if (snapshot && slide) {
+        try { rerun = await applyAlgorithmEditorSnapshot(slide, snapshot); }
+        catch (error) {
+          setAlgorithmEditorStatus(`存回投影片失敗：${error.message}`);
+          return;
+        }
+      }
+      const home = editingAlgorithmFrameHome;
+      const homeRect = home?.parent?.isConnected ? algorithmFrameHomeRect(home) : null;
+      const animate = Boolean(homeRect && homeRect.width > 40) && !prefersReducedMotion();
+      let chrome = null;
+      if (animate) {
+        // 反向組裝：左側收回左邊、分頁往上收、畫布縮回投影片上原本的位置與大小。
+        chrome = playAlgorithmEditorChrome('close');
+        const done = waitForFrameMessage(frame, 'asm-embed-disassembled', 3000);
+        frame.contentWindow?.postMessage({ type: 'asm-embed-disassemble', to: rectInEditorStage(homeRect) },
+          window.location.origin);
+        await Promise.all([done, chrome.finished]);
+      }
+      // 搬回投影片後才切回 runtime，讓畫布在投影片的實際大小重新取景（不會沿用展開時的縮放）。
+      // 搬動、關閉編輯頁與切換版面在同一個工作內完成（同源直接呼叫 iframe），中間不會畫出任何一幀，
+      // 所以不必先把畫布藏起來：過場最後一幀之後緊接的就是投影片版面的畫面，不會閃一下。
+      let kept = false;
+      if (home?.parent?.isConnected) {
+        kept = moveFramePreservingState(home.parent, frame, home.next?.parentNode === home.parent ? home.next : null);
+      } else {
+        frame.remove();
+      }
+      algorithmEditorPage.hidden = true;
+      chrome?.animations.forEach(animation => animation.cancel());
+      document.body.classList.remove('asm-algorithm-editor-open');
+      editingAlgorithmFrame = null;
+      editingAlgorithmFrameHome = null;
+      editingAlgorithmSlideId = null;
+      setAlgorithmEditorStatus('');
+      if (frame.isConnected) {
+        let bridge = null;
+        try { bridge = kept ? frame.contentWindow?.ASMEmbedBridge : null; } catch (_) { bridge = null; }
+        if (bridge?.switchToRuntimeNow) {
+          bridge.switchToRuntimeNow(algorithmCameraSurface(frame, slide?.id));
+          sendAlgorithmFrameVisibility(frame);
+        } else {
+          // 退路（iframe 被重新載入等）：先藏起來，等投影片版面排好、格子數字補完再顯示。
+          frame.style.opacity = '0';
+          await setFrameEmbedMode(frame, 'runtime', slide?.id);
+          const geometry = waitForFrameMessage(frame, 'asm-animation-geometry-ready', 600);
+          sendAlgorithmFrameVisibility(frame);
+          if (algorithmFrameIsCurrent(frame)) await geometry;
+        }
+      }
+      frame.style.opacity = '';
+      updateAlgorithmEditButton();
+      if (slide && rerun) {
+        setSlideRunState(slide, 'stale');
+        requestSlideRun(slide);
+      }
+    } finally {
+      algorithmEditorBusy = false;
     }
   }
 
-  function closeAlgorithmEditor() {
-    if (!algorithmEditorModal || !algorithmEditorFrame) return;
-    algorithmEditorModal.hidden = true;
-    algorithmEditorModal.classList.remove('is-loading');
-    algorithmEditorFrame.contentWindow?.postMessage({ type: 'asm-editor-hidden' }, window.location.origin);
-    editingAlgorithmSlideId = null;
+  // -----------------------------------------------------------------------------
+  // YouTube 影片 widget
+  // 編輯模式只顯示海報；播放時才建立 youtube-nocookie iframe，換頁／總覽暫停或卸載，
+  // 播放開始時暫停 TTS，並把焦點拉回投影片讓方向鍵持續可用。
+  // -----------------------------------------------------------------------------
+  const VIDEO_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox';
+  const VIDEO_ALLOW = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  const VIDEO_READY_TIMEOUT_MS = 8000;
+  const VIDEO_ERROR_MESSAGES = {
+    invalid: '影片資料無效，請重新貼上 YouTube 網址',
+    offline: '無法載入影片（離線或 YouTube 被封鎖）',
+    timeout: '仍在連線 YouTube，若無法播放可改在 YouTube 開啟',
+    'error-2': '影片參數無效',
+    'error-5': '瀏覽器無法播放此影片',
+    'error-100': '找不到影片，可能已移除或設為私人',
+    'error-101': '影片擁有者不允許嵌入播放',
+    'error-150': '影片擁有者不允許嵌入播放',
+    'error-153': 'YouTube 播放器設定錯誤，請改在 YouTube 開啟'
+  };
+  let videoVisitToken = 0;
+
+  function videoPaintKey(widget) {
+    return JSON.stringify([widget.videoId, widget.startSeconds, widget.endSeconds, widget.muted, widget.title]);
   }
 
-  function saveAlgorithmEditor() {
-    if (!algorithmEditorFrame?.contentWindow || !editingAlgorithmSlideId) return;
-    if (algorithmEditorStatus) algorithmEditorStatus.textContent = 'Algorithm editor status updated.';
-    algorithmEditorFrame.contentWindow.postMessage({
-      type: 'asm-request-save-animation'
-    }, window.location.origin);
+  // Generic widget refreshes (layout, LaTeX autosize, history restore) must not
+  // tear down a playing iframe; repaint only when what the facade shows changed.
+  function paintVideoWidgetIfChanged(el, widget) {
+    const content = el.querySelector('.video-content');
+    if (content && content.dataset.paintKey === videoPaintKey(widget)) {
+      positionWidgetContent(el, widget);
+      return;
+    }
+    const frame = el.querySelector('iframe.slide-video-frame');
+    if (frame) deactivateVideoFrame(frame);
+    paintWidgetElement(el, widget);
+    updateVideoDiagnostics();
+  }
+
+  function paintVideoFacade(el, widget) {
+    const video = window.ASMSlideVideo;
+    const content = document.createElement('div');
+    content.className = 'widget-content video-content';
+    content.dataset.videoId = widget.videoId || '';
+    content.dataset.paintKey = videoPaintKey(widget);
+    const poster = document.createElement('img');
+    poster.className = 'video-poster';
+    poster.alt = '';
+    poster.draggable = false;
+    poster.decoding = 'async';
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.className = 'video-play-button';
+    play.tabIndex = -1;
+    play.setAttribute('aria-label', `播放影片${widget.title ? `：${widget.title}` : ''}`);
+    play.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="23"></circle><path d="M19 14.5v19L34 24z"></path></svg>';
+    const caption = document.createElement('div');
+    caption.className = 'video-caption';
+    const start = video.formatTime(widget.startSeconds);
+    caption.textContent = [widget.title, start ? `從 ${start} 開始` : ''].filter(Boolean).join(' · ');
+    caption.hidden = !caption.textContent;
+    const fallback = document.createElement('div');
+    fallback.className = 'video-fallback';
+    fallback.hidden = true;
+    content.append(poster, play, caption, fallback);
+    el.appendChild(content);
+    if (!video.isVideoId(widget.videoId)) {
+      showVideoFallback(el, 'invalid');
+      return;
+    }
+    poster.addEventListener('error', () => showVideoFallback(el, 'offline'), { once: true });
+    poster.src = video.posterUrl(widget.videoId);
+  }
+
+  function showVideoFallback(el, reason) {
+    const fallback = el?.querySelector('.video-fallback');
+    if (!fallback) return;
+    const widget = getWidget(el.dataset.widgetId).widget;
+    fallback.replaceChildren();
+    const message = document.createElement('span');
+    message.textContent = VIDEO_ERROR_MESSAGES[reason] || VIDEO_ERROR_MESSAGES.offline;
+    fallback.appendChild(message);
+    const href = widget && window.ASMSlideVideo.watchUrl(widget);
+    if (href) {
+      const link = document.createElement('a');
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = '在 YouTube 開啟';
+      fallback.appendChild(link);
+    }
+    fallback.dataset.reason = reason;
+    fallback.classList.toggle('is-notice', reason === 'timeout');
+    fallback.hidden = false;
+    el.dataset.videoFallback = reason;
+  }
+
+  function hideVideoFallback(el) {
+    const fallback = el?.querySelector('.video-fallback');
+    if (fallback) fallback.hidden = true;
+    if (el) delete el.dataset.videoFallback;
+  }
+
+  function videoFrames() {
+    return Array.from(document.querySelectorAll('iframe.slide-video-frame'));
+  }
+
+  function sendVideoCommand(frame, func, args = []) {
+    try {
+      frame?.contentWindow?.postMessage(JSON.stringify({
+        event: 'command', func, args, id: frame.dataset.widgetId, channel: 'widget'
+      }), window.ASMSlideVideo.EMBED_ORIGIN);
+    } catch (error) {
+      console.warn('Failed to control YouTube player', error);
+    }
+  }
+
+  function startVideoHandshake(frame) {
+    clearInterval(frame.__asmVideoHandshake);
+    // The YouTube player only reports events after the parent says it listens.
+    const listen = () => {
+      if (!frame.isConnected || frame.dataset.videoReady === 'true') {
+        clearInterval(frame.__asmVideoHandshake);
+        return;
+      }
+      try {
+        frame.contentWindow?.postMessage(JSON.stringify({
+          event: 'listening', id: frame.dataset.widgetId, channel: 'widget'
+        }), window.ASMSlideVideo.EMBED_ORIGIN);
+      } catch {}
+    };
+    listen();
+    frame.__asmVideoHandshake = setInterval(listen, 250);
+    setTimeout(() => clearInterval(frame.__asmVideoHandshake), VIDEO_READY_TIMEOUT_MS);
+  }
+
+  function activateVideoWidget(el, { autoplay = false, preview = false } = {}) {
+    const widgetId = el?.dataset.widgetId;
+    const widget = widgetId && getWidget(widgetId).widget;
+    const content = el?.querySelector('.video-content');
+    if (!widget || widget.type !== 'video' || !content || !window.ASMSlideVideo.isVideoId(widget.videoId)) return null;
+    let frame = content.querySelector('iframe.slide-video-frame');
+    if (frame) {
+      frame.dataset.lastActivated = String(performance.now());
+      if (autoplay) sendVideoCommand(frame, 'playVideo');
+      return frame;
+    }
+    frame = document.createElement('iframe');
+    frame.className = 'slide-video-frame';
+    frame.title = widget.title || 'YouTube 影片';
+    frame.setAttribute('sandbox', VIDEO_SANDBOX);
+    frame.setAttribute('allow', VIDEO_ALLOW);
+    frame.setAttribute('allowfullscreen', '');
+    frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    frame.dataset.widgetId = widgetId;
+    frame.dataset.lastActivated = String(performance.now());
+    if (preview) frame.dataset.videoPreview = 'true';
+    frame.addEventListener('load', () => startVideoHandshake(frame));
+    frame.src = window.ASMSlideVideo.buildEmbedUrl(widget, { autoplay, origin: window.location.origin });
+    hideVideoFallback(el);
+    content.appendChild(frame);
+    el.classList.add('is-video-active');
+    frame.__asmVideoReadyTimer = setTimeout(() => {
+      if (frame.isConnected && frame.dataset.videoReady !== 'true') showVideoFallback(el, 'timeout');
+    }, VIDEO_READY_TIMEOUT_MS);
+    updateVideoDiagnostics();
+    return frame;
+  }
+
+  function deactivateVideoFrame(frame) {
+    if (!frame) return;
+    clearInterval(frame.__asmVideoHandshake);
+    clearTimeout(frame.__asmVideoReadyTimer);
+    const el = frame.closest('.slide-widget');
+    el?.classList.remove('is-video-active');
+    if (el?.dataset.videoFallback === 'timeout') hideVideoFallback(el);
+    frame.remove();
+    updateVideoDiagnostics();
+  }
+
+  function videoWidgetIsShown(el) {
+    return !el.classList.contains('fragment') || el.classList.contains('visible');
+  }
+
+  function syncVideoPlayback() {
+    const editing = document.body.classList.contains('asm-edit-mode');
+    const overview = customOverviewOpen || !!reveal?.isOverview?.();
+    const current = revealReady ? reveal?.getCurrentSlide?.() : null;
+    const others = [];
+    videoFrames().forEach(frame => {
+      const el = frame.closest('.slide-widget');
+      const onCurrent = !!current && frame.closest('section.asm-slide') === current;
+      const preview = frame.dataset.videoPreview === 'true';
+      if (!el || overview || (editing && !(preview && onCurrent && selectedWidgetKeys.has(el.dataset.widgetId)))
+        || (!editing && preview)) {
+        deactivateVideoFrame(frame);
+        return;
+      }
+      if (!onCurrent || !videoWidgetIsShown(el)) {
+        sendVideoCommand(frame, 'pauseVideo');
+        if (!onCurrent) others.push(frame);
+      }
+    });
+    // Like algorithm runtimes, keep one recently left player so returning resumes.
+    others.sort((a, b) => Number(b.dataset.lastActivated || 0) - Number(a.dataset.lastActivated || 0))
+      .slice(1).forEach(deactivateVideoFrame);
+    if (!editing && !overview && current) {
+      current.querySelectorAll('.slide-widget.video-widget').forEach(el => {
+        const widget = getWidget(el.dataset.widgetId).widget;
+        if (!widget?.autoplay || !videoWidgetIsShown(el) || el.dataset.videoAutoplayVisit === String(videoVisitToken)) return;
+        el.dataset.videoAutoplayVisit = String(videoVisitToken);
+        activateVideoWidget(el, { autoplay: true });
+      });
+    }
+    updateVideoDiagnostics();
+  }
+
+  function nextVideoVisit() {
+    videoVisitToken += 1;
+  }
+
+  function updateVideoDiagnostics() {
+    document.body.dataset.videoFrames = String(videoFrames().length);
+  }
+
+  function handleVideoStartedPlaying(frame) {
+    if (ttsPlayback.active && !ttsPlayback.paused) {
+      toggleTtsPause();
+      document.body.dataset.videoPausedTts = 'true';
+    }
+    videoFrames().forEach(other => {
+      if (other !== frame && other.dataset.playerState === '1') sendVideoCommand(other, 'pauseVideo');
+    });
+  }
+
+  function handleVideoMessage(event) {
+    if (event.origin !== window.ASMSlideVideo.EMBED_ORIGIN) return;
+    const frame = videoFrames().find(item => item.contentWindow === event.source);
+    if (!frame) return;
+    let data = event.data;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch { return; }
+    }
+    if (!data || typeof data !== 'object') return;
+    const el = frame.closest('.slide-widget');
+    if ((data.event === 'onReady' || data.event === 'initialDelivery') && frame.dataset.videoReady !== 'true') {
+      frame.dataset.videoReady = 'true';
+      clearInterval(frame.__asmVideoHandshake);
+      clearTimeout(frame.__asmVideoReadyTimer);
+      if (el?.dataset.videoFallback === 'timeout') hideVideoFallback(el);
+      sendVideoCommand(frame, 'addEventListener', ['onStateChange']);
+      sendVideoCommand(frame, 'addEventListener', ['onError']);
+    }
+    let state = null;
+    if (data.event === 'onStateChange') state = Number(data.info);
+    else if (data.event === 'infoDelivery' && data.info && data.info.playerState !== undefined) state = Number(data.info.playerState);
+    if (Number.isFinite(state)) {
+      const previous = frame.dataset.playerState;
+      frame.dataset.playerState = String(state);
+      if (state === 1 && previous !== '1') handleVideoStartedPlaying(frame);
+    }
+    if (data.event === 'onError' && el) {
+      const code = Number(data.info);
+      deactivateVideoFrame(frame);
+      showVideoFallback(el, VIDEO_ERROR_MESSAGES[`error-${code}`] ? `error-${code}` : 'offline');
+    }
+  }
+
+  // A click inside the cross-origin player moves focus into it, and Reveal
+  // stops seeing arrow keys. The click has already reached YouTube by now.
+  function returnFocusFromVideoFrame() {
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (!active?.matches?.('iframe.slide-video-frame') || document.body.classList.contains('asm-edit-mode')) return;
+      active.blur();
+      window.focus();
+      document.body.dataset.videoFocusReturned = String((Number(document.body.dataset.videoFocusReturned) || 0) + 1);
+    }, 0);
+  }
+
+  function handleVideoFacadeClick(event) {
+    const el = event.target.closest?.('.slide-widget.video-widget');
+    if (!el || document.body.classList.contains('asm-edit-mode') || event.target.closest('.video-fallback a')) return;
+    if (el.querySelector('iframe.slide-video-frame')) return;
+    const section = el.closest('section.asm-slide');
+    if (!section || section !== reveal?.getCurrentSlide?.() || !videoWidgetIsShown(el)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    activateVideoWidget(el, { autoplay: true });
+  }
+
+  // 編輯時按影片中間的播放鍵（沒有拖曳）就直接播放，與放映相同；拖曳仍只移動影片。
+  // 選取框（Fabric）與物件拖曳都會攔下按下事件，所以在 window 捕捉階段依座標判斷是否按在播放鍵上。
+  let videoEditPlayPress = null;
+  function videoPlayButtonAt(event) {
+    const current = reveal?.getCurrentSlide?.();
+    if (!current) return null;
+    return [...current.querySelectorAll('.slide-widget.video-widget:not(.is-video-active) .video-play-button')].find(button => {
+      const rect = button.getBoundingClientRect();
+      return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    }) || null;
+  }
+  function handleVideoEditPlayDown(event) {
+    videoEditPlayPress = null;
+    if (!document.body.classList.contains('asm-edit-mode') || event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey) return;
+    const button = videoPlayButtonAt(event);
+    if (button) videoEditPlayPress = { el: button.closest('.slide-widget'), x: event.clientX, y: event.clientY };
+  }
+  function handleVideoEditPlayUp(event) {
+    const press = videoEditPlayPress;
+    videoEditPlayPress = null;
+    if (!press || !document.body.classList.contains('asm-edit-mode')) return;
+    if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > window.ASMFabricSelection.DRAG_DISTANCE) return;
+    // 等選取流程結束（播放中的影片需在選取狀態才會保留）再建立播放器。
+    setTimeout(() => {
+      if (!press.el.isConnected || !document.body.classList.contains('asm-edit-mode')) return;
+      if (!selectedWidgetKeys.has(press.el.dataset.widgetId)) selectWidget(press.el.dataset.widgetId);
+      activateVideoWidget(press.el, { autoplay: true, preview: true });
+    }, 0);
+  }
+
+  function populateVideoEditor(widget) {
+    const video = window.ASMSlideVideo;
+    const valid = video.isVideoId(widget.videoId);
+    if (document.activeElement !== videoUrlInput) videoUrlInput.value = video.shareUrl(widget);
+    videoUrlStatus.textContent = valid ? '' : '影片資料無效，請重新貼上網址';
+    videoUrlStatus.classList.toggle('is-error', !valid);
+    if (document.activeElement !== videoStartInput) videoStartInput.value = video.formatTime(widget.startSeconds);
+    if (document.activeElement !== videoEndInput) videoEndInput.value = widget.endSeconds ? video.formatTime(widget.endSeconds) : '';
+    if (document.activeElement !== videoTitleInput) videoTitleInput.value = widget.title || '';
+    videoAutoplayInput.checked = widget.autoplay === true;
+    videoMutedInput.checked = widget.muted === true;
+  }
+
+  function updateSelectedVideo(patch) {
+    const found = selectedWidgetId && getWidget(selectedWidgetId);
+    if (!found?.widget || found.widget.type !== 'video') return;
+    const next = { ...found.widget, ...patch };
+    updateSelectedWidget({ ...patch, ...window.ASMSlideVideo.normalizeFields(next) });
+    const updated = getWidget(selectedWidgetId).widget;
+    if (updated) populateVideoEditor(updated);
+  }
+
+  function applyVideoUrlInput() {
+    const parsed = window.ASMSlideVideo.parseYouTubeInput(videoUrlInput.value);
+    if (parsed.error) {
+      videoUrlStatus.textContent = parsed.error;
+      videoUrlStatus.classList.add('is-error');
+      return;
+    }
+    const found = getWidget(selectedWidgetId);
+    if (!found.widget) return;
+    const patch = { videoId: parsed.videoId };
+    // A URL carrying its own time overrides; a bare link keeps the chosen range.
+    if (/[?&#](?:t|start)=/.test(videoUrlInput.value)) patch.startSeconds = parsed.startSeconds;
+    if (parsed.endSeconds !== null) patch.endSeconds = parsed.endSeconds;
+    if (parsed.videoId !== found.widget.videoId && parsed.aspect !== found.widget.aspect) {
+      const size = window.ASMSlideVideo.DEFAULT_SIZE[parsed.aspect];
+      Object.assign(patch, {
+        aspect: parsed.aspect,
+        x: found.widget.x + (found.widget.w - size.w) / 2,
+        y: found.widget.y + (found.widget.h - size.h) / 2,
+        w: size.w,
+        h: size.h
+      });
+    }
+    updateSelectedVideo(patch);
+  }
+
+  function applyVideoTimeInput(input, key) {
+    const raw = input.value.trim();
+    const seconds = raw ? window.ASMSlideVideo.parseTime(raw) : (key === 'startSeconds' ? 0 : null);
+    if (raw && seconds === null) {
+      videoUrlStatus.textContent = '時間格式例如 90、1:30 或 1m30s';
+      videoUrlStatus.classList.add('is-error');
+      return;
+    }
+    videoUrlStatus.textContent = '';
+    videoUrlStatus.classList.remove('is-error');
+    updateSelectedVideo({ [key]: seconds });
+  }
+
+  function openVideoInsertDialog() {
+    if (!videoInsertDialog) return;
+    videoInsertUrl.value = '';
+    refreshVideoInsertPreview();
+    if (!videoInsertDialog.open) videoInsertDialog.showModal();
+    videoInsertUrl.focus();
+  }
+
+  function refreshVideoInsertPreview() {
+    const text = videoInsertUrl.value.trim();
+    const parsed = text ? window.ASMSlideVideo.parseYouTubeInput(text) : null;
+    const valid = !!parsed && !parsed.error;
+    confirmVideoInsertBtn.disabled = !valid;
+    videoInsertStatus.classList.toggle('is-error', !!parsed?.error);
+    videoInsertStatus.textContent = !parsed
+      ? '支援 watch、youtu.be、shorts、embed 連結，網址中的開始時間會一併帶入。'
+      : parsed.error || `影片 ID ${parsed.videoId}${parsed.startSeconds ? `，從 ${window.ASMSlideVideo.formatTime(parsed.startSeconds)} 開始` : ''}${parsed.aspect === '9:16' ? '（直式 Shorts）' : ''}`;
+    videoInsertPoster.hidden = !valid;
+    if (valid) videoInsertPoster.src = window.ASMSlideVideo.posterUrl(parsed.videoId);
+    else videoInsertPoster.removeAttribute('src');
+  }
+
+  function addVideoWidget(input, point = { x: SLIDE_W / 2, y: SLIDE_H / 2 }) {
+    const parsed = window.ASMSlideVideo.parseYouTubeInput(input);
+    const slide = getSlide();
+    if (parsed.error || !slide || slide.kind === 'algorithm-animation') return false;
+    slide.widgets = normalizeWidgets(slide.widgets);
+    const size = window.ASMSlideVideo.DEFAULT_SIZE[parsed.aspect];
+    const widget = normalizeWidgets([{
+      id: randomId(),
+      type: 'video',
+      x: Math.max(24, Math.min(point.x - size.w / 2, SLIDE_W - size.w - 24)),
+      y: Math.max(24, Math.min(point.y - size.h / 2, SLIDE_H - size.h - 24)),
+      w: size.w,
+      h: size.h,
+      layerIndex: nextUnifiedLayerIndex(slide, currentFabricCanvas()),
+      videoId: parsed.videoId,
+      startSeconds: parsed.startSeconds,
+      endSeconds: parsed.endSeconds,
+      aspect: parsed.aspect,
+      autoplay: false,
+      muted: false
+    }])[0];
+    slide.widgets.push(widget);
+    saveDeck();
+    pendingTool = null;
+    updateArmedTool();
+    document.body.dataset.lastToolStatus = 'added:video';
+    appendWidgetsToCurrentSlide([widget]);
+    syncUnifiedLayerStyles(slide, currentFabricCanvas());
+    selectWidget(widget.id);
+    return true;
+  }
+
+  function bindVideoControls() {
+    videoInsertUrl?.addEventListener('input', refreshVideoInsertPreview);
+    videoInsertDialog?.addEventListener('submit', event => {
+      event.preventDefault();
+      if (addVideoWidget(videoInsertUrl.value)) videoInsertDialog.close();
+    });
+    videoInsertDialog?.addEventListener('keydown', event => event.stopPropagation());
+    document.getElementById('cancelVideoInsertBtn')?.addEventListener('click', () => videoInsertDialog.close());
+    document.getElementById('closeVideoInsertBtn')?.addEventListener('click', () => videoInsertDialog.close());
+    document.getElementById('exitVideoEditorBtn')?.addEventListener('click', clearWidgetSelection);
+    videoUrlInput?.addEventListener('change', applyVideoUrlInput);
+    videoUrlInput?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); applyVideoUrlInput(); } });
+    videoStartInput?.addEventListener('change', () => applyVideoTimeInput(videoStartInput, 'startSeconds'));
+    videoEndInput?.addEventListener('change', () => applyVideoTimeInput(videoEndInput, 'endSeconds'));
+    videoTitleInput?.addEventListener('change', () => updateSelectedVideo({ title: videoTitleInput.value }));
+    videoAutoplayInput?.addEventListener('change', () => updateSelectedVideo({ autoplay: videoAutoplayInput.checked }));
+    videoMutedInput?.addEventListener('change', () => updateSelectedVideo({ muted: videoMutedInput.checked }));
+    window.addEventListener('pointerdown', handleVideoEditPlayDown, true);
+    window.addEventListener('pointerup', handleVideoEditPlayUp, true);
+    window.addEventListener('message', handleVideoMessage);
+    window.addEventListener('blur', returnFocusFromVideoFrame);
+    document.addEventListener('click', handleVideoFacadeClick, true);
   }
 
   // -----------------------------------------------------------------------------
@@ -10554,6 +11707,7 @@
     if (!customOverview || customOverviewOpen || !document.body.classList.contains('asm-edit-mode')) return;
     if (reveal && reveal.isOverview && reveal.isOverview()) reveal.toggleOverview();
     customOverviewOpen = true;
+    syncVideoPlayback();
     syncSlideOrderToggle();
     overviewSelectedSlideId = getSlide()?.id || overviewSelectedSlideId;
     overviewSelectedSlideIds = new Set([overviewSelectedSlideId].filter(Boolean));
@@ -12012,6 +13166,7 @@
       hash: false,
       controls: true,
       progress: true,
+      mouseWheel: false,
       overview: true,
       center: false,
       width: SLIDE_W,
@@ -12034,6 +13189,9 @@
     }).then(() => {
       revealReady = true;
       reveal.slide(currentH, currentV);
+      window.ASMSlidePresentation.install({ reveal,
+        groupSizes: () => deck.groups.map(group => group.slides.length),
+        overviewOpen: () => customOverviewOpen });
       rememberSlidePosition();
       scheduleCurrentSlideCodeFocus();
       scheduleFabricResolution();
@@ -12054,8 +13212,11 @@
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
         syncAlgorithmFrameVisibility();
+        nextVideoVisit();
+        syncVideoPlayback();
         scheduleVisibleLatexAutoSize(event.currentSlide);
       });
+      ['overviewshown', 'overviewhidden', 'fragmentshown', 'fragmenthidden'].forEach(name => reveal.on(name, syncVideoPlayback));
       reveal.on('autoanimate', animateSlideAutoTransition);
       reveal.on('overviewhidden', scheduleFabricResolution);
       reveal.on('slidetransitionend', scheduleCurrentSlideCodeFocus);
@@ -12073,7 +13234,11 @@
 
   async function bootstrap() {
     try {
-      const localDeck = await draftStore.loadDeck(DRAFT_KEY,
+      if (sampleId) {
+        try { await draftStore.deleteDeck(DRAFT_KEY); localStorage.removeItem(`${DRAFT_KEY}:cover`); }
+        catch (error) { console.warn('無法清理舊範例副本，仍載入官方範例', error); }
+      }
+      const localDeck = sampleId ? null : await draftStore.loadDeck(DRAFT_KEY,
         !deckUid && !shareToken ? [STORAGE_KEY, OLD_STORAGE_KEY] : [], { lazyTraces: true });
       if (localDeck) deck = normalizeDeck(await traceStore.detachDeck(localDeck));
       await loadCloudDeck(localDeck);
@@ -12091,6 +13256,7 @@
     }
 
     bindChrome();
+    bindVideoControls();
     bindSlideDrop();
     window.ASMDeckFileDrop.bind({
       selector: '#importDeckBtn, #addSlideBtn, #overviewAddSlideBtn, .slide-edge-add',
@@ -12102,6 +13268,9 @@
     bindOverviewDrag();
     window.addEventListener('beforeunload', () => { rememberSlidePosition(); stopTtsPlayback(); });
     restoreSlidePosition();
+    const preparation = pendingProgressiveRebuild || { mode: 'load' };
+    pendingProgressiveRebuild = null;
+    startProgressiveDeckRebuild(preparation);
     renderDeck();
     updateAlgorithmEditButton();
     initReveal();
@@ -12110,12 +13279,29 @@
     const initialSave = saveDeck({ history: false, cloud: false });
     pushHistorySnapshot();
     await initialSave;
-    if (pendingProgressiveRebuild) {
-      const options = pendingProgressiveRebuild;
-      pendingProgressiveRebuild = null;
-      startProgressiveDeckRebuild(options);
-    }
+    await window.ASMDeck.clearCache();
   }
+
+  window.addEventListener('focus', async () => {
+    try {
+      const previous = window.ASMTraceProvenance.generationFingerprint;
+      await window.ASMTraceVersionCheck.check({ force: true });
+      if (previous && previous !== window.ASMTraceProvenance.generationFingerprint) {
+        for (const { slide } of orderedDeckSlides()) if (slide.animation) {
+          traceRefreshStates.set(slide.animation, { kind: 'outdated', message: '引擎已更新，動畫將於開啟時重新載入' });
+        }
+        renderCloudStatus();
+        for (const frame of document.querySelectorAll('.algorithm-slide-frame')) {
+          if (algorithmFrameIsCurrent(frame) && frame.src.includes('asmEmbed=')) {
+            await sendAlgorithmAnimationToFrame(frame, getSlideById(frame.dataset.slideId));
+          }
+        }
+        if (editingAlgorithmFrame) {
+          await sendAlgorithmAnimationToFrame(editingAlgorithmFrame, getSlideById(editingAlgorithmSlideId));
+        }
+      }
+    } catch (error) { setCloudStatus('error', error.message); }
+  });
 
   bootstrap();
 })();

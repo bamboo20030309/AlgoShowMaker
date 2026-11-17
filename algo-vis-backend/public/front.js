@@ -134,7 +134,9 @@ function saveAlgorithmDraft() {
   const input = document.getElementById('inputArea')?.value || '';
   if (code.trim() === '// 讀取中...') return false;
   try {
-    if (activeBuiltinDefault && code === activeBuiltinDefault.code && input === activeBuiltinDefault.input) {
+    if (activeBuiltinDefault
+      && code.replace(/\r\n?/g, '\n') === activeBuiltinDefault.code.replace(/\r\n?/g, '\n')
+      && input === activeBuiltinDefault.input) {
       sessionStorage.removeItem(ALGORITHM_DRAFT_STORAGE_KEY);
       return true;
     }
@@ -504,34 +506,6 @@ function addEditorHighlight(lineNum, isManual = false) {
 }
 
 /**
- * 一次高亮多行，回傳所有 markerId 的陣列
- * @param {number[]} lineNums - 行號陣列 (1-based)
- * @returns {number[]} markerIds
- */
-function addEditorHighlights(lineNums) {
-  if (!Array.isArray(lineNums)) return [];
-
-  const ids = [];
-  for (const lineNum of lineNums) {
-    const id = addEditorHighlight(lineNum);
-    if (id !== null) ids.push(id);
-  }
-  return ids;
-}
-
-/**
- * 移除指定的高亮
- * @param {number} markerId - addEditorHighlight 回傳的 id
- */
-function removeEditorHighlight(markerId) {
-  if (markerId === null || markerId === undefined) return;
-
-  const session = aceEditor.getSession();
-  session.removeMarker(markerId);
-  delete editorMarkers[markerId];
-}
-
-/**
  * 移除目前所有「自訂」的高亮
  * （不會動到 currentMarkerId，那個還是給你原本的單一高亮用）
  */
@@ -575,7 +549,8 @@ const DEFAULT_ANIMATION_CONTROL_IDS = [
 
 let defaultAlgorithmLoadCancelled = false;
 function canApplyDefaultAlgorithm() {
-  return !window.__asmEmbeddedAnimationPayload
+  return !new URLSearchParams(window.location.search).has('asmEmbed')
+    && !window.__asmEmbeddedAnimationPayload
     && !defaultAlgorithmLoadCancelled
     && !algorithmDraftRestored
     && !algorithmEditorChangedSinceStartup
@@ -641,66 +616,21 @@ async function loadDefaultAlgorithm() {
   if (!canApplyDefaultAlgorithm()) return;
   defaultAlgorithmLoadController = new AbortController();
   const { signal } = defaultAlgorithmLoadController;
-  let previewApplied = false;
   try {
-    const manifestResponse = await fetch(DEFAULT_ALGORITHM_MANIFEST, { signal, cache: 'no-store' });
-    if (!manifestResponse.ok) throw new Error(`無法讀取預設線篩動畫清單 (${manifestResponse.status})`);
-    const manifest = window.ASMTraceBundle.validateManifest(await manifestResponse.json());
-    if (!canApplyDefaultAlgorithm()) return;
-
-    const cached = await window.ASMTraceBundle.cacheGet(manifest);
+    await window.ASMDeck.clearCache();
+    const response = await fetch(DEFAULT_ALGORITHM_MANIFEST, { signal, cache: 'no-store' });
+    if (!response.ok) throw new Error(`無法讀取預設線篩設定 (${response.status})`);
+    const manifest = await response.json();
+    if (!canApplyDefaultAlgorithm() || signal.aborted) return;
+    setDefaultAnimationState('loading', 0);
+    const animation = await window.ASMDeck.rebuildMissingAnimation(manifest.animation);
     if (signal.aborted || !canApplyDefaultAlgorithm()) return;
-    if (cached) {
-      applyDefaultAnimation(cached, 'ready', 'indexeddb');
-      document.body.dataset.defaultAnimationCache = 'hit';
-      return;
-    }
-
-    const previewPromise = fetchDefaultAnimationBundle(manifest.preview, manifest, 'preview', signal);
-    // Observe both parallel downloads immediately. An edit can abort them while
-    // preview is still pending; leaving full unobserved creates pageerror 'edited'.
-    const fullPromise = fetchDefaultAnimationBundle(manifest.full, manifest, 'full', signal)
-      .then(value => ({ value }), error => ({ error }));
-    const preview = await previewPromise;
-    if (signal.aborted) return;
-    previewApplied = applyDefaultAnimation(preview, 'loading', 'preview');
-    if (!previewApplied) return;
-
-    const fullResult = await fullPromise;
-    if (fullResult.error) throw fullResult.error;
-    const full = fullResult.value;
-    if (!applyDefaultAnimation(full, 'ready', 'network')) return;
-    document.body.dataset.defaultAnimationCache = 'storing';
-    window.ASMTraceBundle.cachePut(manifest, full).then(stored => {
-      document.body.dataset.defaultAnimationCache = stored ? 'stored' : 'unavailable';
-    });
+    applyDefaultAnimation({ animation, totalFrames: animation.traceDocument.frames.length }, 'ready', 'executed');
+    document.body.dataset.defaultAnimationCache = 'disabled';
   } catch (error) {
-    algorithmDraftApplying = false;
-    if (error?.name === 'AbortError' || signal.aborted) return;
-    console.error('預設線篩動畫載入失敗', error);
-    if (previewApplied) {
-      setDefaultAnimationState('error', Number(document.getElementById('frameInfo')?.textContent.match(/\/\s*(\d+)/)?.[1]));
-      return;
-    }
-    if (!canApplyDefaultAlgorithm()) return;
-    try {
-      const response = await fetch('sample_code.cpp');
-      if (!response.ok) throw new Error('無法讀取線篩範例程式碼');
-      const code = await response.text();
-      if (!canApplyDefaultAlgorithm()) return;
-      activeBuiltinDefault = { code, input: '100' };
-      algorithmDraftApplying = true;
-      aceEditor.setValue(code, -1);
-      const inputArea = document.getElementById('inputArea');
-      if (inputArea) inputArea.value = '100';
-      algorithmDraftApplying = false;
-      setDefaultAnimationState('error');
-      setTimeout(foldDrawBlocks, 0);
-    } catch (fallbackError) {
-      algorithmDraftApplying = false;
-      console.error(fallbackError);
-    }
+    if (!signal.aborted) { console.error('預設線篩執行失敗', error); setDefaultAnimationState('error'); }
   } finally {
+    algorithmDraftApplying = false;
     if (defaultAlgorithmLoadController?.signal === signal) defaultAlgorithmLoadController = null;
   }
 }
@@ -717,6 +647,7 @@ function activateTab(btn) {
   const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
   const nextTab = btn?.dataset.tab;
   if (activeTab === 'tab-canvas' && nextTab !== 'tab-canvas') {
+    window.ASMTracePlayer?.setPresentationVisible?.(false, 'canvas');
     const camera = window.getCameraViewport?.();
     if (camera) preservedCanvasCamera = camera;
   }
@@ -725,6 +656,7 @@ function activateTab(btn) {
   btn.classList.add('active');
   document.getElementById(nextTab).classList.add('active');
   if (nextTab === 'tab-canvas') {
+    window.ASMTracePlayer?.setPresentationVisible?.(true, 'canvas');
     // Delayed viewport rebases must preserve the view restored by this tab.
     window.ASMTracePlayer?.preserveViewportCamera?.(preservedCanvasCamera);
     requestAnimationFrame(() => {
@@ -916,12 +848,6 @@ function csGetKeyFrames() {
   return [];
 }
 
-function csGetStopFrames() {
-  if (typeof CodeScript === "undefined") return [];
-  if (typeof CodeScript.get_stop_frames === "function") return CodeScript.get_stop_frames() || [];
-  return [];
-}
-
 function csGetCurrentFrameIndex() {
   if (typeof CodeScript === "undefined") return 0;
   if (typeof CodeScript.get_current_frame_index === "function") return CodeScript.get_current_frame_index();
@@ -935,7 +861,7 @@ function csGetCurrentFrameIndex() {
 function csGotoFrame(idx) {
   if (typeof CodeScript === "undefined") return;
   // 快照恢復：跳轉前先嘗試還原最近的快照
-  FrameSnapshotCache.restore(idx);
+  if (!CodeScript.isTracePlayer) FrameSnapshotCache.restore(idx);
   if (typeof CodeScript.goto === "function") return CodeScript.goto(idx);
   if (typeof CodeScript.set_frame === "function") return CodeScript.set_frame(idx);
 }
@@ -1075,15 +1001,19 @@ let playSessionStartFrame = -1;
 function syncCurrentFrameFromCodeScript() {
   currentFrame = csGetCurrentFrameIndex();
   // 快照捕捉：每次影格渲染完成後自動存儲
-  FrameSnapshotCache.capture(currentFrame);
+  if (!window.CodeScript?.isTracePlayer) FrameSnapshotCache.capture(currentFrame);
   updateFrameBarsVisual();
   updateFrameInfoText();
   window.refreshPlaybackTimeDisplay?.();
   if (typeof clearDrawingCanvas === 'function') clearDrawingCanvas();
 
-  // 更新關鍵影格按鈕狀態 (disabled/enabled)
+  // 上一大步／下一大步只屬於舊版 AV.hpp／//draw{} 腳本動畫；trace 動畫與投影片嵌入一律不顯示。
   const nkBtn = document.getElementById('nextKeyFrameBtn');
   const pkBtn = document.getElementById('prevKeyFrameBtn');
+  const legacyScript = typeof CodeScript !== 'undefined' && !CodeScript.isTracePlayer
+    && !document.body.classList.contains('asm-embed-runtime');
+  if (nkBtn) nkBtn.hidden = !legacyScript;
+  if (pkBtn) pkBtn.hidden = !legacyScript;
   if (nkBtn && typeof CodeScript !== 'undefined') {
     nkBtn.disabled = (typeof CodeScript.has_next_key === 'function') ? !CodeScript.has_next_key() : false;
     nkBtn.style.opacity = nkBtn.disabled ? '0.5' : '1';
@@ -1122,12 +1052,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Embedded algorithm slides receive their animation from the parent window.
   // Loading the bundled code_script.js first briefly paints its sample arrows,
   // then leaves them fading over the saved slide when the payload arrives.
-  if (!new URLSearchParams(window.location.search).has('asmEmbed')) {
-    reloadAfterRun();
-  } else {
-    window.resetArrows?.();
-    window.clearCanvas?.();
-  }
+  // The prebuilt default loader (or an embedded payload) owns startup.
+  // Never race it with the retired bundled code_script.js. Legacy RUN can
+  // still explicitly call reloadAfterRun when it has generated a script.
+  window.resetArrows?.();
+  window.clearCanvas?.();
 
   // === 輸入框 (inputArea) 歷史紀錄管理 (Undo/Redo) ===
   const inputArea = document.getElementById('inputArea');
@@ -1300,7 +1229,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function configuredEventGap() {
-    const value = Number(window.ASMTracePlayer?.getDocument?.()?.studio?.eventSettings?.gapMs);
+    const trace = window.ASMTracePlayer?.getDocument?.();
+    if (!trace) return 0;
+    if (window.ASMTraceEvents?.eventGapMs) return window.ASMTraceEvents.eventGapMs(trace);
+    const value = Number(trace.studio?.eventSettings?.gapMs);
     return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 500;
   }
 
@@ -1447,7 +1379,7 @@ document.addEventListener('DOMContentLoaded', () => {
       );
       const eventInterval = Number.isFinite(configuredInterval)
         ? Math.max(0, Math.min(2000, configuredInterval))
-        : 500;
+        : 0;
       const scheduleNextFrame = callback => setTimeout(() => {
         if (!isPlaying || runId !== TTS_RUN_ID) return;
         finishPlaybackFrameTiming(cur);
@@ -1665,6 +1597,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // === 播放/暫停 公用函式 ===
   function play() {
     if (isPlaying) return;
+    const continuingTransition = window.ASMTraceFrameTween?.isPaused?.()
+      ? window.ASMTraceFrameTween.waitForCompletion?.() : null;
+    window.ASMTraceFrameTween?.resume?.();
     isPlaying = true;
     fast = false; // 按下 Play 重新回到普通模式
     //startTimer();
@@ -1678,10 +1613,13 @@ document.addEventListener('DOMContentLoaded', () => {
     resetPlaybackClock(playSessionStartFrame, false);
 
     syncPlayToggleUI();
-    playFromCurrentFrameWithTTS(myRunId);
+    playFromCurrentFrameWithTTS(myRunId, continuingTransition);
   }
 
   function pause() {
+    // Autoplay and frame effects share one pause boundary. In particular a
+    // manually started frame can still be moving while isPlaying is false.
+    window.ASMTraceFrameTween?.pause?.();
     if (!isPlaying) return;
     isPlaying = false;
     // 讓所有舊的 callback（onend / setTimeout）全部失效
@@ -1711,6 +1649,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // === 所有控制鍵：基礎 bind（給 restart / finish 用） ===
+  const playbackButtonActions = new Map();
   function bindAction(btn, fn) {
     if (!btn) return;
     btn.onclick = () => {
@@ -1718,6 +1657,7 @@ document.addEventListener('DOMContentLoaded', () => {
       fn();      // 執行對應動作
       syncCurrentFrameFromCodeScript();
     };
+    playbackButtonActions.set(btn.id, btn.onclick);
   }
 
   // === 跳到「下一個停靠幀」，沒有就跳到最後 ===
@@ -1929,6 +1869,8 @@ document.addEventListener('DOMContentLoaded', () => {
       syncCurrentFrameFromCodeScript();
     };
 
+    playbackButtonActions.set(btn.id, doSingleStep);
+
     const onPressStart = (e) => {
       e.preventDefault();
       longPressFired = false;
@@ -2017,6 +1959,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }, +1);
 
   window.ASMPlaybackNavigation = {
+    invokeButton(id) {
+      const button = document.getElementById(id);
+      if (button) {
+        clearTimeout(button.__asmShortcutFeedback);
+        button.classList.add('asm-shortcut-pressed');
+        button.__asmShortcutFeedback = setTimeout(() => button.classList.remove('asm-shortcut-pressed'), 160);
+      }
+      if (id === 'playToggleBtn') return togglePlay();
+      return playbackButtonActions.get(id)?.();
+    },
+    play,
+    isPlaying: () => isPlaying,
     pause: () => { stopStepAuto(); pause(); },
     fastStepWindowMs: FAST_STEP_WINDOW_MS,
     fastStepThreshold: FAST_STEP_THRESHOLD,
@@ -2272,745 +2226,6 @@ function initTopMenuBar() {
 }
 
 // ==========================================
-// 登入/註冊/登出/忘記密碼 模態視窗控制邏輯
-// ==========================================
-
-document.addEventListener('DOMContentLoaded', function () {
-  // --- 1. 取得 DOM 元素 ---
-  const loginModal = document.getElementById("loginModal");
-  const loginBtn = document.getElementById("loginTriggerBtn");
-  const closeSpan = document.querySelector(".close-modal");
-  const toggleBtn = document.getElementById("toggleAuthModeBtn");
-  const modalTitle = document.getElementById("modalTitle");
-  const actionBtn = document.getElementById("authActionBtn");
-  const toggleText = document.getElementById("toggleAuthModeText");
-  const authForm = document.querySelector(".auth-form");
-  const forgotBtn = document.getElementById("forgotPasswordBtn"); // 忘記密碼按鈕
-
-  if (loginModal) {
-  // 取得要隱藏/顯示的區塊
-  // 假設你的 HTML 結構是 .form-group 包住 label 和 input
-  const formGroups = loginModal.querySelectorAll(".form-group");
-  const modalFooter = loginModal.querySelector(".modal-footer");
-
-  // --- 2. 狀態變數 ---
-  let isLoginMode = true;   // 登入模式
-  let isLogoutMode = false; // 登出模式
-  let isForgotMode = false; // 忘記密碼模式
-  let isResetMode = false;  // 重置密碼模式
-  let currentResetToken = null;
-
-  // --- 3. 檢查網址是否有 reset_token (從 Email 點回來) ---
-  const urlParams = new URLSearchParams(window.location.search);
-  const resetToken = urlParams.get('reset_token');
-
-  if (resetToken) {
-    isResetMode = true;
-    currentResetToken = resetToken;
-
-    // 強制打開 Modal
-    loginModal.style.display = "block";
-
-    // 清除網址參數 (美觀用，不讓使用者覺得網址很長)
-    window.history.replaceState({}, document.title, "/");
-  }
-
-  // --- 4. 核心工具：顯示訊息 ---
-  function showMsg(msg, type = 'error') {
-    let msgDiv = document.getElementById("authMessage");
-    if (!msgDiv && modalTitle) {
-      msgDiv = document.createElement("div");
-      msgDiv.id = "authMessage";
-      modalTitle.parentNode.insertBefore(msgDiv, modalTitle.nextSibling);
-    }
-    if (msgDiv) {
-      msgDiv.innerHTML = msg.replace(/\n/g, "<br/>");
-      msgDiv.className = type;
-      msgDiv.style.display = 'block';
-    } else {
-      alert(msg);
-    }
-  }
-
-  function clearMsg() {
-    const msgDiv = document.getElementById("authMessage");
-    if (msgDiv) {
-      msgDiv.style.display = 'none';
-      msgDiv.className = '';
-    }
-  }
-
-  // --- 5. 核心工具：更新介面 (根據四種模式切換) ---
-  function updateModalUI() {
-    clearMsg();
-
-    // A. 先全部隱藏，下面再依模式打開
-    formGroups.forEach(el => el.style.display = 'none');
-    modalFooter.style.display = 'none';
-    if (forgotBtn) forgotBtn.style.display = 'none'; // 預設隱藏
-
-    if (isResetMode) {
-      // === 模式 1: 重置密碼 (輸入新密碼) ===
-      modalTitle.innerText = "重置密碼";
-      actionBtn.innerText = "確認修改";
-
-      // 只顯示密碼框
-      const passwordGroup = document.getElementById("passwordInput").closest('.form-group');
-      if (passwordGroup) passwordGroup.style.display = 'block';
-
-      showMsg("驗證成功！請輸入您的新密碼。", "success");
-    }
-    else if (isForgotMode) {
-      // === 模式 2: 忘記密碼 (輸入 Email) ===
-      modalTitle.innerText = "忘記密碼";
-      actionBtn.innerText = "發送重置信";
-
-      // 只顯示帳號(Email)框
-      const usernameGroup = document.getElementById("usernameInput").closest('.form-group');
-      if (usernameGroup) usernameGroup.style.display = 'block';
-
-      // 顯示底部 (讓它可以切換回登入)
-      modalFooter.style.display = 'block';
-      toggleText.innerText = "";
-      toggleBtn.innerText = "回到登入";
-
-      showMsg("請輸入註冊 Email，我們將寄送重置連結給您。", "success");
-    }
-    else if (isLogoutMode) {
-      // === 模式 3: 登出確認 ===
-      modalTitle.innerText = "登出確認";
-      actionBtn.innerText = "確定登出";
-
-      const currentUser = localStorage.getItem('algo_username') || '';
-      showMsg(`目前登入帳號：<b>${currentUser}</b><br>您確定要登出嗎？`, "error");
-    }
-    else {
-      // === 模式 4: 一般登入/註冊 ===
-      // 恢復顯示所有輸入框
-      formGroups.forEach(el => el.style.display = 'block');
-      modalFooter.style.display = 'block';
-      if (forgotBtn) forgotBtn.style.display = 'inline'; // 顯示忘記密碼
-
-      if (isLoginMode) {
-        modalTitle.innerText = "登入";
-        actionBtn.innerText = "登入";
-        toggleText.innerText = "還沒有帳號？";
-        toggleBtn.innerText = "建立帳號";
-      } else {
-        modalTitle.innerText = "建立新帳號";
-        actionBtn.innerText = "註冊";
-        toggleText.innerText = "已經有帳號？";
-        toggleBtn.innerText = "直接登入";
-      }
-    }
-  }
-
-  // 若因為 reset_token 而開啟，初始化 UI
-  if (isResetMode) {
-    updateModalUI();
-  }
-
-  // --- 6. 事件綁定 ---
-
-  // (A) 打開視窗 (登入按鈕點擊)
-  window.handleLoginBtnClick = function () {
-    const storedUser = localStorage.getItem('algo_username');
-    if (storedUser) {
-      isLogoutMode = true; // 已登入 -> 變登出模式
-    } else {
-      isLogoutMode = false;
-      isLoginMode = true;  // 未登入 -> 變登入模式
-      isForgotMode = false;
-      isResetMode = false;
-    }
-    updateModalUI();
-    loginModal.style.display = "block";
-  };
-  if (loginBtn) loginBtn.onclick = window.handleLoginBtnClick;
-
-  // (B) 關閉視窗
-  if (closeSpan) {
-    closeSpan.onclick = function () { loginModal.style.display = "none"; };
-  }
-  window.onclick = function (event) {
-    if (event.target == loginModal) loginModal.style.display = "none";
-    if (event.target == saveModal) saveModal.style.display = "none";
-  };
-
-  // (C) 忘記密碼按鈕
-  if (forgotBtn) {
-    forgotBtn.onclick = function (e) {
-      e.preventDefault();
-      isForgotMode = true;
-      isLoginMode = false;
-      updateModalUI();
-    };
-  }
-
-  // (D) 切換按鈕 (建立帳號 / 回到登入)
-  if (toggleBtn) {
-    toggleBtn.onclick = function (e) {
-      e.preventDefault();
-      if (isForgotMode) {
-        // 如果在忘記密碼模式，按這個變成「取消」回到登入
-        isForgotMode = false;
-        isLoginMode = true;
-      } else {
-        // 一般切換
-        isLoginMode = !isLoginMode;
-      }
-      updateModalUI();
-    };
-  }
-
-  // --- 7. 表單送出 (核心邏輯) ---
-  if (authForm) {
-    authForm.onsubmit = async function (e) {
-      e.preventDefault();
-
-      // 取得輸入值
-      const usernameInput = document.getElementById("usernameInput");
-      const passwordInput = document.getElementById("passwordInput");
-      const username = usernameInput ? usernameInput.value.trim() : "";
-      const password = passwordInput ? passwordInput.value.trim() : "";
-
-      // === 狀況 1: 處理登出 (維持不變) ===
-      if (isLogoutMode) {
-        actionBtn.disabled = true;
-        actionBtn.innerText = "登出中...";
-        localStorage.removeItem('algo_jwt_token');
-        localStorage.removeItem('algo_username');
-        showMsg("登出成功！正在重新整理頁面...", "success");
-        setTimeout(() => window.location.reload(), 1000);
-        return;
-      }
-
-      // === 狀況 2: 處理忘記密碼 (維持不變) ===
-      if (isForgotMode) {
-        if (!username) { showMsg("請輸入 Email", "error"); return; }
-        actionBtn.innerText = "寄送中...";
-        actionBtn.disabled = true;
-        try {
-          const res = await fetch('/api/auth/forgot-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error);
-          showMsg(data.message, "success");
-        } catch (err) {
-          showMsg(err.message, "error");
-        } finally {
-          actionBtn.innerText = "發送重置信";
-          actionBtn.disabled = false;
-        }
-        return;
-      }
-
-      // === 狀況 3: 處理重置密碼 (維持不變) ===
-      if (isResetMode) {
-        if (!password || password.length < 8) { showMsg("新密碼需至少 8 碼", "error"); return; }
-        actionBtn.innerText = "更新中...";
-        actionBtn.disabled = true;
-        try {
-          const res = await fetch('/api/auth/reset-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: currentResetToken, newPassword: password })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error);
-          showMsg(data.message, "success");
-          setTimeout(() => {
-            isResetMode = false;
-            currentResetToken = null;
-            isLoginMode = true;
-            updateModalUI();
-            if (passwordInput) passwordInput.value = "";
-          }, 1500);
-        } catch (err) {
-          showMsg(err.message, "error");
-        } finally {
-          actionBtn.innerText = "確認修改";
-          actionBtn.disabled = false;
-        }
-        return;
-      }
-
-      // === 狀況 4: 一般 登入 / 註冊 ===
-      if (!username || !password) {
-        showMsg("請輸入帳號與密碼", "error");
-        return;
-      }
-
-      if (!isLoginMode) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(username)) { showMsg("請輸入有效的 Email", "error"); return; }
-        if (password.length < 8) { showMsg("密碼至少需 8 碼", "error"); return; }
-      }
-
-      const apiPath = isLoginMode ? '/api/auth/login' : '/api/auth/register';
-      const originalBtnText = actionBtn.innerText;
-
-      actionBtn.innerText = "處理中...";
-      actionBtn.disabled = true;
-      clearMsg();
-
-      // [關鍵] 用來標記是否成功，如果是成功，finally 區塊就暫時不要還原按鈕
-      let isSuccess = false;
-
-      try {
-        const res = await fetch(apiPath, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '操作失敗');
-
-        if (isLoginMode) {
-          // --- 登入成功 ---
-          isSuccess = true; // 標記為成功
-
-          // [修改] 1. 改變按鈕樣式與文字 (綠色 + 登入成功)
-          actionBtn.innerText = "✔ 登入成功";
-          actionBtn.style.backgroundColor = "#198754"; // 成功綠
-          actionBtn.style.borderColor = "#198754";
-          actionBtn.style.color = "#ffffff";
-
-          showMsg(`登入成功！歡迎，${data.username}`, "success");
-          localStorage.setItem('algo_jwt_token', data.token);
-          localStorage.setItem('algo_username', data.username);
-          window.dispatchEvent(new CustomEvent('asm:auth-changed'));
-          updateUserUI(data.username);
-
-          setTimeout(() => {
-            loginModal.style.display = "none";
-            if (passwordInput) passwordInput.value = "";
-
-            // [修改] 2. 視窗關閉後，把按鈕還原，以免下次打開還是綠的
-            actionBtn.innerText = originalBtnText;
-            actionBtn.disabled = false;
-            actionBtn.style.backgroundColor = "";
-            actionBtn.style.borderColor = "";
-            actionBtn.style.color = "";
-          }, 1500); // 1.5秒後關閉
-
-        } else {
-          // --- 註冊成功 ---
-          showMsg('註冊成功！正在為您切換至登入頁...', "success");
-          setTimeout(() => {
-            isLoginMode = true;
-            updateModalUI();
-            if (usernameInput) usernameInput.value = username;
-            if (passwordInput) passwordInput.value = "";
-            clearMsg();
-          }, 1500);
-        }
-
-      } catch (err) {
-        console.error(err);
-        showMsg(err.message, "error");
-      } finally {
-        // [修改] 只有在「非成功」的時候才立即還原按鈕
-        // 這樣才能讓使用者看到綠色的「登入成功」狀態
-        if (!isSuccess) {
-          actionBtn.innerText = originalBtnText;
-          actionBtn.disabled = false;
-        }
-      }
-    };
-  }
-
-  }
-
-  // ==========================================
-  // [新增] 存取程式碼功能邏輯
-  // ==========================================
-
-  // 1. DOM 元素 (注意：myCodesModal 已被移除，改為 myCodesSidebar)
-  const saveModal = document.getElementById("saveCodeModal");
-  const myCodesSidebar = document.getElementById("myCodesSidebar"); // [新] 側邊欄
-  const algoSidePanel = document.getElementById("algoSidePanel");
-  const openSaveBtn = document.getElementById("openSaveModalBtn");
-  const openMyCodesBtn = document.getElementById("openMyCodesBtn");
-  const algoSamplesBtn = document.getElementById("algoSamplesBtn");
-  const closeSaveBtn = document.getElementById("closeSaveModal");
-  const closeMyCodesSidebarBtn = document.getElementById("closeMyCodesSidebar"); // [新] 側邊欄關閉紐
-  const saveForm = document.getElementById("saveCodeForm");
-  const myCodesList = document.getElementById("myCodesList");
-  const refreshBtn = document.getElementById("refreshMyCodesBtn");
-
-  // --- [工具] 顯示儲存視窗內的訊息 (保留不動) ---
-  function showSaveMsg(msg, type = 'error') {
-    const msgDiv = document.getElementById("saveMessage");
-    if (msgDiv) {
-      msgDiv.textContent = msg;
-      msgDiv.className = type;
-    }
-  }
-
-  // --- [工具] 顯示全域浮動通知 (Toast) (保留不動) ---
-  function showToast(msg, type = 'info') {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'toast-container';
-      document.body.appendChild(container);
-    }
-    const toast = document.createElement('div');
-    toast.className = `toast-msg ${type}`;
-    toast.innerText = msg;
-    container.appendChild(toast);
-    setTimeout(() => {
-      if (container.contains(toast)) container.removeChild(toast);
-    }, 3500);
-  }
-
-  // ==========================================
-  // --- 1. 儲存程式碼 (這部分完全保留原本的) ---
-  // ==========================================
-
-  if (openSaveBtn) {
-    openSaveBtn.onclick = function (e) {
-      e.preventDefault();
-      if (!localStorage.getItem('algo_username')) {
-        showToast("請先登入會員才能儲存程式碼", "warning");
-        const loginBtn = document.getElementById("loginTriggerBtn");
-        if (loginBtn) loginBtn.click();
-        return;
-      }
-      showSaveMsg("", "");
-      if (document.getElementById("saveMessage")) document.getElementById("saveMessage").style.display = "none";
-
-      if (saveModal) saveModal.style.display = "block";
-      if (document.getElementById("saveLangSelect")) document.getElementById("saveLangSelect").value = "cpp";
-    };
-  }
-  if (closeSaveBtn) closeSaveBtn.onclick = () => saveModal.style.display = "none";
-
-  if (saveForm) {
-    saveForm.onsubmit = async function (e) {
-      e.preventDefault();
-
-      showSaveMsg("", "");
-      if (document.getElementById("saveMessage")) document.getElementById("saveMessage").style.display = "none";
-
-      const title = document.getElementById("saveTitleInput").value;
-      const desc = document.getElementById("saveDescInput").value;
-      const language = document.getElementById("saveLangSelect").value;
-      const saveInput = document.getElementById("saveInputCheckbox").checked;
-
-      const content = aceEditor ? aceEditor.getValue() : "";
-      const inputData = (saveInput && document.getElementById("inputArea"))
-        ? document.getElementById("inputArea").value
-        : "";
-
-      const token = localStorage.getItem('algo_jwt_token');
-
-      const submitBtn = saveForm.querySelector("button");
-      const originalText = "確認儲存";
-      submitBtn.innerText = "⏳ 儲存中...";
-      submitBtn.disabled = true;
-      submitBtn.style.opacity = "0.7";
-
-      try {
-        const res = await fetch('/api/codes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            title, desc, language, content,
-            inputs: inputData ? [inputData] : []
-          })
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "儲存失敗");
-
-        showSaveMsg("✅ 儲存成功！", "success");
-        submitBtn.innerText = "✔ 儲存成功";
-        submitBtn.style.backgroundColor = "#198754";
-
-        setTimeout(() => {
-          saveModal.style.display = "none";
-          document.getElementById("saveTitleInput").value = "";
-          document.getElementById("saveDescInput").value = "";
-          submitBtn.innerText = originalText;
-          submitBtn.disabled = false;
-          submitBtn.style.opacity = "1";
-          submitBtn.style.backgroundColor = "";
-          if (document.getElementById("saveMessage")) document.getElementById("saveMessage").style.display = "none";
-
-          showToast(`已儲存：${title}`, "success");
-        }, 1500);
-
-      } catch (err) {
-        showSaveMsg("❌ " + err.message, "error");
-        submitBtn.innerText = "再試一次";
-        submitBtn.disabled = false;
-        submitBtn.style.opacity = "1";
-      }
-    };
-  }
-
-  // ==========================================
-  // --- 2. 我的程式碼 (這裡是改動最大的地方) ---
-  // ==========================================
-
-  // [修改] 打開側邊欄 (原本是打開 Modal)
-  if (openMyCodesBtn) {
-    openMyCodesBtn.onclick = function (e) {
-      e.preventDefault();
-
-      // (A) 登入檢查
-      if (!localStorage.getItem('algo_username')) {
-        if (typeof showToast === 'function') showToast("請先登入", "warning");
-        const loginBtn = document.getElementById("loginTriggerBtn");
-        if (loginBtn) loginBtn.click();
-        return;
-      }
-
-      // (B) [核心修改] 打開自己前，先強制關閉「演算法範例集」
-      if (algoSidePanel) algoSidePanel.classList.remove("open");
-
-      // (C) 打開「我的程式碼」
-      if (myCodesSidebar) {
-        if (myCodesSidebar.classList.contains("active")) {
-          // 1. 如果已經打開，就關閉
-          myCodesSidebar.classList.remove("active");
-        } else {
-          // 2. 如果沒打開，才執行原本的開啟流程
-
-          // (B) 打開自己前，先強制關閉「演算法範例集」
-          if (algoSidePanel) algoSidePanel.classList.remove("open");
-
-          // (C) 打開「我的程式碼」並載入
-          myCodesSidebar.classList.add("active");
-          if (typeof loadMyCodes === 'function') loadMyCodes();
-        }
-      }
-    };
-  }
-
-  // [修改] 關閉側邊欄
-  if (closeMyCodesSidebarBtn) {
-    closeMyCodesSidebarBtn.onclick = function () {
-      if (myCodesSidebar) myCodesSidebar.classList.remove("active");
-    };
-  }
-
-  // 這段可以同時處理兩個側邊欄的關閉邏輯
-  window.addEventListener('click', function (e) {
-    // (A) 關閉「我的程式碼」
-    if (myCodesSidebar && myCodesSidebar.classList.contains("active")) {
-      if (!myCodesSidebar.contains(e.target) &&
-        e.target !== openMyCodesBtn &&
-        !openMyCodesBtn.contains(e.target)) {
-        myCodesSidebar.classList.remove("active");
-      }
-    }
-
-    // (B) 關閉「演算法範例集」
-    if (algoSidePanel && algoSidePanel.classList.contains("open")) {
-      if (!algoSidePanel.contains(e.target) &&
-        e.target !== algoSamplesBtn &&
-        !algoSamplesBtn.contains(e.target)) {
-        algoSidePanel.classList.remove("open");
-      }
-    }
-  });
-
-  // 重新整理
-  if (refreshBtn) refreshBtn.onclick = loadMyCodes;
-
-  // [修改] 載入列表函式 (生成側邊欄專用的 HTML)
-  async function loadMyCodes() {
-    if (!myCodesList) return;
-    myCodesList.innerHTML = '<p style="text-align:center; padding:20px; color:#888;">載入中...</p>';
-    const token = localStorage.getItem('algo_jwt_token');
-
-    try {
-      const res = await fetch('/api/codes', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("無法讀取列表");
-
-      const data = await res.json();
-      const codes = data.codes || [];
-
-      if (codes.length === 0) {
-        myCodesList.innerHTML = '<p style="text-align:center; padding:20px; color:#666;">這裡空空如也<br>快去儲存一些程式碼吧！</p>';
-        return;
-      }
-
-      // 生成列表 HTML
-      myCodesList.innerHTML = codes.map(code => `
-                <div class="code-item" onclick="loadCodeToEditor('${code.code_uid}')" style="cursor:pointer;">
-                    
-                    <button class="btn-delete-code" onclick="deleteCode(event, '${code.code_uid}', '${escapeHtml(code.title)}')" title="刪除此程式碼">
-                        🗑️
-                    </button>
-
-                    <div style="width:100%">
-                        <h3 style="margin:0 0 8px 0; font-size:15px; color:#eee; font-weight:500; padding-right: 30px;">
-                            ${escapeHtml(code.title)}
-                        </h3>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                            <span style="font-size:12px; color:#2196F3; border:1px solid rgba(33, 150, 243, 0.3); padding:1px 6px; border-radius:4px; background:rgba(33, 150, 243, 0.1);">
-                                ${code.language}
-                            </span>
-                            <span style="font-size:12px; color:#888;">
-                                ${new Date(code.created_at).toLocaleDateString()}
-                            </span>
-                        </div>
-                        <p style="margin:0; font-size:13px; color:#999; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                            ${escapeHtml(code.desc || "無描述")}
-                        </p>
-                    </div>
-                </div>
-            `).join('');
-
-    } catch (err) {
-      myCodesList.innerHTML = `<p style="color:#ff6b6b; text-align:center; padding:20px;">載入失敗: ${err.message}</p>`;
-    }
-  }
-
-  // [新增] 刪除程式碼函式 (掛在 window 上以便 HTML onclick 呼叫)
-  window.deleteCode = async function (event, codeUid, codeTitle) {
-    // 1. 阻止事件冒泡 (重要！不然點刪除會變成「刪除後又載入」)
-    event.stopPropagation();
-
-    const token = localStorage.getItem('algo_jwt_token');
-
-    try {
-      const res = await fetch(`/api/codes/${codeUid}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || "刪除失敗");
-
-      // 3. 成功後顯示訊息並重新整理列表
-      if (typeof showToast === 'function') {
-        showToast("🗑️ 刪除成功", "success");
-      } else {
-        alert("刪除成功");
-      }
-
-      // 重新載入列表
-      loadMyCodes();
-
-    } catch (err) {
-      console.error(err);
-      if (typeof showToast === 'function') {
-        showToast("刪除失敗: " + err.message, "error");
-      } else {
-        alert("刪除失敗: " + err.message);
-      }
-    }
-  };
-
-  // XSS 防護小工具 (保留)
-  function escapeHtml(text) {
-    if (!text) return "";
-    return text.replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  // ==========================================
-  // --- 3. 載入單一程式碼 (全域函式) ---
-  // ==========================================
-
-  // [修改] 劫持原本的載入函式，加上「自動收起側邊欄」的功能
-  const originalLoadCode = window.loadCodeToEditor; // 如果有的話先存起來，避免重複定義
-
-  window.loadCodeToEditor = async function (codeId) {
-    // (A) 核心載入邏輯 (Fetch + Set Editor)
-    try {
-      const token = localStorage.getItem('algo_jwt_token');
-      const res = await fetch(`/api/codes/${codeId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("讀取失敗");
-
-      const data = await res.json();
-      const targetCode = data.code;
-      if (!targetCode) throw new Error("資料格式錯誤");
-
-      if (aceEditor) window.asmReplaceEditorCode(targetCode.content, 1);
-
-      const inputArea = document.getElementById("inputArea");
-      if (inputArea) {
-        if (targetCode.inputs && targetCode.inputs.length > 0) {
-          inputArea.value = targetCode.inputs[0];
-        } else {
-          inputArea.value = "";
-        }
-      }
-      saveAlgorithmDraft();
-
-      // 成功提示
-      showToast(`✅ 已載入：${targetCode.title}`, "success");
-
-    } catch (err) {
-      showToast("❌ 載入錯誤: " + err.message, "error");
-    }
-
-    // (B) 載入後自動收起側邊欄 (如果你希望它保持開啟，請註解掉下面這行)
-    // if(myCodesSidebar) myCodesSidebar.classList.remove("active");
-  };
-
-  // --- Checkbox 點擊優化 (保留) ---
-  const checkboxGroup = document.querySelector('.checkbox-group');
-  const checkboxInput = document.getElementById('saveInputCheckbox');
-  if (checkboxGroup && checkboxInput) {
-    checkboxGroup.onclick = function (e) {
-      if (e.target !== checkboxInput && e.target.tagName !== 'LABEL') {
-        checkboxInput.checked = !checkboxInput.checked;
-      }
-    };
-  }
-});
-
-// --- UI 更新函式 (全域) ---
-// -----------------------------------------------------------------------------
-// 帳號與個人程式碼介面
-// 登入狀態來自本機 token/API 回應，面板開關與遠端清單則各自保留載入狀態。
-// -----------------------------------------------------------------------------
-function updateUserUI(username) {
-  const loginBtn = document.getElementById("loginTriggerBtn");
-  if (loginBtn && username) {
-    // [修改] 加入人頭圖示，讓它看起來更像 User Profile
-    loginBtn.innerHTML = `<span style="opacity:0.7; margin-right:4px;">👤</span> ${username}`;
-
-    loginBtn.classList.add('logged-in');
-
-    // 關鍵：將點擊事件指向我們剛剛定義的 handleLoginBtnClick
-    if (window.handleLoginBtnClick) {
-      loginBtn.onclick = window.handleLoginBtnClick;
-    }
-  }
-}
-
-// 頁面載入檢查
-document.addEventListener('DOMContentLoaded', () => {
-  const storedUser = localStorage.getItem('algo_username');
-  if (storedUser) {
-    updateUserUI(storedUser);
-  }
-});
-
-// ==========================================
 // 程式碼面板摺疊/展開控制
 // ==========================================
 document.addEventListener('DOMContentLoaded', function () {
@@ -3207,9 +2422,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const sidePanel = document.getElementById('algoSidePanel');
   const listContainer = document.getElementById('algoListContainer');
 
-  // 取得「我的程式碼」側邊欄，以便互斥關閉
-  const myCodesSidebar = document.getElementById("myCodesSidebar");
-
   let isSamplesLoaded = false; // 避免重複 fetch
 
   // --- [工具] 顯示全域浮動通知 (Toast) (保留不動) ---
@@ -3236,10 +2448,8 @@ document.addEventListener('DOMContentLoaded', function () {
       e.preventDefault();
       e.stopPropagation(); // 阻止事件冒泡
 
-      // (A) 互斥邏輯：如果正要打開，先強制關閉「我的程式碼」
-      if (!sidePanel.classList.contains('open')) {
-        if (myCodesSidebar) myCodesSidebar.classList.remove("active");
-      }
+      // (A) 互斥：打開範例集前先收起「我的程式碼」（my-codes.js）
+      if (!sidePanel.classList.contains('open')) window.ASMMyCodes?.close();
 
       // (B) 切換 open class
       sidePanel.classList.toggle('open');
@@ -3322,7 +2532,7 @@ document.addEventListener('DOMContentLoaded', function () {
       folderDiv.className = 'algo-item algo-folder';
 
       const textSpan = document.createElement('span');
-      textSpan.textContent = item.name;
+      textSpan.textContent = item.displayName || item.name;
       folderDiv.appendChild(textSpan);
 
       const subMenuDiv = document.createElement('div');
@@ -3349,11 +2559,14 @@ document.addEventListener('DOMContentLoaded', function () {
       // A. 程式檔本體
       const fileDiv = document.createElement('div');
       fileDiv.className = 'algo-item algo-file code-file';
-      fileDiv.textContent = item.name;
+      fileDiv.textContent = item.displayName || item.name;
       fileDiv.title = item.path;
 
       fileDiv.addEventListener('click', async (e) => {
         e.stopPropagation();
+        // Keep the selected program's inputs open while the long list scrolls.
+        listContainer.querySelectorAll('.code-wrapper.inputs-open').forEach(node => node.classList.remove('inputs-open'));
+        wrapper.classList.add('inputs-open');
         await loadSampleData(item.path, null);
         // 點擊後是否要自動收起面板？看你喜好，這裡先保留開啟
         // sidePanel.classList.remove('open');
@@ -3365,11 +2578,10 @@ document.addEventListener('DOMContentLoaded', function () {
       const baseName = item.name.replace(/\.(cpp|c|js|py)$/i, '');
 
       const relatedInputs = inputFiles.filter(inputFile => {
-        const inputName = inputFile.name;
-        if (!inputName.startsWith(baseName)) return false;
-        const charAfter = inputName[baseName.length];
-        const validSeparators = ['-'];
-        return validSeparators.includes(charAfter);
+        // The first hyphen separates the exact program stem from the input name.
+        // e.g. 8queen matches 8queen-sample_input, never 8queen_recursion-*.
+        const separator = inputFile.name.indexOf('-');
+        return separator > 0 && inputFile.name.slice(0, separator) === baseName;
       });
 
       // C. 渲染測資列表
@@ -3380,8 +2592,8 @@ document.addEventListener('DOMContentLoaded', function () {
         inputContainer.className = 'input-list-container';
 
         relatedInputs.forEach(inputFile => {
-          let displayName = inputFile.name;
-          if (displayName.startsWith(baseName)) {
+          let displayName = inputFile.displayName || inputFile.name;
+          if (!inputFile.displayName && displayName.startsWith(baseName)) {
             displayName = displayName.substring(baseName.length);
           }
           displayName = displayName.replace(/^[_.-]+/, '');
@@ -3414,7 +2626,7 @@ document.addEventListener('DOMContentLoaded', function () {
     otherFiles.forEach(item => {
       const fileDiv = document.createElement('div');
       fileDiv.className = 'algo-item algo-file';
-      fileDiv.textContent = item.name;
+      fileDiv.textContent = item.displayName || item.name;
       fileDiv.addEventListener('click', async (e) => {
         e.stopPropagation();
         await loadSampleData(item.path, null);
@@ -3429,9 +2641,6 @@ document.addEventListener('DOMContentLoaded', function () {
    * 載入範例資料 (支援 Code 和 Input)
    */
   async function loadSampleData(codePath, inputPath) {
-    // [新增] 載入前先確保「我的程式碼」側邊欄是關閉的
-    if (myCodesSidebar) myCodesSidebar.classList.remove("active");
-
     try {
       // 1. 載入程式碼
       if (codePath) {

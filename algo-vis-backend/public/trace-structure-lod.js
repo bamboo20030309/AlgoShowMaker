@@ -10,6 +10,7 @@
   let observedViewport;
   const NS = 'http://www.w3.org/2000/svg';
   const FULL_DETAIL_MIN_PX = 14;
+  const SYNC_FILL_LIMIT = 400;
   function level(pixels, previous) {
     if (pixels >= FULL_DETAIL_MIN_PX) return 'full';
     if (previous === 'overview' && pixels < 10) return 'overview';
@@ -179,14 +180,16 @@
     }
     schedule();
   }
-  function pump() {
+  function pump(budget = 128) {
     worker = 0;
     const started = performance.now();
+    const unlimited = budget === Infinity;
     let count = 0;
-    while (jobs.length && performance.now() - started < 4 && count < 128) {
+    const more = () => jobs.length && (unlimited || (performance.now() - started < 4 && count < budget));
+    while (more()) {
       const group = jobs[0].group;
       window.withSvgTextFitStyle(group, () => {
-        while (jobs.length && jobs[0].group === group && performance.now() - started < 4 && count < 128) {
+        while (more() && jobs[0].group === group) {
           const job = jobs.shift();
           if (job.revision !== revision || !group.isConnected || !group._asmLod.visible.has(job.item)) continue;
           textFor(group,job.item);
@@ -194,11 +197,14 @@
         }
       });
     }
-    if (jobs.length) worker = requestAnimationFrame(pump);
+    if (jobs.length) worker = requestAnimationFrame(() => pump());
     else for (const group of groups) group.removeAttribute('data-asm-lod-pending');
   }
   function refresh() {
     queued = 0;
+    // 投影片與編輯動畫之間的組裝過場會用 CSS transform 縮放整個畫布，getScreenCTM 會把它算進去，
+    // 讓格子看起來太小而把數字收掉。過場中維持現有細節；結束時鏡頭重新套用會再觸發這裡。
+    if (document.documentElement.classList.contains('asm-embed-assembling')) return;
     revision++;
     jobs = [];
     const viewport = window.getViewport?.();
@@ -245,7 +251,17 @@
       state.level = next;
       element.dataset.asmObjectLod = next;
     }
-    if (jobs.length && !worker) worker = requestAnimationFrame(pump);
+    // 格子不多時當場補完數字，不分批到下一幀：重新排版後就不會有一幀空格子。
+    // 大型結構仍分批（每幀最多 4ms），避免卡住畫面。
+    if (jobs.length && jobs.length <= SYNC_FILL_LIMIT) {
+      if (worker) { cancelAnimationFrame(worker); worker = 0; }
+      pump(Infinity);
+    } else if (jobs.length && !worker) worker = requestAnimationFrame(() => pump());
+  }
+  // 立即重新判斷並補上數字（不等排程的下一幀）；重新排版完成時呼叫。
+  function flush() {
+    if (queued) { cancelAnimationFrame(queued); queued = 0; }
+    refresh();
   }
   function schedule() {
     if (!queued) queued = requestAnimationFrame(refresh);
@@ -300,5 +316,5 @@
   });
   window.addEventListener('resize', schedule);
   window.addEventListener('asm:camera-user-change', schedule);
-  window.ASMStructureLOD = {begin,record,finish,observe,refresh,level,adopt};
+  window.ASMStructureLOD = {begin,record,finish,observe,refresh,flush,level,adopt};
 })();

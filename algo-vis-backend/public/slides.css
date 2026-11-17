@@ -367,6 +367,14 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal {
   background: #e35d6a;
 }
 
+.cloud-save-status[data-trace-state="outdated"] .cloud-status-dot,
+.cloud-save-status[data-trace-state="dirty"] .cloud-status-dot,
+.cloud-save-status[data-trace-state="updating"] .cloud-status-dot,
+.cloud-save-status[data-trace-state="error"] .cloud-status-dot {
+  background: #ff3b30;
+  animation: none;
+}
+
 /* --------------------------------------------------------------------------
  * 側欄面板與元件編輯器
  * 面板互斥顯示；內部表單尺寸需維持側欄可捲動，避免把舞台推出視窗。
@@ -437,6 +445,216 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal {
 
 .algorithm-edit-sidebar-action[hidden] {
   display: none;
+}
+
+/* 動畫投影片的側欄區塊：放在工具清單最下方，輸入框撐滿剩下的高度。 */
+#defaultToolPanel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.algorithm-sidebar-block {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--chrome-line);
+}
+
+.algorithm-sidebar-block[hidden] {
+  display: none;
+}
+
+.algorithm-sidebar-block .algorithm-edit-sidebar-action {
+  position: relative;
+  min-height: 46px;
+  align-items: center;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-weight: 700;
+}
+
+.algorithm-edit-alert {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff5c5c;
+  box-shadow: 0 0 0 2px var(--chrome-bg);
+}
+
+.algorithm-edit-alert[hidden] {
+  display: none;
+}
+
+.algorithm-input-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.algorithm-input-head label {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* 與編輯動畫（程式碼頁）的 RUN 相同：綠底白字「▶ RUN」，執行中變深綠並轉圈。 */
+.algorithm-run-btn {
+  position: relative;
+  padding: 5px 14px;
+  border: none;
+  border-radius: 5px;
+  background-color: #22c55e;
+  color: #ffffff;
+  font: bold 13px/1.4 Arial, sans-serif;
+  cursor: pointer;
+}
+
+.algorithm-run-btn:hover:not(:disabled) {
+  background-color: #16a34a;
+}
+
+.algorithm-run-btn:disabled:not(.loading) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.algorithm-run-btn.loading {
+  background-color: #14532d;
+  color: transparent;
+  cursor: wait;
+  pointer-events: none;
+}
+
+.algorithm-run-btn.loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -9px;
+  margin-left: -9px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: algorithm-run-spin 0.8s linear infinite;
+}
+
+@keyframes algorithm-run-spin {
+  to { transform: rotate(360deg); }
+}
+
+.algorithm-slide-input {
+  flex: 1 1 auto;
+  min-height: 7.5em;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  background: #11181b;
+  color: #e9f1ef;
+  font: 13px/1.45 Consolas, "Courier New", monospace;
+  resize: none;
+  white-space: pre;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #4a5459 transparent;
+}
+
+.algorithm-slide-input::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.algorithm-slide-input::-webkit-scrollbar-track,
+.algorithm-slide-input::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.algorithm-slide-input::-webkit-scrollbar-thumb {
+  border: 2px solid #11181b;
+  border-radius: 6px;
+  background: #4a5459;
+}
+
+.algorithm-slide-input::-webkit-scrollbar-thumb:hover {
+  background: #66737a;
+}
+
+.algorithm-slide-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(29, 143, 131, 0.35);
+}
+
+.algorithm-slide-status {
+  margin: 0;
+  min-height: 1.3em;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.algorithm-sidebar-block[data-run-state="stale"] .algorithm-slide-status {
+  color: #ffb27d;
+}
+
+.algorithm-slide-error {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 112, 112, 0.7);
+  border-radius: 6px;
+  background: rgba(220, 53, 69, 0.18);
+  color: #ffd9d9;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.algorithm-slide-error[hidden] {
+  display: none;
+}
+
+.algorithm-slide-error strong {
+  color: #ff9a9a;
+  font-size: 13px;
+}
+
+.algorithm-slide-error code {
+  overflow: hidden;
+  color: #ffc2c2;
+  font: 11px/1.4 Consolas, "Courier New", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.algorithm-slide-error code:empty {
+  display: none;
+}
+
+.algorithm-slide-error button {
+  justify-self: start;
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 154, 154, 0.8);
+  border-radius: 5px;
+  background: transparent;
+  color: #ffe1e1;
+  font: inherit;
+  cursor: pointer;
+}
+
+.algorithm-slide-error button:hover {
+  background: rgba(255, 154, 154, 0.16);
 }
 
 .algorithm-edit-sidebar-action .tool-icon {
@@ -2816,7 +3034,7 @@ body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) {
   background: #fbfcfa;
   box-shadow: 0 18px 70px rgba(0, 0, 0, 0.18);
   transform-origin: center;
-  transition: transform 320ms ease, opacity 220ms ease, translate 220ms ease;
+  transition: opacity 220ms ease, translate 220ms ease;
 }
 
 .asm-slide.is-page-entering .asm-slide-frame-content {
@@ -2839,11 +3057,17 @@ body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) {
 
 body.asm-edit-mode .asm-slide-frame-content {
   overflow: visible;
-  transform: scale(var(--edit-slide-zoom-scale));
+  transform: translate(var(--slide-pan-x, 0px), var(--slide-pan-y, 0px)) scale(var(--edit-slide-zoom-scale));
 }
 
 body:not(.asm-edit-mode) .asm-slide-frame-content {
-  transform: scale(var(--slide-user-zoom));
+  transform: translate(var(--slide-pan-x, 0px), var(--slide-pan-y, 0px)) scale(var(--slide-user-zoom));
+}
+
+body.slide-viewport-panning,
+body.slide-viewport-panning * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .slide-edge-add-right {
@@ -2904,93 +3128,106 @@ body:not(.asm-edit-mode) .asm-slide-frame-content {
   pointer-events: none;
 }
 
-.algorithm-editor-modal {
+/* 編輯動畫：同一個動畫 iframe 從投影片搬到這裡並展開成完整頁面。
+   過場只改 iframe 的 transform／clip-path（slides.js），版面在最終尺寸下排一次。 */
+.algorithm-editor-page {
   position: fixed;
   inset: 0;
-  z-index: 160;
-  display: grid;
-  place-items: center;
-  padding: 8px;
-  background: rgba(9, 14, 16, 0.72);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
 }
 
-.algorithm-editor-modal[hidden] {
+.algorithm-editor-page[hidden] {
   display: none;
 }
 
-.algorithm-editor-dialog {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: min(1840px, 99vw);
-  height: min(1120px, 98vh);
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 10px;
-  background: #ffffff;
-  box-shadow: 0 22px 72px rgba(0, 0, 0, 0.34);
+.algorithm-editor-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--chrome-bg);
 }
 
-.algorithm-editor-header {
+.algorithm-editor-bar {
+  position: relative;
+  z-index: 2;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   min-height: 52px;
-  padding: 8px 12px 8px 16px;
+  padding: 0 16px 0 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
   background: var(--chrome-bg);
   color: var(--chrome-text);
 }
 
-.algorithm-editor-header strong,
-.algorithm-editor-header span {
-  display: block;
+.algorithm-editor-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  background: #0d1316;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.algorithm-editor-header span {
-  margin-top: 3px;
+.algorithm-editor-back svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.algorithm-editor-back:hover,
+.algorithm-editor-back:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent);
+  outline: none;
+}
+
+.algorithm-editor-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.algorithm-editor-status {
+  margin-left: auto;
   color: rgba(243, 248, 246, 0.74);
-  font-size: 12px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
-.algorithm-editor-header button {
-  min-width: 74px;
-  height: 34px;
-  padding: 0 16px;
-  border-color: rgba(246, 156, 54, 0.88);
-  background: rgba(246, 156, 54, 0.22);
-  color: #fff2dc;
-  font-size: 14px;
-  font-weight: 700;
+.algorithm-editor-stage {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-.algorithm-editor-header button:hover {
-  border-color: #ffc36f;
-  background: #d97819;
-}
-
-#algorithmEditorFrame {
-  flex: 1;
-  width: 100%;
-  border: 0;
-  background: #ffffff;
-}
-
-.algorithm-editor-modal.is-loading #algorithmEditorFrame {
-  visibility: hidden;
-}
-
-.algorithm-editor-modal.is-loading .algorithm-editor-dialog::after {
-  content: "正在載入動畫…";
+/* 背景透明：組裝式過場中 iframe 只畫出正在移動的部分，後面看得到投影片。 */
+.algorithm-editor-stage > .algorithm-slide-frame {
   position: absolute;
-  inset: 52px 0 0;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  background: #fbfcfa;
-  color: #4e716d;
-  font-size: 18px;
-  font-weight: 700;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  color-scheme: normal;
+}
+
+body.asm-algorithm-editor-open {
+  overflow: hidden;
 }
 
 .code-editor-modal {
@@ -3702,4 +3939,242 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--control
   min-width: 0;
   color: #d7e1df;
   font-size: 12px;
+}
+
+/* -------------------------------------------------------------------------
+   YouTube 影片 widget：編輯時只有海報，播放時才放入 iframe。
+   ------------------------------------------------------------------------- */
+.video-widget {
+  background: #111518;
+}
+
+.video-widget .video-content {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #111518;
+}
+
+/* Reveal applies 95% maximums and 20px image margins to slide media.
+   Video media owns the entire widget viewport in both editor and presentation. */
+.video-widget .video-poster,
+.video-widget .slide-video-frame {
+  display: block;
+  box-sizing: border-box;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.video-widget .video-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.video-widget .video-play-button {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(36px, 18%, 84px);
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.video-widget .video-play-button svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.video-widget .video-play-button circle {
+  fill: rgba(0, 0, 0, 0.62);
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 1.5;
+}
+
+.video-widget .video-play-button path {
+  fill: #ffffff;
+}
+
+.video-widget .video-play-button:hover circle {
+  fill: rgba(0, 0, 0, 0.78);
+}
+
+.video-widget .video-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.video-widget .video-caption[hidden],
+.video-widget .video-fallback[hidden] {
+  display: none;
+}
+
+.video-widget .slide-video-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000000;
+}
+
+.video-widget.is-video-active .video-play-button,
+.video-widget.is-video-active .video-caption {
+  display: none;
+}
+
+.video-widget .video-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(17, 21, 24, 0.92);
+  color: #f4f7f8;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.video-widget .video-fallback.is-notice {
+  inset: auto 0 0 0;
+  flex-direction: row;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: rgba(17, 21, 24, 0.82);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.video-widget .video-fallback a {
+  color: #8fe0d4;
+  font-weight: 700;
+  pointer-events: auto;
+}
+
+/* 編輯時影片框是可拖曳的物件；中間的播放鍵與播放中的 iframe 例外（按播放鍵直接播放，與放映相同）。 */
+body.asm-edit-mode .video-widget .video-fallback,
+body.asm-edit-mode .video-widget .video-fallback a {
+  pointer-events: none;
+}
+
+body.asm-edit-mode .video-widget .slide-video-frame:not([data-video-preview="true"]) {
+  pointer-events: none;
+}
+
+/* 雷射筆開啟時讓游標事件留在投影片，避免游標停在跨來源影片的邊緣。 */
+body.asm-slide-laser-mode .video-widget .slide-video-frame,
+body.asm-slide-laser-mode .video-widget .video-play-button {
+  pointer-events: none;
+}
+
+.unsupported-widget {
+  border: 1px dashed #9aa5a9;
+  background: #eef1f2;
+}
+
+.unsupported-widget .unsupported-content {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  background: transparent;
+  color: #52605f;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.video-editor-panel .check-field input {
+  height: 16px;
+}
+
+.video-time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.video-time-row .field-label {
+  display: grid;
+  gap: 4px;
+}
+
+.video-field-status {
+  min-height: 16px;
+  color: #aeb8bc;
+  font-size: 12px;
+}
+
+.video-field-status.is-error,
+.video-insert-dialog .share-dialog-status.is-error {
+  color: #ff9c9c;
+}
+
+.video-insert-url {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  margin-top: 16px;
+  padding: 0 10px;
+  border: 1px solid #4c575b;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #11191c;
+}
+
+.video-insert-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  margin-top: 10px;
+}
+
+.video-insert-preview img {
+  flex: 0 0 auto;
+  width: 120px;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #111518;
+}
+
+.video-insert-preview img[hidden] {
+  display: none;
+}
+
+.video-insert-preview .share-dialog-status {
+  margin-top: 0;
 }

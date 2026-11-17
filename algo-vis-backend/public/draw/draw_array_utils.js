@@ -48,6 +48,33 @@
   document.fonts?.addEventListener?.('loadingdone', clearFitTextCache);
   document.fonts?.addEventListener?.('loadingerror', clearFitTextCache);
   window.clearSvgTextFitCache = clearFitTextCache;
+  // Refit the complete displayed value, including multi-field separators.
+  // The original font limit remains available so shorter later values can
+  // grow back; temporary replay caps prevent changing an in-flight target.
+  window.fitSvgCellValueText = function(text) {
+    if (!text?.matches?.('text')) return;
+    const cell = text.parentElement, rect = cell?.querySelector(':scope > rect');
+    if (!rect || text.dataset.traceContentRole === 'index') return;
+    const width = Number(rect.getAttribute('width')), height = Number(rect.getAttribute('height'));
+    if (!(width > 0 && height > 0)) return;
+    if (text.hasAttribute('font-size') && Number(text.getAttribute('font-size')) === 0) return 0;
+    const current = Number(text.getAttribute('font-size')) || 16;
+    const fitted = Number(text.dataset.asmValueFittedSize);
+    if (!text.dataset.asmReplayFontCap && fitted > 0 && Math.abs(current - fitted) > .001) {
+      text.dataset.asmValueFontLimit = String(current);
+    }
+    if (!text.dataset.asmValueFontLimit) text.dataset.asmValueFontLimit = String(current);
+    const maxFont = Math.min(Number(text.dataset.asmValueFontLimit), Number(text.dataset.asmReplayFontCap) || Infinity);
+    const value = text.children.length ? [...text.children].filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent).join('') : text.textContent;
+    const style = getComputedStyle(text);
+    const size = window.fitSvgText(cell, value, width, height, {
+      maxFont, minFont: 1, padding: 4, family: style.fontFamily, fontWeight: style.fontWeight
+    });
+    text.setAttribute('font-size', String(size));
+    text.dataset.asmValueFittedSize = String(size);
+    return size;
+  };
+
   window.fitSvgText = function(g, textContent, maxWidth, maxHeight, opts = {}) {
     const {
       maxFont = 16,

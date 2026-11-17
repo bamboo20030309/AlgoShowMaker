@@ -15,13 +15,16 @@
   let currentFocusLine = 0;
   let currentEvents = new Map();
   let activeEventId = '';
+  let activeMemberIds = new Set();
   let startedEventIds = new Set();
   let completedEventIds = new Set();
   let scheduledEventIds = new Set();
+  const framePlaybackStates = new WeakMap();
   let cppTokenizer = null;
   let syntaxSource = null;
   let syntaxByLine = new Map();
   let transitionTimers = [];
+  let transitionAnimations = [];
   let transitionFinalPage = null;
   let transitionPromise = Promise.resolve();
   let resolveTransition = null;
@@ -91,10 +94,11 @@
 
   function viewportSize() {
     const canvas = document.getElementById('arraySvg');
+    // 版面大小（不受 CSS transform 影響）：編輯動畫的展開過場會縮放整個畫布，不能讓字級跟著變。
     const rect = canvas?.getBoundingClientRect?.();
     return {
-      width: Number(rect?.width) || canvas?.clientWidth || CODE_PANEL_REFERENCE_WIDTH,
-      height: Number(rect?.height) || canvas?.clientHeight || CODE_PANEL_REFERENCE_HEIGHT
+      width: canvas?.clientWidth || Number(rect?.width) || CODE_PANEL_REFERENCE_WIDTH,
+      height: canvas?.clientHeight || Number(rect?.height) || CODE_PANEL_REFERENCE_HEIGHT
     };
   }
 
@@ -383,9 +387,9 @@
     const activeEvent = events.get(String(activeId || ''));
     const suppressWholeConditionPulse = activeEvent?.type === 'condition'
       && conditionContainsComparison(activeEvent, events);
-    const active = Boolean(activeId) && linkedIds.has(String(activeId))
+    const active = Boolean(activeId) && (linkedIds.has(String(activeId))
+      || (activeId === activeEventId && [...activeMemberIds].some(id => linkedIds.has(id))))
       && !suppressWholeConditionPulse;
-    const activeCall = active && activeEvent?.type === 'call';
     // A split condition can contain unchecked slices. Those slices must not
     // prevent a checked, completed comparison from retaining its own result.
     // Restrict the fallback to one source range so it cannot paint a union of
@@ -403,11 +407,11 @@
     const conditionResult = condition?.result
       ?? (!pendingComparison ? completedComparison?.result : undefined);
     return {
-      active: active && !activeCall,
+      active,
       pending: pendingComparison,
-      complete: activeCall || (conditionResult == null && !pendingComparison
-        && [...linkedIds].some(id => completed.has(id))),
-      conditionResult: activeCall ? undefined : conditionResult
+      complete: !active && conditionResult == null && !pendingComparison
+        && [...linkedIds].some(id => completed.has(id)),
+      conditionResult
     };
   }
 
@@ -445,13 +449,19 @@
     });
   }
 
-  function setActiveEvent(eventId = '', phase = 'start') {
+  function setActiveEvent(eventId = '', phase = 'start', slot = null) {
     const id = String(eventId || '');
     const event = currentEvents.get(id);
     if (event?.type === 'compare' && !comparisonCanPlay(event)) return;
     if (phase === 'start' && id) startedEventIds.add(id);
     if ((phase === 'end' || phase === 'complete') && id
       && (event?.type === 'condition' || scheduledEventIds.has(id))) completedEventIds.add(id);
+    if (phase === 'start' && (slot || activeEventId !== id)) {
+      activeMemberIds = new Set((slot?.memberEvents || []).map(event => String(event.id || '')));
+    } else if (phase !== 'start' && activeEventId === id) {
+      activeMemberIds.forEach(memberId => completedEventIds.add(memberId));
+      activeMemberIds.clear();
+    }
     activeEventId = phase === 'start' ? id : (activeEventId === id ? '' : activeEventId);
     applyEventClasses();
   }
@@ -497,13 +507,31 @@
     return page;
   }
 
-  function scheduleTransition(callback, delay) {
-    transitionTimers.push(setTimeout(callback, delay));
+  function scheduleTransition(callback, delay, page) {
+    // Drive CSS transitions from logical playback time. Paused/hidden pages
+    // consume no time, and speed changes apply without restarting the scroll.
+    page?.getBoundingClientRect();
+    transitionAnimations = page?.getAnimations?.({ subtree: true }) || [];
+    transitionAnimations.forEach(animation => { animation.pause(); animation.currentTime = 0; });
+    let previous = performance.now(), elapsed = 0;
+    const tick = now => {
+      const delta = Math.max(0, now - previous); previous = now;
+      if (!document.hidden && !window.ASMTraceFrameTween?.isPaused?.()) {
+        const rate = Math.max(.05, Number(window.asmGetAnimationPlaybackRate?.()) || 1);
+        elapsed += delta * rate;
+        transitionAnimations.forEach(animation => { animation.currentTime = elapsed; });
+      }
+      if (elapsed >= delay) callback();
+      else transitionTimers = [requestAnimationFrame(tick)];
+    };
+    transitionTimers = [requestAnimationFrame(tick)];
   }
 
   function finishPageTransition() {
-    transitionTimers.forEach(timer => clearTimeout(timer));
+    transitionTimers.forEach(timer => cancelAnimationFrame(timer));
     transitionTimers = [];
+    transitionAnimations.forEach(animation => animation.cancel());
+    transitionAnimations = [];
     resolveTransition?.();
     resolveTransition = null;
     if (transitionFinalPage && body) body.replaceChildren(transitionFinalPage);
@@ -664,12 +692,13 @@
     if (Math.abs(targetOffset - initialOffset) >= 1) body.classList.add('is-code-scrolling');
     expandedPage.style.transform = `translateY(${initialOffset}px)`;
     requestAnimationFrame(() => {
+      if (transitionFinalPage !== nextPage) return;
       expandedPage.classList.remove('is-transition-preparing');
       expandedPage.classList.add('is-transition-scrolling');
       expandedPage.style.transform = `translateY(${targetOffset}px)`;
+      scheduleTransition(finishPageTransition, normalizeScrollMs(currentDocument?.studio?.codePanelScrollMs) + 40, expandedPage);
     });
     transitionPromise = new Promise(resolve => { resolveTransition = resolve; });
-    scheduleTransition(finishPageTransition, normalizeScrollMs(currentDocument?.studio?.codePanelScrollMs) + 40);
     return true;
   }
 
@@ -741,13 +770,30 @@
     const animate = Boolean(options.stable !== true && normalizeScrollMs(trace?.studio?.codePanelScrollMs) > 0
       && currentDocument === trace && currentFrame && currentFrame.id !== frame?.id && !dragState);
     const previousDocument = currentDocument;
+    // Rebuilding the same code panel is presentation work, not a fresh
+    // playback. Preserve the active compound event and its progress until
+    // the scheduler announces its end; otherwise only the declaration name
+    // survives and the initializer loses its yellow highlight mid-event.
+    if (currentDocument && currentFrame) {
+      let states = framePlaybackStates.get(currentDocument);
+      if (!states) { states = new Map(); framePlaybackStates.set(currentDocument, states); }
+      states.set(currentFrame.id, { started: new Set(startedEventIds), completed: new Set(completedEventIds),
+        scheduled: new Set(scheduledEventIds) });
+    }
+    const preservePlayback = currentDocument === trace && currentFrame?.id === frame?.id;
+    const restored = options.stable === true && !preservePlayback
+      ? framePlaybackStates.get(trace)?.get(frame?.id) : null;
     currentDocument = trace;
     applyStoredFontSize();
-    activeEventId = '';
-    startedEventIds = new Set();
-    completedEventIds = new Set();
+    if (!preservePlayback) {
+      activeEventId = '';
+      activeMemberIds = new Set();
+      startedEventIds = new Set(restored?.started || []);
+      completedEventIds = new Set(restored?.completed || []);
+    }
     currentEvents = new Map((frame?.events || []).map(event => [String(event?.id || ''), event]));
-    scheduledEventIds = playbackEventIds(playbackPlan);
+    if (playbackPlan) scheduledEventIds = playbackEventIds(playbackPlan);
+    else if (!preservePlayback) scheduledEventIds = new Set(restored?.scheduled || []);
     if (!scheduledEventIds.size) {
       currentEvents.forEach((event, id) => {
         if (id && event?.type === 'condition') completedEventIds.add(id);
@@ -785,7 +831,10 @@
     const rect = panel.getBoundingClientRect();
     const wrapperRect = panel.parentElement?.getBoundingClientRect?.();
     if (!wrapperRect || rect.left - wrapperRect.left > wrapperRect.width * 0.42) return 0;
-    return Math.max(0, rect.right - wrapperRect.left + 20);
+    // 換回版面座標：編輯動畫的展開過場會用 transform 縮放畫布，鏡頭要的是未縮放的寬度。
+    const layoutWidth = panel.parentElement?.offsetWidth || wrapperRect.width;
+    const scale = layoutWidth > 0 ? wrapperRect.width / layoutWidth : 1;
+    return Math.max(0, (rect.right - wrapperRect.left) / (scale > 0 ? scale : 1) + 20);
   }
 
   function applyPresentationSettings(trace = currentDocument) {
@@ -807,7 +856,7 @@
 
   window.addEventListener('asm:trace-active-event', event => {
     if (event.detail?.document !== currentDocument || event.detail?.frame !== currentFrame) return;
-    setActiveEvent(event.detail?.event?.id || '', event.detail?.phase || 'start');
+    setActiveEvent(event.detail?.event?.id || '', event.detail?.phase || 'start', event.detail?.slot);
   });
 
   window.addEventListener('asm:trace-event-availability-changed', event => {
@@ -830,6 +879,8 @@
 
   window.ASMTraceCodePresenter = {
     renderFrame,
+    // 版面大小剛改變時立即重排字級與位置（不等下一幀），編輯動畫返回投影片時用來避免閃一幀。
+    relayoutNow: () => { applyStoredFontSize(); applyStoredPosition(); },
     setActiveEvent,
     transitionDelay,
     transitionPlan: selectiveTransitionPlan,

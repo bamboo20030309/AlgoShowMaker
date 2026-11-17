@@ -10,16 +10,17 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const SlideStorage = require('../public/slides-storage');
 const { IDBFactory } = require('fake-indexeddb');
+const compact = source => require('../public/animation-recipe').deck(source);
 
 function draft(label = 'initial') {
   return { groups: [{ id: 'g', slides: [{ id: 's', canvas: { label },
-    animation: { traceDocument: { frames: [{ state: { arr: [1, 2] } }],
+    animation: { code: 'int main(){}', traceDocument: { frames: [{ state: { arr: [1, 2] } }],
       studio: { zoom: 2 }, skins: {}, rules: [] } } }] }] };
 }
 
 function inspect(dbFactory, storeName) {
   return new Promise((resolve, reject) => {
-    const request = dbFactory.open('algoshowmaker-drafts-v1', 1);
+    const request = dbFactory.open('algoshowmaker-drafts-v1', 2);
     request.onsuccess = () => {
       const db = request.result;
       const tx = db.transaction(storeName);
@@ -34,14 +35,14 @@ function inspect(dbFactory, storeName) {
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('large drafts bypass localStorage quota and restore complete trace', async () => {
+test('large drafts bypass localStorage quota and restore source and settings', async () => {
   const db = new IDBFactory();
   const storage = memoryStorage({}, () => { throw quotaError(); });
   const client = SlideStorage.create(db, storage);
   const deck = draft();
   deck.groups[0].slides[0].animation.traceDocument.large = 'x'.repeat(6 * 1024 * 1024);
   await client.saveDeck('draft', JSON.stringify(deck));
-  assert.deepEqual(await SlideStorage.create(db, storage).loadDeck('draft'), deck);
+  assert.deepEqual(await SlideStorage.create(db, storage).loadDeck('draft'), compact(deck));
   assert.equal(storage.values.size, 0);
 });
 
@@ -50,11 +51,11 @@ test('migration commits before removing legacy data and prefers IndexedDB afterw
   const deck = draft();
   const storage = memoryStorage({ old: JSON.stringify(deck), unrelated: 'keep' });
   const client = SlideStorage.create(db, storage);
-  assert.deepEqual(await client.loadDeck('draft', ['old']), deck);
+  assert.deepEqual(await client.loadDeck('draft', ['old']), compact(deck));
   assert.equal(storage.getItem('old'), null);
   assert.equal(storage.getItem('unrelated'), 'keep');
   storage.setItem('old', JSON.stringify(draft('obsolete')));
-  assert.deepEqual(await client.loadDeck('draft', ['old']), deck);
+  assert.deepEqual(await client.loadDeck('draft', ['old']), compact(deck));
 });
 
 test('failed migration preserves the original localStorage draft', async () => {
@@ -65,18 +66,18 @@ test('failed migration preserves the original localStorage draft', async () => {
   assert.equal(storage.getItem('old'), JSON.stringify(deck));
 });
 
-test('ordered saves preserve the newest edit and reuse unchanged trace records', async () => {
+test('ordered saves preserve the newest edit and persist no trace records', async () => {
   const db = new IDBFactory();
   const client = SlideStorage.create(db, memoryStorage());
   await Promise.all(['first', 'second', 'latest'].map(label =>
     client.saveDeck('draft', JSON.stringify(draft(label)))));
-  assert.deepEqual(await client.loadDeck('draft'), draft('latest'));
-  assert.equal((await inspect(db, 'traces')).length, 1);
+  assert.deepEqual(await client.loadDeck('draft'), compact(draft('latest')));
+  assert.equal((await inspect(db, 'traces')).length, 0);
   const changed = draft('changed');
   changed.groups[0].slides[0].animation.traceDocument.frames[0].state.arr = [3, 4];
   await client.saveDeck('draft', JSON.stringify(changed));
-  assert.equal((await inspect(db, 'traces')).length, 1);
-  assert.deepEqual(await client.loadDeck('draft'), changed);
+  assert.equal((await inspect(db, 'traces')).length, 0);
+  assert.deepEqual(await client.loadDeck('draft'), compact(changed));
 });
 
 test('aborted transaction preserves existing deck and a later save recovers', async () => {
@@ -101,9 +102,9 @@ test('aborted transaction preserves existing deck and a later save recovers', as
   try {
     await assert.rejects(client.saveDeck('draft', JSON.stringify(draft('bad'))));
   } finally { prototype.objectStore = original; open.close(); }
-  assert.deepEqual(await client.loadDeck('draft'), draft());
+  assert.deepEqual(await client.loadDeck('draft'), compact(draft()));
   await client.saveDeck('draft', JSON.stringify(draft('recovered')));
-  assert.deepEqual(await client.loadDeck('draft'), draft('recovered'));
+  assert.deepEqual(await client.loadDeck('draft'), compact(draft('recovered')));
 });
 
 test('deleting and restoring a slide never references a collected trace', async () => {
@@ -113,7 +114,7 @@ test('deleting and restoring a slide never references a collected trace', async 
   await client.saveDeck('draft', JSON.stringify({ groups: [] }));
   assert.equal((await inspect(db, 'traces')).length, 0);
   await client.saveDeck('draft', JSON.stringify(draft()));
-  assert.deepEqual(await client.loadDeck('draft'), draft());
+  assert.deepEqual(await client.loadDeck('draft'), compact(draft()));
 });
 
 test('another tab cannot invalidate reused trace references', async () => {
@@ -123,7 +124,7 @@ test('another tab cannot invalidate reused trace references', async () => {
   await first.saveDeck('draft', JSON.stringify(draft()));
   await second.saveDeck('draft', JSON.stringify({ groups: [] }));
   await first.saveDeck('draft', JSON.stringify(draft('restored')));
-  assert.deepEqual(await second.loadDeck('draft'), draft('restored'));
+  assert.deepEqual(await second.loadDeck('draft'), compact(draft('restored')));
 });
 
 function quotaError() {
@@ -144,47 +145,30 @@ test('content hashes deduplicate slides and decks without sharing presentation s
   await client.saveDeck('one', before);
   await client.saveDeck('two', JSON.stringify(draft('other')));
   assert.equal(JSON.stringify(deck), before);
-  assert.equal((await inspect(db, 'traces')).length, 1);
+  assert.equal((await inspect(db, 'traces')).length, 0);
   const raw = (await inspect(db, 'decks'))[0];
-  assert.match(raw.deck.groups[0].slides[0].animation.traceRef, /^[a-f0-9]{64}$/);
+  assert.equal(raw.deck.groups[0].slides[0].animation.traceRef, undefined);
   assert.equal(raw.deck.groups[0].slides[0].animation.traceDocument, undefined);
-  assert.deepEqual(await SlideStorage.create(db, memoryStorage()).loadDeck('one'), deck);
+  assert.deepEqual(await SlideStorage.create(db, memoryStorage()).loadDeck('one'), compact(deck));
   await client.saveDeck('one', JSON.stringify({ groups: [] }));
-  assert.equal((await inspect(db, 'traces')).length, 1);
-  assert.deepEqual(await client.loadDeck('two'), draft('other'));
+  assert.equal((await inspect(db, 'traces')).length, 0);
+  assert.deepEqual(await client.loadDeck('two'), compact(draft('other')));
   await client.saveDeck('two', JSON.stringify({ groups: [] }));
   assert.equal((await inspect(db, 'traces')).length, 0);
 });
 
-test('cloud result delta restores all details and rejects missing or altered results', async () => {
-  const first = await SlideStorage.project(draft());
-  const changed = draft('camera edit');
-  changed.groups[0].slides[0].animation.traceDocument.studio.zoom = 8;
-  const second = await SlideStorage.project(changed);
-  assert.deepEqual(Object.keys(first.traces), Object.keys(second.traces));
-  second.traces = {};
-  const merged = await SlideStorage.merge(second, first);
-  assert.deepEqual(SlideStorage.hydrate(merged), changed);
-  await assert.rejects(SlideStorage.merge(second), /缺少/);
-  const corrupted = JSON.parse(JSON.stringify(first));
-  Object.values(corrupted.traces)[0].frames[0].state.arr = [99];
-  await assert.rejects(SlideStorage.merge(corrupted), /雜湊/);
-  assert.deepEqual(SlideStorage.hydrate(first), draft());
+test('cloud recipe merge keeps presentation settings without requiring old result payloads', async () => {
+  const changed=draft('camera edit');changed.groups[0].slides[0].animation.traceDocument.studio.zoom=8;
+  const projected=await SlideStorage.project(changed);assert.deepEqual(projected.traces,{});
+  assert.deepEqual(SlideStorage.hydrate(await SlideStorage.merge(projected)),compact(changed));
+  assert.equal(SlideStorage.hydrate(projected).groups[0].slides[0].animation.traceView.studio.zoom,8);
 });
-
-test('trace hash ignores object property order but not execution data', async () => {
-  const first = draft();
-  const reordered = draft();
-  reordered.groups[0].slides[0].animation.traceDocument = {
-    rules: [], skins: {}, studio: { zoom: 2 }, frames: [{ state: { arr: [1, 2] } }]
-  };
-  assert.deepEqual(Object.keys((await SlideStorage.project(first)).traces),
-    Object.keys((await SlideStorage.project(reordered)).traces));
-  const incomplete = await SlideStorage.project(first);
-  const referenceOnly = await SlideStorage.project(incomplete.deck);
-  assert.equal(Object.keys(referenceOnly.traces).length, 0);
-  const client = SlideStorage.create(new IDBFactory(), memoryStorage());
-  await assert.rejects(client.saveDeck('missing', JSON.stringify(referenceOnly.deck)), /取消|Abort/);
+test('runtime hashes validate execution data while result-free drafts remain saveable', async () => {
+  const client=SlideStorage.create(new IDBFactory(),memoryStorage()),trace={frames:[{state:{arr:[1,2]}}]};
+  const key=await SlideStorage.digest(SlideStorage.canonical(trace));
+  await client.putTrace(key,trace);await assert.rejects(client.putTrace(key,{frames:[]}),/hash/i);
+  await client.saveDeck('empty-result',JSON.stringify((await SlideStorage.project(draft())).deck));
+  assert.equal((await client.loadDeck('empty-result')).groups[0].slides[0].animation.traceRef,undefined);
 });
 
 function memoryStorage(initial = {}, beforeSet = null) {
@@ -252,4 +236,11 @@ test('an unrecoverable local quota failure is reported without throwing', () => 
   assert.equal(result.saved, false);
   assert.equal(result.recoveredFromQuota, false);
   assert.equal(result.error?.name, 'QuotaExceededError');
+});
+
+
+test('deleting an obsolete sample removes only that draft, preserving other drafts and other decks',async()=>{
+ const db=new IDBFactory(),legacy=memoryStorage(),client=SlideStorage.create(db,legacy);
+ await client.saveDeck('sample',JSON.stringify(draft('sample')));await client.saveDeck('project',JSON.stringify(draft('project')));legacy.setItem('sample','old fallback');
+ await client.deleteDeck('sample');assert.equal(await client.loadDeck('sample'),null);assert.equal(legacy.getItem('sample'),null);assert.deepEqual(await client.loadDeck('project'),compact(draft('project')));assert.equal((await inspect(db,'traces')).length,0);
 });

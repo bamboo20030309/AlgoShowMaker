@@ -67,7 +67,7 @@ test('@for manual ranges accept frame-local @let aliases', () => {
 });
 
 test('compiled named block shares actual entries across styles, arrows and text, preserving reload and primes', async () => {
-  const code=fs.readFileSync(path.join(__dirname,'fixtures/drawing-loop-sieve.cpp'),'utf8');
+  const code=fs.readFileSync(path.join(__dirname, 'fixtures/drawing-loop-sieve.cpp'),'utf8');
   const { trace,window }=await compile(code);
   const compact=trace.frames.filter(frame=>frame.eventControls.length);
   assert.equal(compact.length,23);

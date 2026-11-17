@@ -10,14 +10,12 @@
   const mobileClasses = [
     'asm-mobile-code-open',
     'asm-mobile-more-open',
-    'asm-mobile-studio-rail-open',
-    'asm-mobile-studio-inspector-open',
     'asm-mobile-slide-tools-open',
     'asm-mobile-slide-controls-open'
   ];
 
   const closeAlgorithmDrawers = except => {
-    ['asm-mobile-code-open', 'asm-mobile-more-open', 'asm-mobile-studio-rail-open', 'asm-mobile-studio-inspector-open']
+    ['asm-mobile-code-open', 'asm-mobile-more-open']
       .filter(name => name !== except)
       .forEach(name => body.classList.remove(name));
   };
@@ -105,9 +103,7 @@
     if (!dock) return;
     const state = {
       code: body.classList.contains('asm-mobile-code-open'),
-      more: body.classList.contains('asm-mobile-more-open'),
-      frames: body.classList.contains('asm-mobile-studio-rail-open'),
-      inspector: body.classList.contains('asm-mobile-studio-inspector-open')
+      more: body.classList.contains('asm-mobile-more-open')
     };
     dock.querySelectorAll('[data-mobile-action]').forEach(element => {
       element.setAttribute('aria-pressed', String(Boolean(state[element.dataset.mobileAction])));
@@ -129,16 +125,13 @@
       button('程式碼', 'code', 'asm-mobile-standard-only'),
       button('畫布', 'canvas'),
       button('輸入', 'input', 'asm-mobile-standard-only'),
-      button('更多', 'more', 'asm-mobile-standard-only'),
-      button('幀', 'frames', 'asm-mobile-studio-only'),
-      button('屬性', 'inspector', 'asm-mobile-studio-only')
+      button('更多', 'more', 'asm-mobile-standard-only')
     );
 
     const tabs = document.getElementById('subTabs');
     const extraActions = [
       ['範例', 'algoSamplesBtn'],
-      ['編輯動畫', 'editAnimationBtn'],
-      ['事件設定', 'eventSettingsBtn']
+      ['我的程式碼', 'myCodesBtn']
     ];
     extraActions.forEach(([label, targetId]) => {
       if (!tabs) return;
@@ -169,9 +162,7 @@
       } else {
         const className = {
           code: 'asm-mobile-code-open',
-          more: 'asm-mobile-more-open',
-          frames: 'asm-mobile-studio-rail-open',
-          inspector: 'asm-mobile-studio-inspector-open'
+          more: 'asm-mobile-more-open'
         }[action];
         if (!className) return;
         const open = !body.classList.contains(className);

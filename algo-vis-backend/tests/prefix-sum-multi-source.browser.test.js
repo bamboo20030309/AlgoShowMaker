@@ -89,7 +89,7 @@ test('prefix sum frame 48 animates all four matrix sources together', { timeout:
     }, { code, input });
     assert.deepEqual(result.assignment?.operators, ['+', '+', '-', '+']);
     assert.deepEqual(result.assignment?.indices, [[3, 2], [4, 1], [3, 1], [4, 2]]);
-    assert.ok(result.transferSamples.includes(JSON.stringify(['+17', '+34', '+39', '-18'])),
+    assert.ok(result.transferSamples.includes(JSON.stringify(['17', '18', '34', '39'])),
       JSON.stringify(result));
     assert.ok(result.targetPaints.every(paint => ['#fff', '#ffffff'].includes(JSON.parse(paint).fill)),
       JSON.stringify(result));

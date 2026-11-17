@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { validate } = require('../scripts/animation-assertions');
+const { validate } = require('../scripts/validation/animation-assertions');
 
 // Independent times and values: two consecutive writes target the same cell.
 function check(elapsed, value) {

@@ -25,6 +25,18 @@ const declaration = `
 // @layout quick_tree direction top-down
 `;
 
+test('tree arrow direction is independent of layout direction and resets to legacy behavior', () => {
+  for (const direction of ['up', 'down', 'left', 'right', 'parent-to-child', 'child-to-parent']) {
+    const [layout] = findLayoutDirectives(`// @layout recursion as tree\n// @layout tree arrow-direction ${direction}`);
+    assert.equal(layout.arrowDirection, direction);
+    assert.equal(layout.direction, 'top-down');
+  }
+  const [reset] = findLayoutDirectives('// @layout recursion as tree\n// @layout tree arrow-direction up\n// @layout tree reset');
+  assert.equal(reset.arrowDirection, 'parent-to-child');
+  assert.throws(() => findLayoutDirectives('// @layout recursion as tree\n// @layout tree arrow-direction diagonal'), /arrow-direction/);
+  assert.throws(() => findLayoutDirectives('// @layout linear as row\n// @layout row arrow-direction up'), /linear 不支援/);
+});
+
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------

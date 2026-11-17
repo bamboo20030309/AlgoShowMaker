@@ -1,187 +1,150 @@
-/*
- * 範例：插入排序
- *
- * 用途與核心步驟：逐一取出未排序元素，將較大的已排序元素右移，再把目前元素插入空出的正確位置。
- * 輸入、輸出與複雜度：輸入長度 n 的陣列；輸出遞增排序陣列。平均／最壞 O(n^2)、最佳 O(n)、額外空間 O(1)，屬穩定排序。
- *
- * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
- * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
- */
-
 #include <bits/stdc++.h>
-#include "AV.hpp"
 using namespace std;
-AV av;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
-// ─────────────────────────────────────────────────────────────────────────────
+// @defaults
+// @camera focus arr offset(0,20) zoom(2.0)
+// @enddefaults
 
 int main() {
     int n; cin>>n;
     vector<int> arr(n);
-    for (int i=0; i<n; i++) cin>>arr[i];
-    //draw{
-    av.start_draw();
-    int x_base = 350;
-    int y_base = 100;
-    int y_gap  = 110;
+    for(auto&v:arr) cin>>v;
 
-    string last_id = "init";
-    Pos last_pos((double)x_base, (double)y_base);
+    // @frame arr
+    // @text "Insertion Sort (插入排序)\n將元素不斷與左側鄰居交換，直到鑽到正確位置" at arr.top
+    for (int i = 1; i < n; i++) {
+        int j = i - 1;
+        int key = arr[i];
 
-    // --- 1. init: 初始狀態 ---
-    av.accu_store(last_id, last_pos, arr, {}, {0}, "normal", 0, 1);
-    
-    av.start_frame_draw();
-    av.accu_draw();
-    av.colored_text({{"Insertion Sort (插入排序)\n將元素不斷與左側鄰居交換，直到鑽到正確位置"}}, Pos(last_id, "top", 0, -20));
-    av.auto_camera(); 
-    av.end_frame_draw();
+        // 顯示即將取出的元素與比較位置
+        // @frame arr,key
+        // @pointer j at arr
+        // @pointer j+1 at arr
+        // @style arr[0:i] background AV_red when value <= key && index != j+1
+        // @style arr[0:i] background AV_green when value > key && index != j+1
+        // @text "拿第 ${j+1} 個元素當成 key 準備插入" at arr.bottom
+        while (j >= 0 && arr[j] > key) {
+            // 顯示 arr[j] 準備向右搬移
+            // @frame arr,key
+            // @pointer j at arr
+            // @pointer j+1 at arr
+            // @style arr[0:i] background AV_red when value <= key && index != j+1
+            // @style arr[0:i] background AV_green when value > key && index != j+1
+            // @text "第 ${j} 個元素比 key 大" at arr.bottom when arr[j]>key
+            arr[j + 1] = arr[j];
 
-    // --- 2. pass_1: 標記第一個元素 ---
-    string pass1_id = "pass_1";
-    Pos pass1_pos((double)x_base, last_pos.y + y_gap);
-
-    av.start_frame_draw();
-    av.accu_draw();
-    av.frame_draw(pass1_id, pass1_pos, arr, {{{"mark"}, {0}}}, {0}, "normal", 0, 1);
-    av.arrow(Pos(last_id, "bottom"), Pos(pass1_id, "top"));
-    av.text("第一個元素 " + to_string(arr[0]) + " 已在正確位置", Pos(pass1_id, "bottom", 0, 20));
-    av.camera(Pos(pass1_id), 1.2);
-    av.end_frame_draw();
-
-    av.accu_store(pass1_id, pass1_pos, arr, {{{"mark"}, {0}}}, {0}, "normal", 0, 1);
-    av.accu_store_arrow(Pos(last_id, "bottom"), Pos(pass1_id, "top"));
-    last_id = pass1_id;
-    last_pos = pass1_pos;
-    //}
-
-    for (int i=1; i<n; i++) {
-        //draw{
-        string current_id = "pass_" + to_string(i + 1); 
-        Pos current_pos((double)x_base, last_pos.y + y_gap);
-        
-        int moving_val = arr[i]; 
-
-        // --- 提取元素影格 ---
-        av.start_frame_draw();
-        av.accu_draw();
-        
-        vector<int> ex_lt, ex_gt;
-        for (int k = 0; k < i; k++) {
-            if (arr[k] < moving_val) ex_lt.push_back(k);
-            else if (arr[k] > moving_val) ex_gt.push_back(k);
-        }
-
-        av.frame_draw(current_id, current_pos, arr, {
-            {{"highlight"}, {i}},
-            {{"point"}, {i}},
-            {{"background", "rgba(255, 82, 82, 0.45)"}, ex_lt}, 
-            {{"background", "rgba(56, 255, 56, 0.45)"}, ex_gt}, 
-            {{"mark"}, AV::AtoB(0, i - 1)}
-        }, {0}, "normal", 0, 1);
-        av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-        av.text("拿到 " + to_string(moving_val) + " 準備向前插入", Pos(current_id, "bottom", 0, 20));
-        av.camera(Pos(current_id), 1.2);
-        av.end_frame_draw();
-        
-        bool moved = false;
-        //}
-        int j;
-        for (j=i; j>0 && arr[j]<arr[j-1]; j--) {
-            //draw{
-            moved = true;
-            // --- 比較與準備交換影格 ---
-            av.start_frame_draw();
-            av.accu_draw();
+            // 顯示搬移完成的狀態
+            // @frame arr,key
+            // @pointer j at arr
+            // @pointer j+1 at arr
+            // @style arr[0:i] background AV_red when value <= key && index != j
+            // @style arr[0:i] background AV_green when value > key && index != j
+            // @text "將 ${arr[j]} 往右推" at arr.bottom
+            j--;
             
-            vector<int> lt, gt;
-            for (int k = 0; k <= i; k++) {
-                if (k == j) continue; 
-                if (arr[k] < moving_val) lt.push_back(k);
-                else if (arr[k] > moving_val) gt.push_back(k);
-            }
-
-            av.frame_draw(current_id, current_pos, arr, {
-                {{"highlight"}, {j, j - 1}},
-                {{"point"}, {j}},
-                {{"background", "rgba(255, 82, 82, 0.45)"}, lt},
-                {{"background", "rgba(56, 255, 56, 0.45)"}, gt},
-                {{"mark"}, AV::AtoB(0, i - 1)}
-            }, {0}, "normal", 0, 1);
-            av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text(to_string(arr[j]) + " < " + to_string(arr[j-1]) + " 向左交換", Pos(current_id, "bottom", 0, 20));
-            av.camera(Pos(current_id), 1.2);
-            av.end_frame_draw();
-            //}
-            swap(arr[j], arr[j-1]);
-        }
-        //draw{
-        // --- 停止移動原因說明 ---
-        if (j > 0) {
-            // 因為 arr[j] >= arr[j-1] 停止
-            av.start_frame_draw();
-            av.accu_draw();
-            
-            vector<int> s_lt, s_gt;
-            for (int k = 0; k <= i; k++) {
-                if (k == j) continue; 
-                if (arr[k] < moving_val) s_lt.push_back(k);
-                else if (arr[k] > moving_val) s_gt.push_back(k);
-            }
-            av.frame_draw(current_id, current_pos, arr, {
-                {{"highlight"}, {j, j - 1}},
-                {{"point"}, {j}},
-                {{"background", "rgba(255, 82, 82, 0.45)"}, s_lt}, 
-                {{"background", "rgba(56, 255, 56, 0.45)"}, s_gt},
-                {{"mark"}, AV::AtoB(0, i - 1)}
-            }, {0}, "normal", 0, 1);
-            av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text(to_string(arr[j]) + " {>=:不小於} " + to_string(arr[j-1]) + " 停止交換", Pos(current_id, "bottom", 0, 20));
-            av.camera(Pos(current_id), 1.2);
-            av.end_frame_draw();
-        } else if (moved) {
-            // j == 0 且有移動過，代表到頭了
-            av.start_frame_draw();
-            av.accu_draw();
-            av.frame_draw(current_id, current_pos, arr, {
-                {{"highlight"}, {0}},
-                {{"mark"}, AV::AtoB(0, i - 1)}
-            }, {0}, "normal", 0, 1);
-            av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text("到達最左端 停止交換", Pos(current_id, "bottom", 0, 20));
-            av.camera(Pos(current_id), 1.2);
-            av.end_frame_draw();
         }
 
-        // 最終歸位紀錄影格
-        av.start_frame_draw();
-        av.accu_draw();
-        av.frame_draw(current_id, current_pos, arr, {
-            {{"mark"}, AV::AtoB(0, i)} 
-        }, {0}, "normal", 0, 1);
-        av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-        av.text("元素已插入正確位置", Pos(current_id, "bottom", 0, 20));
-        av.camera(Pos(current_id), 1.2);
-        av.end_frame_draw();
+        // 將 key 插入空出來的位置
+        arr[j + 1] = key;
 
-        // 輪末正式存檔
-        av.accu_store(current_id, current_pos, arr, {{{"mark"}, AV::AtoB(0, i)}}, {0}, "normal", 0, 1);
-        av.accu_store_arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-        
-        last_id = current_id;
-        last_pos = current_pos;
-        //}
+        // j 可能是 -1，但 j+1 一定是插入位置
+        // @frame arr,key
+        // @pointer j at arr
+        // @pointer j+1 at arr
+        // @style arr[0:i] background AV_red when value <= key && index != j+1
+        // @style arr[0:i] background AV_green when value > key && index != j+1
+        // @text "到達最左邊 插入到最左邊" at arr.bottom when j<0
+        // @text "因為 第 ${j} 格比 key 小 所以插入第 ${j+1} 格" at arr.bottom when j>=0
     }
-    //draw{
-    av.start_frame_draw();
-    av.accu_draw();
-    av.frame_draw(last_id, last_pos, arr, {{{"mark"}, AV::AtoB(0, n - 1)}}, {0}, "normal", 0, 1);
-    av.text("Insertion Sort 完成！", Pos(last_id, "bottom", 0, 20));
-    av.auto_camera(); 
-    av.end_frame_draw();
-    av.end_draw();
-    //}
+
+    // @frame arr
+    // @text "Insertion Sort 完成" at arr.bottom
     return 0;
 }
+
+/* @asm-view
+{
+  "version": 1,
+  "rules": [],
+  "skins": {},
+  "studio": {
+    "cameraRules": [
+      {
+        "id": "camera-frame-mu2x7rnd",
+        "name": "鏡頭範圍",
+        "zoom": 2,
+        "centerX": 640,
+        "centerY": 152,
+        "binding": {
+          "targetAnchor": "bottom",
+          "targetVariable": {
+            "name": "arr",
+            "functionName": "main"
+          }
+        },
+        "autoCapture": false,
+        "manualFrame": true,
+        "allFrames": true
+      }
+    ],
+    "eventInstructionStates": {
+      "write:main:j--": true,
+      "assign:main:key = arr[i]": true,
+      "compare:main:i < n": false,
+      "write:main:i++": false,
+      "declare:main:j": true,
+      "declare:main:key": true,
+      "scope-exit:main:j": true,
+      "scope-exit:main:key": true,
+      "scope-exit:main:i": false,
+      "assign:main:j = i - 1": true,
+      "compare:main:j >= 0": false,
+      "assign:main:i = 1": false,
+      "declare:main:i": false,
+      "declare:main:arr": false
+    },
+    "codePanelPosition": {
+      "x": 0.052,
+      "y": 0.3671
+    },
+    "frameMaps": {
+      "objectStyles": [
+        {
+          "sourceSelectors": [
+            {
+              "kind": "manual-frame",
+              "functionName": "main",
+              "directiveKey": "manual-frame:pwnn7m:0",
+              "logicalDirectiveKey": "manual-frame-logical:qrkyj4:0"
+            }
+          ],
+          "value": {
+            "text:line-10": {
+              "fontSize": 10
+            }
+          }
+        }
+      ],
+      "eventStates": [
+        {
+          "sourceFrameSelectors": [
+            {
+              "selector": {
+                "kind": "manual-frame",
+                "functionName": "main",
+                "directiveKey": "manual-frame:1xp020n:2",
+                "logicalDirectiveKey": "manual-frame-logical:5jprzp:2"
+              },
+              "occurrence": 2
+            }
+          ],
+          "value": {
+            "read:main:21:arr[j]::0": false,
+            "assign:main:21:arr[j + 1] = arr[j]::0": true
+          }
+        }
+      ]
+    }
+  }
+}
+@asm-view */

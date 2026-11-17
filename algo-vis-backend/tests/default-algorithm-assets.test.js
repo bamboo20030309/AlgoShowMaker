@@ -1,41 +1,14 @@
-/**
- * 驗證預設演算法的獨立預覽／完整 Trace 資產及其建置接線。
- */
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-
-const root = path.resolve(__dirname, '..');
-const publicRoot = path.join(root, 'public');
-global.ASMTraceProvenance = require('../public/trace-provenance.js');
-global.ASMDeck = require('../public/asmdeck.js');
-const traceBundle = require('../public/trace-bundle.js');
-
-test('standalone linear-sieve assets contain one preview frame and the complete verified trace', async () => {
-  const directory = path.join(publicRoot, 'default-animation');
-  const manifest = traceBundle.validateManifest(JSON.parse(
-    fs.readFileSync(path.join(directory, 'manifest.json'), 'utf8')
-  ));
-  const decode = async (name, descriptor, kind) => traceBundle.decode(
-    new Blob([fs.readFileSync(path.join(directory, name))]), descriptor, manifest, kind
-  );
-  const preview = await decode('linear-sieve-preview.asmtrace', manifest.preview, 'preview');
-  const full = await decode('linear-sieve-full.asmtrace', manifest.full, 'full');
-
-  assert.equal(manifest.totalFrames, 116);
-  assert.equal(preview.animation.traceDocument.frames.length, 1);
-  assert.equal(full.animation.traceDocument.frames.length, 116);
-  assert.equal(preview.animation.code, full.animation.code);
-  assert.equal(preview.animation.input, '100');
-  assert.equal(full.animation.traceDocument.sourceCode, full.animation.code);
-  assert.ok(manifest.preview.bytes < 30 * 1024, 'first-frame preview should remain lightweight');
-  assert.ok(manifest.full.bytes < fs.statSync(path.join(publicRoot, 'guest-decks/linear-sieve.asmdeck')).size,
-    'standalone animation should remain smaller than the complete teaching deck');
+'use strict';
+const{test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const{readPackage}=require('./helpers/deck-package'),{buildDefaultAlgorithmAssets}=require('../scripts/build/default-algorithm-assets');
+test('standalone default contains only linear-sieve source/settings and native executable ID',()=>{
+ const manifest=require('../public/default-animation/manifest.json'),a=manifest.animation;
+ assert.equal(manifest.packageVersion,2);assert.equal(a.input,'100');assert.equal(a.traceDocument,undefined);assert.equal(a.traceRef,undefined);assert.equal(manifest.preview,undefined);assert.equal(manifest.full,undefined);assert.match(a.executableRef.id,/^[a-f0-9]{64}$/);
+ const deck=readPackage(fs.readFileSync('public/guest-decks/linear-sieve.asmdeck')).body.deck,source=deck.groups.flatMap(g=>g.slides).find(s=>s.animation).animation;
+ assert.equal(a.code,source.code);assert.ok(!fs.readdirSync('public/default-animation').some(n=>n.endsWith('.asmtrace')));
 });
-
-test('guest deck prebuild regenerates the standalone default animation', () => {
-  const script = fs.readFileSync(path.join(root, 'scripts/prebuild-guest-decks.js'), 'utf8');
-  assert.match(script, /entry\.id === 'linear-sieve'/);
-  assert.match(script, /buildDefaultAlgorithmAssets\(rebuilt/);
+test('default builder writes a recipe manifest without preview or full result assets',async t=>{
+ const target=fs.mkdtempSync(path.join(os.tmpdir(),'asm-default-recipe-'));t.after(()=>fs.rmSync(target,{recursive:true,force:true}));
+ const deck=readPackage(fs.readFileSync('public/guest-decks/linear-sieve.asmdeck')).body.deck,manifest=await buildDefaultAlgorithmAssets(deck,{publicRoot:target});
+ assert.deepEqual(fs.readdirSync(path.join(target,'default-animation')),['manifest.json']);assert.deepEqual(JSON.parse(fs.readFileSync(path.join(target,'default-animation/manifest.json'))),manifest);
 });

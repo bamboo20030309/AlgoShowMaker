@@ -14,10 +14,7 @@
   let analyzedCode = '';
   let drawingEnabled = true;
   let currentTrace = null;
-  let studioButton = null;
-  let eventSettingsButton = null;
   let eventSettingsPanel = null;
-  let eventSettingsCloseTimer = null;
   let eventSettingsSaveTimer = null;
   let accountEventSettings = null;
   let accountEventSettingsToken = '';
@@ -28,10 +25,13 @@
   let sourceViewBaseline = null;
   let pendingAnimation = null;
   let pendingViewBaseline = null;
-  const embedMode = new URLSearchParams(window.location.search).get('asmEmbed');
+  // 投影片的同一個 iframe 會在 runtime 與 editor 之間切換，模式每次都從 body class 讀取。
+  const embedMode = () => document.body.classList.contains('asm-embed-runtime') ? 'runtime'
+    : document.body.classList.contains('asm-embed-editor') ? 'editor'
+      : new URLSearchParams(window.location.search).get('asmEmbed');
 
   const EVENT_SETTING_TYPES = [
-    'declare', 'object-exit', 'assignment', 'compare', 'swap',
+    'declare', 'object-exit', 'assignment', 'input-assign', 'compare', 'swap',
     'call', 'control-flow', 'function-enter', 'function-exit'
   ];
   const LEGACY_EVENT_SETTING_ALIASES = Object.freeze({
@@ -44,7 +44,7 @@
     break: 'control-flow',
     continue: 'control-flow'
   });
-  const DEFAULT_EVENT_GAP_MS = 500;
+  const DEFAULT_EVENT_GAP_MS = window.ASMTraceEvents?.defaultEventGapMs ?? 500;
 
   // ---------------------------------------------------------------------------
   // 區段：來源與 presentation 區塊
@@ -55,7 +55,9 @@
   }
 
   function sourceViewBlock(source) {
-    return window.ASMTraceViewSource?.findBlock?.(source)?.text || null;
+    // Ace normalizes CRLF when loading saved Windows source. A line-ending
+    // conversion is not a settings edit and must not replace the saved view.
+    return window.ASMTraceViewSource?.findBlock?.(source)?.text?.replace(/\r\n?/g, '\n') || null;
   }
 
   function sourceViewWasEdited() {
@@ -120,22 +122,25 @@
       return flags;
     };
     return {
-      gapMs: Number.isFinite(Number(value.gapMs))
-        ? Math.max(0, Math.min(2000, Number(value.gapMs)))
-        : DEFAULT_EVENT_GAP_MS,
+      gapMs: window.ASMTraceEvents.normalizeEventGapMs(value.gapMs),
       autoFixedEnabled: typeof value.autoFixedEnabled === 'boolean'
         ? value.autoFixedEnabled
         : (typeof value.defaultEnabled?.fixed === 'boolean' ? value.defaultEnabled.fixed : true),
       autoLoopBoundaryEnabled: value.autoLoopBoundaryEnabled === true,
+      readHighlightEnabled: value.readHighlightEnabled === true,
+      readHighlightColor: typeof value.readHighlightColor === 'string' && value.readHighlightColor.trim()
+        ? value.readHighlightColor.trim().slice(0, 128) : 'red',
       defaultEnabled: cleanFlags(value.defaultEnabled),
       timelineTypes: cleanFlags(value.timelineTypes)
     };
   }
 
   function documentEventSettings(value = {}) {
-    return Object.fromEntries(['autoFixedEnabled', 'autoLoopBoundaryEnabled'].flatMap(key => (
+    const flags = Object.fromEntries(['autoFixedEnabled', 'autoLoopBoundaryEnabled', 'readHighlightEnabled'].flatMap(key => (
       typeof value?.[key] === 'boolean' ? [[key, value[key]]] : []
     )));
+    if (typeof value?.readHighlightColor === 'string') flags.readHighlightColor = value.readHighlightColor;
+    return flags;
   }
 
   function applyAccountEventSettings() {
@@ -187,7 +192,7 @@
 
   function scheduleAccountEventSettingsSave() {
     // A sample copy must not write the signed-in user's account preferences.
-    if (embedMode === 'runtime' || new URLSearchParams(location.search).get('localOnly') === '1') return;
+    if (embedMode() === 'runtime' || new URLSearchParams(location.search).get('localOnly') === '1') return;
     const token = localStorage.getItem('algo_jwt_token') || '';
     if (!token || !currentTrace) return;
     accountEventSettings = cleanEventSettings(currentTrace.studio?.eventSettings || { gapMs: DEFAULT_EVENT_GAP_MS });
@@ -242,10 +247,11 @@
     return window.ace?.edit && editor ? window.ace.edit(editor).getValue() : '';
   }
 
+  // 整份動畫的事件設定放在左側「事件動畫」標籤；沒有動畫時隱藏。
   function updateStudioButton() {
-    const disabled = !currentTrace?.frames?.length;
-    if (studioButton) studioButton.disabled = disabled;
-    if (eventSettingsButton) eventSettingsButton.disabled = disabled;
+    if (!eventSettingsPanel) return;
+    eventSettingsPanel.hidden = !currentTrace?.frames?.length;
+    if (!eventSettingsPanel.hidden) renderEventSettings();
   }
 
   function ensureEventSettings() {
@@ -265,7 +271,7 @@
     delete settings.timelineTypes.fixed;
     delete settings.defaultEnabled.condition;
     delete settings.timelineTypes.condition;
-    if (!Number.isFinite(Number(settings.gapMs))) settings.gapMs = DEFAULT_EVENT_GAP_MS;
+    settings.gapMs = window.ASMTraceEvents.normalizeEventGapMs(settings.gapMs);
     return settings;
   }
 
@@ -283,8 +289,9 @@
       animatePositions: false
     });
     window.ASMTraceStudio?.refresh?.();
+    // userEdit：左側面板把這次調整記入復原歷史（寫回程式碼仍依 persistDocument）。
     window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', {
-      detail: { document: currentTrace }
+      detail: { document: currentTrace, userEdit: true }
     }));
     if (options.persistDocument === true) writeDocumentEventSettings();
     scheduleAccountEventSettingsSave();
@@ -317,8 +324,9 @@
         ? settings.defaultEnabled[definition.type]
         : definition.enabledByDefault !== false;
       enabled.title = '新指令預設播放動畫';
+      // 點擊當下才取設定物件：載入帳號預設後 eventSettings 會換成新物件，畫面內容相同時不一定重畫。
       enabled.addEventListener('change', () => {
-        settings.defaultEnabled[definition.type] = enabled.checked;
+        ensureEventSettings().defaultEnabled[definition.type] = enabled.checked;
         saveEventSettings();
       });
       const timeline = document.createElement('input');
@@ -326,9 +334,9 @@
       timeline.checked = Object.hasOwn(settings.timelineTypes, definition.type)
         ? settings.timelineTypes[definition.type]
         : definition.timelineByDefault === true;
-      timeline.title = '顯示在事件時間線';
+      timeline.title = '顯示在事件程式碼清單';
       timeline.addEventListener('change', () => {
-        settings.timelineTypes[definition.type] = timeline.checked;
+        ensureEventSettings().timelineTypes[definition.type] = timeline.checked;
         saveEventSettings();
       });
       row.append(name, enabled, timeline);
@@ -338,6 +346,7 @@
     autoFixed.checked = settings.autoFixedEnabled !== false;
     const autoLoopBoundary = eventSettingsPanel.querySelector('.trace-auto-loop-boundary-toggle');
     autoLoopBoundary.checked = settings.autoLoopBoundaryEnabled === true;
+    eventSettingsPanel.querySelector('.trace-read-highlight-toggle').checked = settings.readHighlightEnabled === true;
     const gap = eventSettingsPanel.querySelector('.trace-event-gap');
     gap.value = String(settings.gapMs);
     gap.title = `間隔時間 ${settings.gapMs} ms`;
@@ -351,7 +360,7 @@
     panel.className = 'trace-event-settings-panel';
     panel.hidden = true;
     const head = document.createElement('header');
-    head.innerHTML = '<strong>事件設定</strong><span>預設動畫</span><span>列入事件線</span>';
+    head.innerHTML = '<strong>事件設定</strong><span>預設動畫</span><span>列進事件程式碼</span>';
     const list = document.createElement('div');
     list.className = 'trace-event-settings-list';
     const autoFixedRow = document.createElement('label');
@@ -412,8 +421,24 @@
     const gapValue = document.createElement('output');
     gapValue.className = 'trace-event-gap-value';
     gapRow.append(gap, gapValue);
-    panel.append(head, list, autoFixedRow, autoLoopBoundaryRow, gapRow);
-    document.body.append(panel);
+    const readRow = document.createElement('label');
+    readRow.className = 'trace-auto-fixed-settings';
+    const readCopy = document.createElement('span');
+    const readTitle = document.createElement('strong');
+    readTitle.textContent = '讀取強調';
+    const readHint = document.createElement('small');
+    readHint.textContent = '以 AV_red 強調目前使用的資料，隨所屬操作顯示，不增加步驟';
+    readCopy.append(readTitle, readHint);
+    const readToggle = document.createElement('input');
+    readToggle.type = 'checkbox';
+    readToggle.className = 'trace-read-highlight-toggle';
+    readToggle.addEventListener('change', () => {
+      ensureEventSettings().readHighlightEnabled = readToggle.checked;
+      sourceEventSettingOverrides.readHighlightEnabled = readToggle.checked;
+      saveEventSettings({ persistDocument: true });
+    });
+    readRow.append(readCopy, readToggle);
+    panel.append(head, list, autoFixedRow, autoLoopBoundaryRow, readRow, gapRow);
     return panel;
   }
 
@@ -457,7 +482,8 @@
       sliceMode,
       watches: watches.map(variable => variable.id),
       skins,
-      rules: window.ASMTraceViewSource?.parse?.(code)?.rules || []
+      // 跨幀規則已不再使用（動畫完全由指令驅動）。
+      rules: []
     };
   }
 
@@ -465,9 +491,6 @@
   // 區段：文件載入與畫面同步
   // ---------------------------------------------------------------------------
   function applyTraceDocument(trace, options = {}) {
-    if (options.openStudio === false && document.body.classList.contains('asm-trace-studio-open')) {
-      window.ASMTraceStudio?.close?.({ render: false });
-    }
     let preparedTrace = trace;
     const source = editorSource();
     const pending = pendingAnimation?.rebuild;
@@ -520,25 +543,19 @@
     sliceMode = currentTrace.sliceMode === 'manual' ? 'manual' : 'auto';
     updateStudioButton();
     loadAccountEventSettings();
-    setTimeout(() => {
-      if (embedMode === 'runtime' || options.openStudio === false) {
-        if (document.body.classList.contains('asm-trace-studio-open')) window.ASMTraceStudio?.close?.({ render: false });
-        return;
-      }
-      window.ASMTraceStudio?.open(currentTrace);
-    }, 0);
+    // 左側「程式碼框」「事件動畫」標籤跟著目前動畫；投影片放映的 runtime 不需要。
+    if (embedMode() !== 'runtime') window.ASMTraceStudio?.attach?.(currentTrace);
     return currentTrace;
   }
 
   function clearAnimation() {
-    window.ASMTraceStudio?.close?.({ render: false });
+    window.ASMTraceStudio?.detach?.();
     currentTrace = null;
     pendingAnimation = null;
     pendingViewBaseline = null;
     sourceViewBaseline = null;
     mode = 'manual';
     sliceMode = 'auto';
-    if (eventSettingsPanel) eventSettingsPanel.hidden = true;
     updateStudioButton();
     window.ASMTracePlayer?.clear?.();
     window.dispatchEvent(new CustomEvent('asm:trace-loaded'));
@@ -546,7 +563,7 @@
 
   function loadAnimation(animation = {}, options = {}) {
     animation = window.ASMAlgorithmAnimation.normalize(animation);
-    pendingAnimation = animation.rebuild && !animation.traceDocument?.frames?.length ? animation : null;
+    pendingAnimation = (animation.rebuild || animation.traceRef) && !animation.traceDocument?.frames?.length ? animation : null;
     pendingViewBaseline = pendingAnimation ? sourceViewBlock(editorSource()) : null;
     mode = animation.mode === 'trace' || animation.traceDocument ? 'trace' : 'manual';
     sliceMode = animation.sliceMode === 'manual' ? 'manual' : animation.sliceMode === 'full' ? 'full' : 'auto';
@@ -588,54 +605,21 @@
       rules: savedTrace?.rules || pendingAnimation?.rules || [],
       traceDocument: savedTrace,
       ...(pendingAnimation ? {
-        rebuild: JSON.parse(JSON.stringify(pendingAnimation.rebuild)),
+        ...(pendingAnimation.rebuild ? { rebuild: JSON.parse(JSON.stringify(pendingAnimation.rebuild)) } : {}),
+        ...(pendingAnimation.traceRef ? { traceRef: pendingAnimation.traceRef, traceView: pendingAnimation.traceView } : {}),
         rebuildError: pendingAnimation.rebuildError
       } : {})
     };
   }
 
   function buildUi() {
-    studioButton = document.getElementById('editAnimationBtn');
-    eventSettingsButton = document.getElementById('eventSettingsBtn');
-    if (!studioButton || studioButton.dataset.traceBound) return;
-    studioButton.dataset.traceBound = '1';
-    studioButton.addEventListener('click', () => {
-      if (currentTrace) window.ASMTraceStudio?.open(currentTrace);
-    });
+    if (eventSettingsPanel) return;
+    const host = document.getElementById('eventAnimationPanel');
+    if (!host) return;
     eventSettingsPanel = buildEventSettingsPanel();
-    const clearEventSettingsClose = () => {
-      clearTimeout(eventSettingsCloseTimer);
-      eventSettingsCloseTimer = null;
-    };
-    const openEventSettings = () => {
-      if (!currentTrace) return;
-      clearEventSettingsClose();
-      eventSettingsPanel.hidden = false;
-      renderEventSettings();
-      const rect = eventSettingsButton.getBoundingClientRect();
-      eventSettingsPanel.style.left = `${Math.max(8, rect.left)}px`;
-      eventSettingsPanel.style.top = `${Math.round(rect.bottom)}px`;
-    };
-    const scheduleEventSettingsClose = () => {
-      clearEventSettingsClose();
-      eventSettingsCloseTimer = setTimeout(() => {
-        if (eventSettingsPanel) eventSettingsPanel.hidden = true;
-      }, 140);
-    };
-    eventSettingsButton?.addEventListener('pointerenter', openEventSettings);
-    eventSettingsButton?.addEventListener('pointerleave', scheduleEventSettingsClose);
-    eventSettingsPanel.addEventListener('pointerenter', clearEventSettingsClose);
-    eventSettingsPanel.addEventListener('pointerleave', scheduleEventSettingsClose);
-    eventSettingsButton?.addEventListener('click', event => {
-      if (!currentTrace) return;
-      event.stopPropagation();
-      openEventSettings();
-    });
-    document.addEventListener('pointerdown', event => {
-      if (!eventSettingsPanel || eventSettingsPanel.hidden) return;
-      if (eventSettingsPanel.contains(event.target) || eventSettingsButton?.contains(event.target)) return;
-      eventSettingsPanel.hidden = true;
-    });
+    eventSettingsPanel.classList.add('is-docked');
+    if (window.ASMTraceStudio?.adoptGlobalEventSettings) window.ASMTraceStudio.adoptGlobalEventSettings(eventSettingsPanel);
+    else host.append(eventSettingsPanel);
     updateStudioButton();
   }
 
@@ -656,6 +640,8 @@
     analyze,
     ensureAnalysis: analyze,
     getCompileConfig,
+    getTraceDocument: () => currentTrace,
+    getPendingAnimation: () => pendingAnimation,
     applyTraceDocument,
     clearAnimation,
     loadAnimation,

@@ -9,7 +9,7 @@ const { chromium } = require('playwright');
 
 test('array queens explains only rows with no legal column before returning', { timeout: 90000 }, async () => {
   const root = path.resolve(__dirname, '..');
-  const source = fs.readFileSync(path.join(root, 'algorithm_sample/Backtracking/8queen-array-teaching.cpp'), 'utf8');
+  const source = fs.readFileSync(path.join(root, 'algorithm_sample/Backtracking/8queen_array_teaching.cpp'), 'utf8');
   const port = await new Promise(resolve => {
     const socket = net.createServer();
     socket.listen(0, '127.0.0.1', () => { const port = socket.address().port; socket.close(() => resolve(port)); });

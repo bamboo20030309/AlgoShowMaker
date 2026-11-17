@@ -36,7 +36,14 @@ test('auth panel centers in the visible viewport independently of the sample lis
     assert.equal(brand.loaded, true);
     assert.equal(brand.width, 28); assert.equal(brand.height, 28);
     assert.equal(brand.background, 'rgba(0, 0, 0, 0)'); assert.equal(brand.border, '0px');
-    await page.locator('.guest-gallery').evaluate(el => el.style.minHeight = '5000px');
+    // A long sample list. Since 2026-11-11 the gallery scrolls in its own column on wide
+    // screens (scrollbar left of the login panel), so add content inside it instead of
+    // forcing the column itself taller.
+    await page.locator('.guest-gallery').evaluate(el => {
+      const spacer = document.createElement('div');
+      spacer.style.height = '5000px';
+      el.append(spacer);
+    });
     async function bounds() {
       return page.locator('.auth-panel').evaluate(el => {
         const rect = el.getBoundingClientRect(), first = el.firstElementChild.getBoundingClientRect(), last = el.querySelector('#forgotPasswordBtn').getBoundingClientRect();
@@ -45,7 +52,12 @@ test('auth panel centers in the visible viewport independently of the sample lis
     }
     const initial = await bounds(); assert.equal(initial.top, 52); assert.equal(initial.bottom, 1000);
     assert.ok(Math.abs(initial.center - 526) < 2);
-    await page.evaluate(() => window.scrollTo(0, 1200));
+    await page.evaluate(() => {
+      window.scrollTo(0, 1200);
+      document.querySelector('.guest-view > .guest-gallery').scrollTop = 1200;
+    });
+    assert.equal(await page.evaluate(() => document.querySelector('.guest-view > .guest-gallery').scrollTop), 1200,
+      'the sample list scrolls inside its own column');
     const scrolled = await bounds(); assert.equal(scrolled.top, 52); assert.equal(scrolled.bottom, 1000); assert.ok(Math.abs(scrolled.center - 526) < 2);
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'test-results/auth-center-desktop.png') });

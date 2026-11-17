@@ -27,7 +27,7 @@ test('array text interpolation renders in SVG, TTS, Studio and after snapshot re
     const source = fs.readFileSync(path.join(__dirname, 'fixtures/text-arrays.cpp'), 'utf8');
     await page.evaluate(code => ace.edit('editor').setValue(code, -1), source);
     await page.click('#runBtn');
-    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code, source, { timeout: 30000 });
+    await require('./helpers/algorithm-page').waitForTraceSource(page,source);
     const result = await page.evaluate(async () => {
       const player = window.ASMTracePlayer, original = JSON.parse(JSON.stringify(player.getDocument()));
       const read = () => Object.fromEntries([...document.querySelectorAll('#asm-trace-root [data-trace-text-id]')]

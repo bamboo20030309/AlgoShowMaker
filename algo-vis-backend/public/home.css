@@ -56,86 +56,7 @@ input:focus-visible {
   display: none !important;
 }
 
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  min-height: var(--header-h);
-  border-bottom: 1px solid var(--border);
-  padding: 0 20px;
-  background: var(--bg-header);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-}
-
-.header-nav {
-  display: flex;
-  align-self: stretch;
-  gap: 4px;
-  margin-left: 34px;
-}
-
-.nav-link {
-  display: grid;
-  place-items: center;
-  border-bottom: 2px solid transparent;
-  padding: 0 14px;
-  color: var(--text);
-  font-size: 14px;
-  text-decoration: none;
-}
-
-.nav-link:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.nav-link.is-active {
-  border-bottom-color: var(--blue);
-  color: #fff;
-}
-
-.header-github-link {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  margin-left: auto;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--text);
-  text-decoration: none;
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
-}
-
-.header-github-link svg {
-  width: 22px;
-  height: 22px;
-  fill: currentColor;
-}
-
-.header-github-link:hover {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-}
-
-.account-area {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: 12px;
-}
-
-.account-name {
-  max-width: 260px;
-  overflow: hidden;
-  color: var(--text);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* 頂部列（品牌、模式導覽、GitHub、帳號區）的樣式在 brand.css 的 .site-header，與程式碼頁共用。 */
 
 .primary-btn,
 .quiet-btn,
@@ -240,8 +161,7 @@ input:focus-visible {
 }
 
 .preview-kicker,
-.eyebrow,
-.sidebar-label {
+.eyebrow {
   display: block;
   color: #62c4ba;
   font-size: 12px;
@@ -485,20 +405,55 @@ input:focus-visible {
 }
 
 .input-with-action input {
-  padding-right: 62px;
+  padding-right: 46px;
+}
+
+/* Edge 內建的密碼顯示鈕會與自訂的眼睛按鈕重複。 */
+.input-with-action input::-ms-reveal,
+.input-with-action input::-ms-clear {
+  display: none;
 }
 
 .input-icon-btn {
   position: absolute;
   top: 4px;
   right: 4px;
+  min-width: 34px;
   min-height: 34px;
+  display: grid;
+  place-items: center;
   border: 0;
-  padding: 0 8px;
+  border-radius: 6px;
+  padding: 0 7px;
   background: transparent;
   color: #8fc9ea;
   font-size: 12px;
   cursor: pointer;
+}
+
+.input-icon-btn:hover,
+.input-icon-btn:focus-visible {
+  background: rgba(143, 201, 234, 0.12);
+}
+
+/* 密碼顯示切換：閉眼＝隱藏中，開眼＝顯示中。 */
+.input-icon-btn .eye-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.input-icon-btn .eye-open,
+.input-icon-btn.is-revealed .eye-closed {
+  display: none;
+}
+
+.input-icon-btn.is-revealed .eye-open {
+  display: block;
 }
 
 .form-message,
@@ -525,74 +480,7 @@ input:focus-visible {
 }
 
 .dashboard-view {
-  display: grid;
-  grid-template-columns: 218px minmax(0, 1fr);
   min-height: calc(100vh - var(--header-h));
-}
-
-.workspace-sidebar {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid var(--border);
-  padding: 26px 14px 18px;
-  background: var(--bg-panel);
-}
-
-.sidebar-label {
-  margin: 0 11px 12px;
-  color: var(--text-muted);
-}
-
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  width: 100%;
-  min-height: 42px;
-  border: 0;
-  border-radius: 5px;
-  padding: 0 12px;
-  background: transparent;
-  color: var(--text);
-  font-size: 14px;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.sidebar-item:hover {
-  background: var(--bg-hover);
-  color: #fff;
-}
-
-.sidebar-item.is-active {
-  background: #373f43;
-  color: #fff;
-}
-
-.sidebar-icon {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  color: #74bde7;
-}
-
-.storage-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 11px;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
 }
 
 .library {
@@ -791,50 +679,10 @@ input:focus-visible {
   font-weight: 650;
 }
 
-.deck-title-button {
-  width: 100%;
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
-  text-align: left;
-  cursor: text;
-}
-
-.deck-title-button:hover,
-.deck-title-button:focus-visible {
-  background: transparent;
-  color: #83d2bd;
-  outline: none;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .deck-meta {
   margin-top: 4px;
   color: var(--text-muted);
   font-size: 12px;
-}
-
-.deck-settings {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.deck-settings:hover {
-  border-color: var(--border);
-  background: var(--bg-hover);
-  color: #fff;
 }
 
 .empty-state {
@@ -963,32 +811,9 @@ input:focus-visible {
     padding-bottom: 48px;
   }
 
-  .dashboard-view {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-sidebar {
-    display: none;
-  }
 }
 
 @media (max-width: 620px) {
-  .app-header {
-    padding: 0 12px;
-  }
-
-  .header-nav {
-    display: none;
-  }
-
-  .account-name {
-    display: none;
-  }
-
-  .brand {
-    font-size: 15px;
-  }
-
   .guest-preview {
     min-height: 330px;
     padding: 34px 20px;
@@ -1086,7 +911,6 @@ body.examples-view .auth-panel { display: none; }
 body.examples-view .guest-gallery { border-right: 0; max-width: 1440px; width: 100%; margin: 0 auto; }
 .gallery-workspace-link { display: none; }
 body.examples-view .gallery-workspace-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; text-decoration: none; }
-.examples-workspace-entry { padding: 10px 14px; color: var(--text-bright); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; }
 .gallery-categories { position: sticky; top: var(--header-h); z-index: 10; padding: 12px 0; background: var(--bg-main); }
 .gallery-folders { display: flex; flex-direction: column; gap: 18px; }
 .gallery-folder { border: 0; border-top: 1px solid var(--border); border-radius: 0; scroll-margin-top: calc(var(--header-h) + 140px); }
@@ -1103,18 +927,11 @@ body.examples-view .gallery-workspace-link { display: inline-flex; align-items: 
 .library-folder-tools .icon-btn { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .library-folder-tools .icon-btn:hover { color: var(--text-bright); }
 .library-card-controls { display: flex; align-items: center; gap: 6px; padding: 0 14px 12px; }
-.library-categories-button { flex: 1; min-width: 0; }
 .category-help { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
-#categoryChoices { border: 0; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
-#categoryChoices .category-choice { display: flex; align-items: center; gap: 12px; padding: 12px 0; margin: 0; overflow-wrap: anywhere; }
-#categoryChoices input { width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; flex-shrink: 0; accent-color: var(--blue); }
-.library-card-controls select { flex: 1; min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-panel); color: var(--text-bright); }
-.library-drag-handle, .library-order-button { border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-bright); border-radius: 4px; min-width: 30px; min-height: 32px; cursor: pointer; }
-.library-drag-handle { touch-action: none; cursor: grab; font-size: 22px; }
-.library-drag-handle:active { cursor: grabbing; }
 .library-folder .deck-card { user-select: none; }
-.library-folder .deck-card, .library-folder .deck-open, .library-folder .deck-title-button { cursor: grab; }
-.library-drag-source { opacity: .55; cursor: grabbing; }
+.library-folder .deck-card, .library-folder .deck-open { cursor: grab; }
+/* 拖曳中：原位置留下半透明殘影，完整卡片的複本跟著指標移動。 */
+.library-drag-source { opacity: .35; cursor: grabbing; }
 .library-card-controls button:disabled { opacity: .4; cursor: default; }
 .library-drop-target { outline: 3px solid var(--blue); outline-offset: 3px; }
 .library-folder.library-drop-target { outline: none; border-top: 3px solid var(--blue); }
@@ -1126,3 +943,554 @@ body.examples-view .gallery-workspace-link { display: inline-flex; align-items: 
 }
 
 .deck-file-drop-active { outline: 3px solid #55b9f3; outline-offset: 3px; background: #1d8f83 !important; }
+
+/* --------------------------------------------------------------------------
+ * 登入後工作區分頁：我的投影片 / 範例投影片
+ * 範例分頁沿用訪客視圖的 .guest-gallery（由 home.js 移入），只收掉它的訪客標題區。
+ * -------------------------------------------------------------------------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.library-heading {
+  align-items: center;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-tabs {
+  display: flex;
+  gap: 6px;
+  align-self: stretch;
+}
+
+.workspace-tab {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  padding: 10px 6px 12px;
+  margin-right: 18px;
+  background: transparent;
+  color: var(--text-muted);
+  font: 700 22px Arial, "Noto Sans TC", sans-serif;
+  cursor: pointer;
+}
+
+.workspace-tab:hover {
+  color: var(--text-bright);
+}
+
+.workspace-tab.is-active {
+  border-bottom-color: var(--blue);
+  color: var(--text-bright);
+}
+
+.workspace-tab:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+.library-heading .create-btn {
+  margin-bottom: 8px;
+}
+
+.workspace-examples .guest-gallery {
+  padding: 0;
+  border: 0;
+}
+
+.workspace-examples .guest-gallery > .eyebrow,
+.workspace-examples .guest-gallery > h1,
+.workspace-examples .guest-gallery > .gallery-intro,
+.workspace-examples .gallery-workspace-link {
+  display: none;
+}
+
+.workspace-examples .gallery-categories {
+  margin-top: 0;
+}
+
+@media (max-width: 620px) {
+  .library-heading {
+    align-items: stretch;
+  }
+
+  .workspace-tab {
+    margin-right: 8px;
+    font-size: 18px;
+  }
+
+  .library-heading .create-btn {
+    margin-bottom: 12px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * 訪客首頁：範例清單在自己的欄位內捲動，捲軸落在登入框左側。
+ * 窄螢幕（≤900px）上下排列，仍使用整頁捲動。
+ * -------------------------------------------------------------------------- */
+:root {
+  --scrollbar-thumb: #4b5357;
+  --scrollbar-thumb-hover: #5e686c;
+  --scrollbar-track: transparent;
+}
+
+html,
+.guest-view > .guest-gallery,
+.auth-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+html::-webkit-scrollbar,
+.guest-view > .guest-gallery::-webkit-scrollbar,
+.auth-panel::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html::-webkit-scrollbar-track,
+.guest-view > .guest-gallery::-webkit-scrollbar-track,
+.auth-panel::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+html::-webkit-scrollbar-thumb,
+.guest-view > .guest-gallery::-webkit-scrollbar-thumb,
+.auth-panel::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--scrollbar-thumb) padding-box;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+.guest-view > .guest-gallery::-webkit-scrollbar-thumb:hover,
+.auth-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover) padding-box;
+}
+
+@media (min-width: 901px) {
+  body:not(.examples-view) .guest-view {
+    height: calc(100vh - var(--header-h));
+    height: calc(100dvh - var(--header-h));
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body:not(.examples-view) .guest-view > .guest-gallery {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* 捲動容器內的黏性分類列貼齊欄位頂端，而非頁首下緣。
+     黏性位置會從容器內距起算，因此以負值抵銷 .guest-gallery 的上內距（40px）。 */
+  body:not(.examples-view) .guest-view > .guest-gallery .gallery-categories {
+    top: -40px;
+  }
+
+  body:not(.examples-view) .guest-view > .guest-gallery .gallery-folder {
+    scroll-margin-top: 90px;
+  }
+}
+
+/* 工作區不再有左側欄：內容置中，寬度與範例全頁一致。 */
+.dashboard-view > .library {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* 新增資料夾：只有圖示、沒有外框（資料夾＋右上角加號），名稱由 aria-label／title 提供。 */
+.icon-action-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-bright);
+}
+
+.icon-action-btn:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+.icon-action-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 620px) {
+  .library-toolbar .icon-action-btn {
+    align-self: flex-end;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * 投影片卡片：雙擊標題改名、底列圖示（刪除｜往前、往後）、整張卡片拖曳
+ * -------------------------------------------------------------------------- */
+.deck-title-editable {
+  border-radius: 3px;
+  cursor: text;
+}
+
+.deck-title-editable:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+.deck-title-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 26px;
+  margin: -3px 0 -1px;
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  padding: 0 6px;
+  background: var(--bg-main);
+  color: #fff;
+  font: 650 14px Arial, "Noto Sans TC", sans-serif;
+}
+
+.deck-title-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.35);
+}
+
+.library-card-controls {
+  gap: 2px;
+}
+
+.library-card-spacer {
+  flex: 1;
+}
+
+.library-card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.library-card-icon:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-bright);
+}
+
+.library-delete-button:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.library-card-icon:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 1px;
+}
+
+.library-drag-clone {
+  position: fixed;
+  z-index: 3000;
+  margin: 0;
+  pointer-events: none;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  opacity: 0.96;
+  cursor: grabbing;
+  will-change: transform;
+}
+
+/* 把投影片檔拖到「我的投影片」頁面任何地方：整頁提示放開即可新增。 */
+#dashboardView.deck-file-drop-active {
+  position: relative;
+  outline: none;
+  background: inherit !important;
+}
+
+#dashboardView.deck-file-drop-active::after {
+  content: "放開以新增投影片";
+  position: fixed;
+  inset: calc(var(--header-h) + 12px) 12px 12px;
+  z-index: 2500;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #55b9f3;
+  border-radius: 12px;
+  background: rgba(16, 40, 56, 0.55);
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+ * 捲軸只在頂部列下方
+ * 整頁不再捲動：頂部列固定在上，下方的 <main> 是唯一的捲動區，捲軸從頂部列下緣開始。
+ * 因此 main 內的黏性元素以 main 頂端為基準（top: 0），不再加頁首高度。
+ * -------------------------------------------------------------------------- */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+body > .site-header {
+  flex: 0 0 auto;
+}
+
+body > main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+body > main::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body > main::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+body > main::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--scrollbar-thumb) padding-box;
+}
+
+body > main::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover) padding-box;
+}
+
+.auth-panel,
+.gallery-categories,
+.library-folder-nav {
+  top: 0;
+}
+
+.gallery-folder {
+  scroll-margin-top: 140px;
+}
+
+@media (max-width: 620px) {
+  .gallery-folder {
+    scroll-margin-top: 170px;
+  }
+}
+
+/* 寬螢幕訪客首頁的範例欄仍是自己的捲動區，分類列抵銷欄位上內距（見上方規則）。 */
+@media (min-width: 901px) {
+  body:not(.examples-view) .guest-view > .guest-gallery .gallery-categories {
+    top: -40px;
+  }
+
+  body:not(.examples-view) .guest-view > .guest-gallery .gallery-folder {
+    scroll-margin-top: 90px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * 「我的投影片」單一工具列：左側分類捷徑靠左，右側份數、搜尋（向左展開）、新增資料夾、新增投影片。
+ * 範例清單（訪客首頁與「範例投影片」分頁）共用同一套工具列，只是沒有新增按鈕。
+ * -------------------------------------------------------------------------- */
+#workspaceMinePanel .library-toolbar,
+.guest-gallery .library-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+  padding: 10px 0;
+  background: var(--bg-main);
+}
+
+#workspaceMinePanel .library-toolbar .library-folder-nav,
+
+.guest-gallery .library-toolbar .library-folder-nav {
+  position: static;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+#workspaceMinePanel .deck-count,
+
+.guest-gallery .deck-count {
+  margin: 0 6px 0 10px;
+  white-space: nowrap;
+}
+
+.library-search {
+  display: flex;
+  align-items: center;
+}
+
+.library-search input {
+  box-sizing: border-box;
+  width: 0;
+  min-width: 0;
+  height: 34px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0;
+  background: #181818;
+  color: #fff;
+  font: 14px Arial, "Noto Sans TC", sans-serif;
+  opacity: 0;
+  outline: none;
+  transition: width 180ms ease, padding 180ms ease, margin 180ms ease, opacity 120ms ease, border-color 120ms ease;
+}
+
+.library-search[data-open="true"] input {
+  width: 180px;
+  margin-right: 4px;
+  border-color: var(--border-strong);
+  padding: 0 10px;
+  opacity: 1;
+}
+
+.library-search[data-open="true"] input:focus {
+  border-color: var(--blue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-search input {
+    transition: none;
+  }
+}
+
+/* 分類標題：名稱（點一下改名）＋右側「共 N 份」；右端只有垃圾桶，hover 為紅色（與卡片相同）。 */
+.library-folder-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.library-folder-name {
+  color: var(--text-bright);
+  font-weight: 700;
+}
+
+.library-folder-name.is-editable {
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 0 -3px;
+  cursor: text;
+}
+
+.library-folder-name.is-editable:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.library-folder-name.is-editable:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+.library-folder-count {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.library-folder-name-input {
+  box-sizing: border-box;
+  width: min(280px, 100%);
+  height: 30px;
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  padding: 0 8px;
+  background: var(--bg-main);
+  color: #fff;
+  font: 700 15px Arial, "Noto Sans TC", sans-serif;
+}
+
+.library-folder-name-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.35);
+}
+
+@media (max-width: 620px) {
+  #workspaceMinePanel .library-toolbar,
+  .guest-gallery .library-toolbar {
+    flex-wrap: wrap;
+  }
+
+  #workspaceMinePanel .library-toolbar .library-folder-nav,
+
+  .guest-gallery .library-toolbar .library-folder-nav {
+    flex-basis: 100%;
+  }
+
+  #workspaceMinePanel .deck-count,
+
+  .guest-gallery .deck-count {
+    margin-left: auto;
+  }
+
+  .library-search[data-open="true"] input {
+    width: 150px;
+  }
+}
+
+/* 沒有訊息時不佔空間，工具列下方直接接第一個分類。 */
+#workspaceMinePanel .library-message:empty,
+.guest-gallery .library-message:empty {
+  display: none;
+}
+
+/* 收起的搜尋框完全不佔寬（連邊框都收掉）。 */
+.library-search[data-open="false"] input {
+  border-width: 0;
+}
+
+/* 寬螢幕訪客首頁：範例欄是自己的捲動區，黏性工具列抵銷欄位上內距（40px）。 */
+@media (min-width: 901px) {
+  body:not(.examples-view) .guest-view > .guest-gallery .library-toolbar {
+    top: -40px;
+  }
+}
+
+/* Legal notices stay accessible in both guest and signed-in workspace views. */
+.site-legal-footer { padding: 12px 24px 20px; text-align: center; font-size: 12px; }
+.site-legal-footer a { color: var(--text-muted); text-underline-offset: 3px; }
+.site-legal-footer a:hover { color: var(--text-bright); }

@@ -7,15 +7,28 @@
  * 相容性：舊文件沒有 instructionStates 或設定欄位時採既有預設；明確關閉的事件必須保留。
  */
 (function () {
+  const DEFAULT_EVENT_GAP_MS = 500;
+  function normalizeEventGapMs(value) {
+    const valid = (typeof value === 'number' || typeof value === 'string')
+      && String(value).trim() !== '' && Number.isFinite(Number(value));
+    return valid ? Math.max(0, Math.min(2000, Number(value))) : DEFAULT_EVENT_GAP_MS;
+  }
+
+  function eventGapMs(trace) {
+    return normalizeEventGapMs(trace?.studio?.eventSettings?.gapMs);
+  }
   const definitions = [
     { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
     { type: 'visual-enter', label: '物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
     { type: 'object-exit', label: '物件退場／手動退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
     // Reads remain internal access metadata for automatic fixed markers. They
     // are not a user-facing event, animation, timeline entry or Studio item.
-    { type: 'read', label: '讀取', color: '#3976b8', internal: true, enabledByDefault: false, timelineByDefault: false },
+    { type: 'read', label: '讀取', color: 'red', internal: true, enabledByDefault: false, timelineByDefault: false },
+    { type: 'select-max', label: '取大', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
+    { type: 'select-min', label: '取小', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     { type: 'assignment', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
+    { type: 'input-assign', label: '輸入賦值事件', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'swap', label: '交換', color: '#1d8f83', enabledByDefault: true, timelineByDefault: true },
     { type: 'sequence-operation', label: '陣列操作', color: '#286bb0', enabledByDefault: true, timelineByDefault: true },
     { type: 'output', label: '輸出', color: '#2f7d72', enabledByDefault: true, timelineByDefault: false },
@@ -65,8 +78,11 @@
     'object-exit': 'exit',
     read: 'none',
     assignment: 'assign',
+    'input-assign': 'assign',
     'sequence-operation': 'sequence',
     compare: 'compare',
+    'select-max': 'select',
+    'select-min': 'select',
     condition: 'none',
     swap: 'swap',
     fixed: 'none',
@@ -162,6 +178,79 @@
     }).sort((left, right) => left.order - right.order || left.index - right.index);
   }
 
+  // Runtime order remains immutable. Only postfix ++/-- may be presented after
+  // the operation consuming their old value; prefix and other writes stay put.
+  const warnedPostfixSources = new WeakSet();
+  function presentationOrdered(events, document = null) {
+    const runtime = orderedEntries(events).map(entry => entry.event);
+    const runtimeIndex = new Map(runtime.map((event, index) => [event, index]));
+    const closingTypes = new Set(['assign', 'input-assign', 'write', 'sequence-operation', 'swap', 'compare',
+      'declare', 'condition', 'output', 'return-complete', 'call-return']);
+    const anchors = new Map();
+    const isPostfix = event => event?.type === 'write' && event.update === true
+      && (event.source?.updateForm === 'postfix'
+        || (!event.source?.updateForm && /(?:\+\+|--)\s*$/.test(String(event.expression || event.source?.text || ''))));
+    runtime.forEach((event, index) => {
+      if (!isPostfix(event)) return;
+      const source = event.source || {};
+      const explicit = Array.isArray(source.postfixConsumerRanges);
+      const ranges = explicit ? source.postfixConsumerRanges : (source.expressionPath || []).filter(range => {
+        // Conservative migration for engine-15 traces: without AST sequencing
+        // metadata, do not cross a possible comma / short-circuit boundary.
+        const text = String(document?.sourceCode || '').slice(range.from, range.to);
+        return text && !/&&|\|\||[?,]/.test(text);
+      });
+      if (!explicit && !ranges.length && (event.nestedExpression || source.expressionPath?.length)
+        && !warnedPostfixSources.has(event) && window.ASMCompileWarnings?.report) {
+        warnedPostfixSources.add(event);
+        window.ASMCompileWarnings.report('舊版事件', `第 ${source.line || event.line || '?'} 行的舊 Trace 缺少後置運算邊界，暫保留原事件順序；請重新 RUN 取得完整的先用舊值、再更新排程。`);
+      }
+      for (const range of ranges) {
+        const candidates = runtime.slice(index + 1).filter(candidate => {
+          const target = candidate.source;
+          return closingTypes.has(candidate.type) && target
+            && (!source.functionName || target.functionName === source.functionName)
+            && Number(target.from) <= Number(source.from) && Number(target.to) >= Number(source.to)
+            // Two occurrences of the same postfix instruction are peers, not
+            // consumers of one another, even when their saved source key is shared.
+            && (Number(target.from) < Number(source.from) || Number(target.to) > Number(source.to))
+            && Number(target.from) >= Number(range.from) && Number(target.to) <= Number(range.to);
+        }).sort((a, b) => (Number(a.source.to) - Number(a.source.from)) - (Number(b.source.to) - Number(b.source.from))
+          || (a.type === 'declare' ? 1 : 0) - (b.type === 'declare' ? 1 : 0)
+          || runtimeIndex.get(a) - runtimeIndex.get(b));
+        if (candidates.length) { anchors.set(event, candidates[0]); break; }
+      }
+    });
+    // Never carry an update across a use of its new state or a traced callee
+    // body. That would misrepresent the inputs of the intervening operation.
+    const proposed = new Map(anchors);
+    for (const [event, anchor] of proposed) {
+      const ids = new Set((event.targets || []).filter(target => target.role !== 'source').map(target => target.variableId));
+      const between = runtime.slice(runtimeIndex.get(event) + 1, runtimeIndex.get(anchor));
+      // A selection consumes fully evaluated call arguments. Do not move a
+      // postfix update beyond that boundary using the outer assignment range.
+      if (between.some(candidate => ['select-max', 'select-min'].includes(candidate.type))
+        || ['select-max', 'select-min'].includes(anchor.type)
+        || between.some(candidate => candidate.type === 'function-enter'
+        || (candidate.afterEventId !== event.id && (candidate.targets || []).some(target => ids.has(target.variableId))
+          && !(isPostfix(candidate) && proposed.get(candidate) === anchor)))) anchors.delete(event);
+    }
+    const byId = new Map(runtime.map(event => [event.id, event]));
+    runtime.forEach(event => {
+      const owner = byId.get(event.afterEventId);
+      if (owner && anchors.has(owner)) anchors.set(event, owner);
+    });
+    const after = new Map();
+    for (const [event, anchor] of anchors) {
+      if (!after.has(anchor)) after.set(anchor, []);
+      after.get(anchor).push(event);
+    }
+    const result = [];
+    const emit = event => { result.push(event); (after.get(event) || []).forEach(emit); };
+    runtime.forEach(event => { if (!anchors.has(event)) emit(event); });
+    return result;
+  }
+
   function forContext(event = {}) {
     const source = event?.source;
     const from = Number(source?.from);
@@ -235,7 +324,7 @@
         break;
       }
       entries.slice(previousConditionIndex + 1, terminalIndex).forEach(({ event }) => {
-        if (!['assign', 'write'].includes(event?.type)) return;
+        if (!['assign', 'input-assign', 'write'].includes(event?.type)) return;
         if (eventForContextKey(event) !== contextKey) return;
         const from = Number(event.source?.from);
         const to = Number(event.source?.to);
@@ -416,7 +505,7 @@
   }
 
   const FIXED_KINDS = new Set(['sequence', 'stack', 'queue', 'set']);
-  const FIXED_ACCESS_TYPES = new Set(['read', 'write', 'assign', 'swap']);
+  const FIXED_ACCESS_TYPES = new Set(['read', 'write', 'assign', 'input-assign', 'swap']);
 
   function targetIndex(document, frame, target = {}) {
     if (target.resolvedIndex != null
@@ -864,14 +953,13 @@
   }
 
   function showTimelineEvent(event = {}, document = null) {
-    if (event.declarationInitializer === true && event.parameterInitializer !== true) return false;
     return event.enabled !== false
       && event.autoAnimationDisabled !== true
       && showTag(event.type, document);
   }
 
   function isForHeaderEvent(event = {}) {
-    if (!['declare', 'assign', 'compare'].includes(event.type)) return false;
+    if (!['declare', 'assign', 'input-assign', 'compare'].includes(event.type)) return false;
     const source = event.source;
     if (!Number.isFinite(Number(source?.from)) || !Number.isFinite(Number(source?.to))) return false;
     return (source.contexts || []).some(context => (
@@ -884,6 +972,9 @@
   }
 
   window.ASMTraceEvents = {
+    defaultEventGapMs: DEFAULT_EVENT_GAP_MS,
+    normalizeEventGapMs,
+    eventGapMs,
     definitions,
     labels: Object.fromEntries([
       ...definitions.map(definition => [definition.type, definition.label]),
@@ -911,6 +1002,7 @@
     ordered(events) {
       return orderedEntries(events).map(entry => entry.event);
     },
+    presentationOrdered,
     defaultEnabled,
     rebuildAutoFixedEvents,
     rebuildVisualLifecycleEvents,
@@ -926,10 +1018,8 @@
       // initialization commit is runtime bookkeeping, not a second operation.
       if (event.bitwiseCommit === true && event.animate === false) return false;
       if (event.type === 'fixed') return false;
-      // Source declarations with initializers are presented as one declaration
-      // instruction. The raw assignment remains in the trace and replay model,
-      // but does not create a second Studio row.
-      if (event.declarationInitializer === true && event.parameterInitializer !== true) return false;
+      // Declaration and assignment are distinct actions. Keep both editable,
+      // including saved traces produced before the shared event contract.
       if (event.loopBoundarySuppressed === true) return false;
       if (byType[canonicalEventType(event.type)]?.internal === true) return false;
       // The function definition is the root control in Trace Studio's event

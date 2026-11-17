@@ -23,14 +23,15 @@ test('kept heap snapshots render through every frame', {timeout:60000}, async ()
     const page=await browser.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
-    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'fixtures/heap.cpp'),'utf8').replace(/\r\n?/g,'\n');
+    await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
+    const code=fs.readFileSync(path.join(__dirname, 'fixtures/heap.cpp'),'utf8').replace(/\r\n?/g,'\n');
     await page.evaluate(code=>{
       ace.edit('editor').setValue(code,-1);
       document.getElementById('inputArea').value='4\n4 1 3 2\n';
     },code);
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
+    await require('./helpers/algorithm-page').showTraceCanvas(page);
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       for(let index=0;index<doc.frames.length;index++){
@@ -57,11 +58,12 @@ test('heap fields and local segments render at root and child coordinates', {tim
     const page=await browser.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
-    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'fixtures/heap-composite-segments.cpp'),'utf8').replace(/\r\n?/g,'\n');
+    await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
+    const code=fs.readFileSync(path.join(__dirname, 'fixtures/heap-composite-segments.cpp'),'utf8').replace(/\r\n?/g,'\n');
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),code);
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
+    await require('./helpers/algorithm-page').showTraceCanvas(page);
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const byName=Object.fromEntries(Object.entries(doc.variables).map(([id,value])=>[value.name,id]));
@@ -86,7 +88,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
         }));
         const children=[...scene.children];
         return {
-          texts:[1,2,3,4].map(i=>cell(i).querySelector(':scope > text').textContent),
+          texts:[1,2,3,4].map(i=>[...cell(i).querySelector(':scope > text').querySelectorAll('tspan')].filter(n=>getComputedStyle(n).display!=='none').map(n=>n.textContent).join('')),
           fills:[2,3].map(i=>cell(i).querySelector(':scope > rect').getAttribute('fill')),
           root:seg(1),child:seg(2),empty:seg(3),
           styleBeforeArrows:children.findIndex(node=>node.classList.contains('asm-trace-style-layer'))
@@ -227,15 +229,16 @@ test('standalone segment tree build animates every input and parent sum', {timeo
     const page=await browser.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
-    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree_easy_build.cpp'),'utf8')
+    await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
+    const code=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_easy_build.cpp'),'utf8')
       .replace(/\r\n?/g,'\n');
     await page.evaluate(code=>{
       ace.edit('editor').setValue(code,-1);
       document.querySelector('#inputArea').value='15\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15\n';
     },code);
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
+    await require('./helpers/algorithm-page').showTraceCanvas(page);
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
@@ -247,7 +250,7 @@ test('standalone segment tree build animates every input and parent sum', {timeo
       await player.render(firstInput.index,{animatePositions:false,animateEvents:false});
       const firstInputText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
       const firstInputPointer=document.querySelector(
-        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+        '#asm-trace-root .trace-variable-marker-label-text'
       )?.textContent;
       await player.render(parentBuild.index,{animatePositions:false,animateEvents:false});
       const parentText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
@@ -295,7 +298,7 @@ test('standalone segment tree build animates every input and parent sum', {timeo
     assert.equal(result.arrowCount,2);
     assert.deepEqual(result.binaryEvent,{operation:'+',target:14});
     const transfers=result.samples.filter(sample=>sample.transferValues.length===2);
-    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['+13','+14'])),
+    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])),
       JSON.stringify(result.samples.slice(-20)));
     assert.ok(transfers.every(sample=>sample.transferRects===0));
     assert.ok(transfers.some(sample=>sample.targetValue==='0'));
@@ -315,15 +318,16 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
     const page=await browser.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
-    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree_easy.cpp'),'utf8')
+    await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
+    const code=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_easy.cpp'),'utf8')
       .replace(/\r\n?/g,'\n').replace('    // @keep tree as "built_tree"\n','');
     await page.evaluate(code=>{
       ace.edit('editor').setValue(code,-1);
       document.querySelector('#inputArea').value='15 1\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15\n13 14\n';
     },code);
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
+    await require('./helpers/algorithm-page').showTraceCanvas(page);
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
@@ -341,7 +345,7 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
       const animatedSegment=animatedTree.closest('#asm-trace-root').querySelector('.asm-trace-heap-cell-segment');
       const animatedVisible=Boolean(animatedSegment&&getComputedStyle(animatedSegment).display!=='none');
       const pointerLabel=document.querySelector(
-        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+        '#asm-trace-root .trace-variable-marker-label-text'
       )?.textContent;
       const pointStyleCount=document.querySelectorAll(
         '#asm-trace-root [data-trace-style-kind="point"]'
@@ -395,7 +399,7 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
       };
     });
     assert.equal(result.deepest,14);
-    assert.equal(result.animatedVisible,true);
+    assert.equal(result.animatedVisible,true,JSON.stringify(result));
     assert.equal(result.pointerLabel,'now');
     assert.equal(result.pointStyleCount,0);
     assert.ok(result.beforeSumIdentity);
@@ -431,7 +435,7 @@ test('composite heap addition transfers only the tree field values', {timeout:60
     const page=await browser.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
-    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
+    await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
     const code=`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -448,7 +452,8 @@ int main() {
 }`;
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),code);
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
+    await require('./helpers/algorithm-page').showTraceCanvas(page);
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
@@ -459,7 +464,7 @@ int main() {
       await player.render(target-1,{animatePositions:false,animateEvents:false});
       const sourceTexts=[2,3].map(index=>document.querySelector(
         `[data-trace-object-key="${CSS.escape(`${treeId}#${index}`)}"] > text`
-      )?.textContent);
+      ) ? [...document.querySelector(`[data-trace-object-key="${CSS.escape(`${treeId}#${index}`)}"] > text`).querySelectorAll('tspan')].filter(n=>getComputedStyle(n).display!=='none').map(n=>n.textContent).join('') : undefined);
       const samples=[];
       let settled=false;
       const transition=player.render(target).finally(()=>{settled=true;});
@@ -474,9 +479,9 @@ int main() {
     assert.ok(result.target>0);
     assert.deepEqual(result.sourceTexts,['5,=13','7,+3']);
     const transfers=result.samples.filter(values=>values.length===2);
-    assert.ok(transfers.some(values=>JSON.stringify(values)===JSON.stringify(['+5','+7'])),
+    assert.ok(transfers.some(values=>JSON.stringify(values)===JSON.stringify(['5','7'])),
       JSON.stringify(result.samples));
-    assert.ok(transfers.every(values=>values.every(value=>/^\+\d+$/.test(value))),
+    assert.ok(transfers.every(values=>values.every(value=>/^\d+$/.test(value))),
       JSON.stringify(transfers));
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
@@ -490,16 +495,17 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     const page=await browser.newPage(),errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
-    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree.cpp'),'utf8')
+    await require('./helpers/algorithm-page').waitForDefaultAlgorithm(page);
+    const code=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree.cpp'),'utf8')
       .replace(/\r\n?/g,'\n');
-    const input=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree-sample_input.txt'),'utf8');
+    const input=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree-sample_input.txt'),'utf8');
     await page.evaluate(({code,input})=>{
       ace.edit('editor').setValue(code,-1);
       document.querySelector('#inputArea').value=input;
     },{code,input});
     await page.click('#runBtn');
-    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    await require('./helpers/algorithm-page').waitForTraceSource(page,code);
+    await require('./helpers/algorithm-page').showTraceCanvas(page);
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const byName=Object.fromEntries(Object.entries(doc.variables).map(([id,value])=>[value.name,id]));
@@ -544,7 +550,8 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
         const segment=currentTree?.closest('#asm-trace-root')?.querySelector(
           `.asm-trace-heap-cell-segment[data-trace-segment-node="${handoffMark.node}"]`
         );
-        const rect=currentTree?.querySelector(`[data-trace-index="${handoffMark.node}"] > rect`);
+        // Active cells may be lifted above their array while the event runs.
+        const rect=document.querySelector(`#asm-trace-root [data-trace-object-key="${CSS.escape(`${byName.tree}#${handoffMark.node}`)}"] > rect`);
         const indexRect=currentTree?.querySelector(`[data-trace-index-label="${handoffMark.node}"] > rect`);
         handoffSamples.push({
           segmentHeight:segment?Number(segment.getAttribute('height')):0,
@@ -643,7 +650,7 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
         '#asm-trace-root .asm-trace-heap-cell-segment'
       )].map(rect=>Number(rect.dataset.traceSegmentNode)).sort((a,b)=>a-b);
       const pointerLabel=document.querySelector(
-        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+        '#asm-trace-root .trace-variable-marker-label-text'
       )?.textContent;
       const pointStyleCount=document.querySelectorAll(
         '#asm-trace-root [data-trace-style-kind="point"]'

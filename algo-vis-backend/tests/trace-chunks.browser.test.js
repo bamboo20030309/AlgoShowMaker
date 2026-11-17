@@ -3,13 +3,13 @@ const fs=require('node:fs'),path=require('node:path'),net=require('node:net');
 const {spawn,execFileSync}=require('node:child_process');
 const {chromium}=require('playwright');
 test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker availability is unchanged',{timeout:180000},async()=>{
- const root=path.resolve(__dirname,'..');
+ const root=path.resolve(__dirname, '..');
  const port=await new Promise(resolve=>{const s=net.createServer().listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
  const base=`http://127.0.0.1:${port}`;
  const server=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),ASM_REGRESSION:'1',JWT_SECRET:require('node:crypto').randomBytes(32).toString('hex')},windowsHide:true,stdio:'ignore'});
  let browser;
  try{
-  for(let i=0;i<100;i++){try{if((await fetch(base+'/algorithm.html')).ok)break;}catch{}await new Promise(r=>setTimeout(r,200));}
+  for(let i=0;i<100;i++){try{if((await fetch(base+'/algorithm.html?asmEmbed=editor&localOnly=1')).ok)break;}catch{}await new Promise(r=>setTimeout(r,200));}
   browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];
   page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
@@ -22,13 +22,12 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
    return {legacy:reopened.frames[0].events.map(e=>({id:e.id,enabled:e.enabled,after:e.payload.after})),settings:reopened.studio,values:reopened.frames[0].state.a.data.items.map(v=>v.value),cells:document.querySelectorAll('#asm-trace-root g[data-trace-index]').length};
   });
   assert.deepEqual(old,{legacy:[{id:'legacy',enabled:false,after:8}],settings:{eventSettings:{autoFixedEnabled:false,autoLoopBoundaryEnabled:false,gapMs:0,defaultEnabled:{},timelineTypes:{}},eventInstructionStates:{'assign:legacy':false},customColor:'#123456'},values:[0,8],cells:2});
-  const source=fs.readFileSync(path.join(__dirname,'fixtures/trace-chunks-checkerboard.cpp'),'utf8').replace(/\r\n/g,'\n').replace(/@style grid background/g,'@style grid[0:100][0:100] background');
+  const source=fs.readFileSync(path.join(__dirname, 'fixtures/trace-chunks-checkerboard.cpp'),'utf8').replace(/\r\n/g,'\n').replace(/@style grid background/g,'@style grid[0:100][0:100] background');
   const replyPromise=page.waitForResponse(r=>r.url().endsWith('/compile')&&r.request().method()==='POST');
   await page.evaluate(code=>{aceEditor.setValue(code,-1);window.__traceStart=performance.now();document.getElementById('runBtn').click();},source);
   const response=await replyPromise;
   assert.equal(response.headers()['content-encoding'],'gzip');
-  await page.waitForFunction(code=>ASMTracePlayer.getDocument()?.sourceCode===code
-   && Object.values(ASMTracePlayer.getDocument()?.variables||{}).some(v=>v.name==='grid'),source,{timeout:90000});
+  await require('./helpers/algorithm-page').waitForTraceSource(page,source).catch(async e=>{console.error(await page.evaluate(()=>({output:document.getElementById('outputArea').textContent,debug:document.getElementById('debugArea').textContent,actual:ASMTracePlayer.getDocument()?.sourceCode?.length,expected:aceEditor.getValue().length})));throw e;});
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   const result=await page.evaluate(()=>{
    const doc=ASMTracePlayer.getDocument(),frame=doc.frames[0];
@@ -117,7 +116,7 @@ int main(){
   },doc);
   assert.ok(roundtrip.before>0);assert.equal(roundtrip.index,2);assert.equal(roundtrip.seed,5);assert.equal(roundtrip.disabled,false);
   // One small sorting fixture exercises retained middle compare/swap events.
-  const bubble=await compileRaw(fs.readFileSync(path.join(__dirname,'fixtures/bubble.cpp'),'utf8'),'3\n3 1 2\n');
+  const bubble=await compileRaw(fs.readFileSync(path.join(__dirname, 'fixtures/bubble.cpp'),'utf8'),'3\n3 1 2\n');
   const sorted=bubble.traceDocument,arr=Object.values(sorted.variables).find(v=>v.name==='arr');
   assert.deepEqual(sorted.frames.at(-1).state[arr.id].data.items.map(v=>v.value),[1,2,3]);
   assert.equal(sorted.frames.flatMap(f=>f.events).filter(e=>e.type==='swap').length,2);

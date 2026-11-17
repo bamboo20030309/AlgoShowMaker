@@ -323,13 +323,14 @@
       const itemCount = Math.max(0, ...fieldSources.map(source => source.entry?.data?.items?.length || 0));
       fieldParts = Array.from({ length: itemCount }, (_, index) => fieldSources.flatMap(source => {
         const item = source.entry?.data?.items?.[index];
-        if (item == null || hiddenField(rendererOptions, source.name, item)) return [];
+        if (item == null) return [];
         return [{
           variableId: source.variableId,
+          hidden: hiddenField(rendererOptions, source.name, item),
           text: formattedItem(item, rendererOptions, source.name, source.variableId)
         }];
       }));
-      values = fieldParts.map(parts => parts.map(part => part.text).join(separator));
+      values = fieldParts.map(parts => parts.filter(part => !part.hidden).map(part => part.text).join(separator));
     } else {
       values = originalValues(
         entry, rendererOptions, context.variable?.name || '', context.variableId
@@ -374,7 +375,24 @@
     if (Number.isFinite(configuredColumns) && configuredColumns > 0) {
       itemsPerRow = Math.max(1, Math.trunc(configuredColumns));
     }
-    const configuredRange = Array.isArray(rendererOptions.range) ? rendererOptions.range : [];
+    const sourceColumns = itemsPerRow;
+    let sliceIndices = null;
+    let configuredRange = Array.isArray(rendererOptions.range) ? rendererOptions.range : [];
+    const dimensions = rendererOptions.selection;
+    if (dimensions?.length && window.ASMTraceSelection) {
+      if (!isMatrix) {
+        if (dimensions.length !== 1) throw new Error('一維物件只接受一組索引／區間');
+        const selected = window.ASMTraceSelection.bounds(dimensions[0], values.length);
+        configuredRange = selected ? [selected.start, selected.end + 1] : [0,0];
+      } else {
+        if (dimensions.length > 2) throw new Error('矩陣最多接受兩組索引／區間');
+        const rows = window.ASMTraceSelection.indices(dimensions[0], entry.data.items.length);
+        const columns = window.ASMTraceSelection.indices(dimensions[1] || {type:'range',startExpression:'0',endExpression:''}, sourceColumns);
+        sliceIndices = rows.flatMap(row => columns.map(column => row * sourceColumns + column));
+        values = sliceIndices.map(index => values[index]);
+        itemsPerRow = Math.max(1, columns.length);
+      }
+    }
     const intervalSegmentTree = requested === 'original-segment-tree'
       && configuredRange.length >= 2;
     const rangeStart = intervalSegmentTree ? 0 : Number.isFinite(Number(configuredRange[0]))
@@ -387,7 +405,12 @@
     const visibleCount = Math.max(0, rangeEndExclusive - rangeStart);
     const combinedHighlights = { ...(context.highlights || {}) };
     fieldSources.forEach(source => mergeHighlights(combinedHighlights, context.allHighlights?.[source.variableId]));
-    const styles = originalStyles(combinedHighlights, values.length);
+    let renderedHighlights = combinedHighlights;
+    if (sliceIndices) {
+      renderedHighlights = { $object: combinedHighlights.$object };
+      sliceIndices.forEach((index, local) => { renderedHighlights[local] = combinedHighlights[`${Math.floor(index/sourceColumns)},${index%sourceColumns}`] || combinedHighlights[index]; });
+    }
+    const styles = originalStyles(renderedHighlights, values.length);
     const mode = requested.replace(/^original-/, '');
     // An empty sequence still has a one-cell-wide outerframe, but no cell.
     // Do not route it through layout renderers that assume a first element.
@@ -425,11 +448,13 @@
     group.setAttribute('data-trace-range-start', String(rangeStart));
     group.setAttribute('data-trace-range-end', String(rangeEndExclusive));
     removeScalarIndexLabels(group, context.variable, requested, rendererOptions);
-    Array.from({ length: visibleCount }, (_, localIndex) => rangeStart + localIndex).forEach((logicalIndex, localIndex) => {
+    Array.from({ length: visibleCount }, (_, localIndex) => rangeStart + localIndex).forEach((displayIndex, localIndex) => {
+      const logicalIndex = sliceIndices ? sliceIndices[displayIndex] : displayIndex;
+      const matrixColumns = sliceIndices ? sourceColumns : itemsPerRow;
       const cell = group.querySelector(`#${CSS.escape(`cell-${id}-${localIndex}`)}`);
       const cellKey = selection?.type === 'element' && !Array.isArray(entry.data?.items)
         ? `${context.variableId}#${selection.indices.join(',')}` : isMatrix
-        ? `${context.variableId}#${Math.floor(logicalIndex / itemsPerRow)},${logicalIndex % itemsPerRow}`
+        ? `${context.variableId}#${Math.floor(logicalIndex / matrixColumns)},${logicalIndex % matrixColumns}`
         : `${context.variableId}#${logicalIndex}`;
       if (cell) {
         cell.setAttribute('data-trace-index', selection?.type === 'element' && !Array.isArray(entry.data?.items)
@@ -437,18 +462,18 @@
         // labels(index) renders the index in the cell's visible <text>.
         // Keep that label immutable while retaining the underlying data
         // value as a separate target for event replay and assignment effects.
-        cell.setAttribute('data-trace-data-value', String(values[logicalIndex] ?? ''));
+        cell.setAttribute('data-trace-data-value', String(values[displayIndex] ?? ''));
         if (mode === 'disk') {
           cell.setAttribute('data-trace-source-variable-id', context.variableId);
-          cell.setAttribute('data-trace-visual-continuity-key', `disk:${String(values[logicalIndex] ?? '')}`);
-          cell.setAttribute('data-trace-runtime-identity', `disk:${String(values[logicalIndex] ?? '')}`);
+          cell.setAttribute('data-trace-visual-continuity-key', `disk:${String(values[displayIndex] ?? '')}`);
+          cell.setAttribute('data-trace-runtime-identity', `disk:${String(values[displayIndex] ?? '')}`);
         }
         if (typeof rendererOptions.display?.template === 'string') {
           cell.setAttribute('data-trace-display-template', rendererOptions.display.template);
           cell.setAttribute('data-trace-display-index', String(logicalIndex));
           if (isMatrix) {
-            cell.setAttribute('data-trace-display-row', String(Math.floor(logicalIndex / itemsPerRow)));
-            cell.setAttribute('data-trace-display-column', String(logicalIndex % itemsPerRow));
+            cell.setAttribute('data-trace-display-row', String(Math.floor(logicalIndex / matrixColumns)));
+            cell.setAttribute('data-trace-display-column', String(logicalIndex % matrixColumns));
           }
         }
         const contentText = cell.querySelector(':scope > text');
@@ -456,13 +481,17 @@
           contentText.setAttribute('data-trace-content-role', indexMode === 2 ? 'index' : 'value');
           if (!rendererOptions.display && fieldParts[logicalIndex]?.length && indexMode !== 2) {
             contentText.textContent = '';
+            let hasVisibleField = false;
             fieldParts[logicalIndex].forEach((part, partIndex) => {
-              if (partIndex) contentText.append(svg('tspan', { 'data-trace-field-separator': '1' }, separator));
+              if (partIndex) contentText.append(svg('tspan', { 'data-trace-field-separator': '1',
+                display: !part.hidden && hasVisibleField ? 'inline' : 'none' }, separator));
               const fieldKey = `${objectKeyForVariable(context.frame, part.variableId)}#${logicalIndex}`;
               const fieldText = svg('tspan', {
                 'data-trace-field-variable': part.variableId,
+                display: part.hidden ? 'none' : 'inline',
                 'data-trace-index': logicalIndex
               }, part.text);
+              if (!part.hidden) hasVisibleField = true;
               if (part.variableId !== fieldSources[0]?.variableId) {
                 markSelectable(fieldText, fieldKey, context, context.variableId);
               }
@@ -481,7 +510,7 @@
         markSelectable(cell, cellKey, context, context.variableId);
         const indices = selection?.type === 'element' && !Array.isArray(entry.data?.items)
           ? selection.indices : isMatrix
-          ? [Math.floor(logicalIndex / itemsPerRow), logicalIndex % itemsPerRow]
+          ? [Math.floor(logicalIndex / matrixColumns), logicalIndex % matrixColumns]
           : [logicalIndex];
         markArrowTarget(cell, {
           key: cellKey,
@@ -521,6 +550,10 @@
       const indexLabel = group.querySelector(`#${CSS.escape(`cell-${id}-${localIndex}-index`)}`);
       if (indexLabel) {
         indexLabel.setAttribute('data-trace-index-label', String(logicalIndex));
+        if (sliceIndices && rendererOptions.indexLabels?.mode !== 'custom') {
+          const labelText = indexLabel.querySelector('text');
+          if (labelText) labelText.textContent = String(logicalIndex);
+        }
         indexLabel.setAttribute('data-trace-style-key', `$index-label:${logicalIndex}`);
         markSelectable(indexLabel, `${cellKey}:index`, context, context.variableId);
         if (Object.prototype.hasOwnProperty.call(rendererOptions, 'gridlines')) {
@@ -646,6 +679,7 @@
   }
 
   function matrixCellDisplay(item, context, locals) {
+    if (context.matrixIndexMap) locals={...locals,row:context.matrixIndexMap.rows[locals.row],column:context.matrixIndexMap.columns[locals.column],index:context.matrixIndexMap.columns[locals.column]};
     const options = context.skin?.options || {};
     const raw = Number(window.ASMTraceModel?.scalarValue?.(item));
     const symbols = Array.isArray(options.symbols) ? options.symbols : null;
@@ -656,6 +690,16 @@
   }
 
 
+
+  function bindMatrixLabelSource(node, spec, index, context) {
+    const origin=spec?.sources?.[index];
+    if(!node||!origin?.variableId||!Number.isInteger(origin.index))return;
+    node.dataset.traceLabelSourceVariable=origin.variableId;
+    node.dataset.traceLabelSourceIndex=String(origin.index);
+    node.dataset.traceLabelSourceKey=`${objectKeyForVariable(context.frame,origin.variableId)}#${origin.index}`;
+    // Source identity enables shared cell animation without replacing axis styling.
+    node.querySelector(':scope > text')?.setAttribute('data-trace-content-role','value');
+  }
 
   function renderMatrix(group, entry, context) {
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
@@ -809,6 +853,7 @@
       });
       const rowLabel = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-index`)}`);
       if (rowLabel) {
+        bindMatrixLabelSource(rowLabel,rowSpec,rowIndex,context);
         rowLabel.setAttribute('data-trace-label-role', 'row');
         rowLabel.setAttribute('data-trace-style-key', `$row-label:${rowIndex}`);
         markSelectable(rowLabel, `${objectKey}:row-label:${rowIndex}`, context, context.variableId);
@@ -822,6 +867,7 @@
     for (let columnIndex = 0; columnIndex < maxColumns; columnIndex += 1) {
       const columnLabel = group.querySelector(`#${CSS.escape(`block-${drawId}-index-${columnIndex}`)}`);
       if (columnLabel) {
+        bindMatrixLabelSource(columnLabel,columnSpec,columnIndex,context);
         columnLabel.setAttribute('data-trace-label-role', 'column');
         columnLabel.setAttribute('data-trace-style-key', `$column-label:${columnIndex}`);
         markSelectable(columnLabel,
@@ -841,7 +887,53 @@
     return originalBoundsHeight(group, 78);
   }
 
+  // 矩陣切片使用緊密的視圖座標繪製，再把所有語意 key／標籤還原成原始索引。
+  // 原始 Trace state 不裁切，因此事件、指標、style 和端點仍指向同一格資料。
+  function renderMatrixSlice(group, entry, context) {
+    const dimensions=context.skin?.options?.selection;
+    if (!dimensions || !window.ASMTraceSelection) return null;
+    if (dimensions.length>2) throw new Error('矩陣最多接受兩組索引／區間');
+    const rows=entry.data?.items || [],S=window.ASMTraceSelection;
+    const rowIndices=S.indices(dimensions[0],rows.length);
+    const columnIndices=S.indices(dimensions[1] || {type:'range',startExpression:'0',endExpression:''},Math.max(0,...rows.map(row=>row.items?.length||0)));
+    const options={...context.skin.options};delete options.selection;
+    const labels=(spec,indices)=>spec?.mode==='none'?spec:{mode:'custom',values:indices.map(index=>spec?.mode==='custom'?spec.values?.[index]??'':index),sources:indices.map(index=>spec?.sources?.[index]??null)};
+    options.rowLabels=labels(options.rowLabels,rowIndices);options.columnLabels=labels(options.columnLabels,columnIndices);
+    if(options.innerLabels && options.innerLabels.mode!=='none') options.innerLabels={mode:'custom',values:rowIndices.map(row=>columnIndices.map(column=>options.innerLabels.mode==='index'?column:options.innerLabels.values?.[row]?.[column]??''))};
+    const highlights={$object:context.highlights?.$object};
+    rowIndices.forEach((row,r)=>{highlights[`$row-label:${r}`]=context.highlights?.[`$row-label:${row}`];columnIndices.forEach((column,c)=>{
+      highlights[`${r},${c}`]=context.highlights?.[`${row},${column}`];highlights[`$inner-label:${r},${c}`]=context.highlights?.[`$inner-label:${row},${column}`];
+    });});columnIndices.forEach((column,c)=>{highlights[`$column-label:${c}`]=context.highlights?.[`$column-label:${column}`];});
+    Object.keys(highlights).forEach(key=>{if(!highlights[key])delete highlights[key];});
+    const selected={...entry,data:{...entry.data,items:rowIndices.map(row=>({...rows[row],items:columnIndices.filter(column=>column<(rows[row]?.items?.length||0)).map(column=>rows[row].items[column])}))}};
+    const height=renderOriginalMatrix(group,selected,{...context,highlights,matrixIndexMap:{rows:rowIndices,columns:columnIndices},skin:{...context.skin,options}});
+    const key=value=>String(value).replace(/#(\d+),(\d+)/g,(_,r,c)=>`#${rowIndices[Number(r)]},${columnIndices[Number(c)]}`)
+      .replace(/:row-label:(\d+)/g,(_,r)=>`:row-label:${rowIndices[Number(r)]}`).replace(/:column-label:(\d+)/g,(_,c)=>`:column-label:${columnIndices[Number(c)]}`);
+    group.querySelectorAll('*').forEach(element=>{
+      for(const attribute of ['data-trace-object-key','data-trace-parent-key','data-trace-attached-to'])if(element.hasAttribute(attribute))element.setAttribute(attribute,key(element.getAttribute(attribute)));
+      const styleKey=element.getAttribute('data-trace-style-key');
+      if(styleKey)element.setAttribute('data-trace-style-key',styleKey
+        .replace(/\$row-label:(\d+)/g,(_,r)=>`$row-label:${rowIndices[Number(r)]}`)
+        .replace(/\$column-label:(\d+)/g,(_,c)=>`$column-label:${columnIndices[Number(c)]}`)
+        .replace(/\$inner-label:(\d+),(\d+)/g,(_,r,c)=>`$inner-label:${rowIndices[Number(r)]},${columnIndices[Number(c)]}`));
+      const indexLabel=element.getAttribute('data-trace-index-label');
+      if(/^\d+,\d+$/.test(indexLabel||'')){const[r,c]=indexLabel.split(',').map(Number);element.setAttribute('data-trace-index-label',`${rowIndices[r]},${columnIndices[c]}`);}
+      const indices=element.getAttribute('data-trace-index');
+      if(/^\d+,\d+$/.test(indices||'')){const[r,c]=indices.split(',').map(Number);element.setAttribute('data-trace-index',`${rowIndices[r]},${columnIndices[c]}`);}
+      if(element.dataset.traceArrowTarget==='1'){
+        const coordinates=element.dataset.traceArrowTargetIndices?.split(',').map(Number);
+        if(coordinates?.length===2)markArrowTarget(element,{key:key(element.dataset.traceArrowTargetKey),objectKey:element.dataset.traceArrowTargetObject,objectLabel:context.variable?.name||context.variableId,indices:[rowIndices[coordinates[0]],columnIndices[coordinates[1]]],kind:'matrix-cell'});
+      }
+    });
+    // 單獨設定資料值，供事件動畫及匯入重開核對，避免把顯示模板當成來源資料。
+    group.querySelectorAll('[data-trace-arrow-target-kind="matrix-cell"]').forEach(cell=>{
+      const[r,c]=cell.dataset.traceArrowTargetIndices.split(',').map(Number);cell.dataset.traceDataValue=displayValue(rows[r]?.items?.[c]);
+    });
+    return height;
+  }
+
   function renderOriginalMatrix(group, entry, context) {
+    const sliced=renderMatrixSlice(group,entry,context);if(sliced!=null)return sliced;
     ({ entry, context } = bitsMatrixEntry(entry, context));
     const drawnHeight = renderOriginalMatrixWithDraw2DArray(group, entry, context);
     if (drawnHeight != null) return drawnHeight;
@@ -921,6 +1013,7 @@
         const label = labelGroup(`${objectKey}:column-label:${column}`,
           originX + column * cellSize, 0, cellSize, axisSize,
           labelValue(columnSpec, column), 'column');
+        bindMatrixLabelSource(label,columnSpec,column,context);
         applyHighlight(label.querySelector('rect'), context.highlights?.[`$column-label:${column}`] || {});
         group.append(label);
       }
@@ -936,6 +1029,7 @@
       if (showRows) {
         const label = labelGroup(`${objectKey}:row-label:${rowIndex}`,
           0, y, axisSize, cellSize, labelValue(rowSpec, rowIndex), 'row');
+        bindMatrixLabelSource(label,rowSpec,rowIndex,context);
         applyHighlight(label.querySelector('rect'), context.highlights?.[`$row-label:${rowIndex}`] || {});
         group.append(label);
       } else {
@@ -1081,15 +1175,6 @@
     if (typeof name === 'string' && typeof renderer === 'function') renderers.set(name, renderer);
   }
 
-  function studioPosition(document, frame, key) {
-    const position = document.studio?.positions?.[frame.id]?.[key];
-    return {
-      x: Number(position?.x) || 0,
-      y: Number(position?.y) || 0,
-      absolute: position?.absolute === true
-    };
-  }
-
   function snapshotObjectKey(snapshot) {
     return String(snapshot?.objectId || snapshot?.id || '');
   }
@@ -1116,17 +1201,9 @@
   }
 
   function keepUnionPlacement(document, frame, placements, sourceObjectKey = '') {
-    const snapshotsById = new Map((document?.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
-    const visibilityStates = document?.studio?.visibility?.[frame?.id] || {};
-    const snapshotIdsByObjectKey = new Map((frame?.snapshotIds || []).map(snapshotId => {
-      const objectKey = snapshotObjectKey(snapshotsById.get(snapshotId));
-      return [objectKey, snapshotId];
-    }));
-    const boxes = keepSnapshotObjectKeys(document, frame, sourceObjectKey).map(objectKey => {
-      const snapshotId = snapshotIdsByObjectKey.get(objectKey);
-      if (!objectKey || (visibilityStates[objectKey] || visibilityStates[snapshotId]) === 'hidden') return null;
-      return placements.get(objectKey) || null;
-    }).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
+    const boxes = keepSnapshotObjectKeys(document, frame, sourceObjectKey).map(objectKey => (
+      objectKey ? placements.get(objectKey) || null : null
+    )).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
     if (!boxes.length) return null;
     const left = Math.min(...boxes.map(box => box.x));
     const top = Math.min(...boxes.map(box => box.y));
@@ -1135,55 +1212,24 @@
     return { x: left, y: top, width: right - left, height: bottom - top };
   }
 
-  function snapshotStudioPosition(document, frame, snapshot) {
-    const positions = document.studio?.positions?.[frame.id] || {};
-    const objectKey = snapshotObjectKey(snapshot);
-    const hasObjectPosition = Object.prototype.hasOwnProperty.call(positions, objectKey);
-    const hasSnapshotPosition = Object.prototype.hasOwnProperty.call(positions, snapshot.id);
-    if (hasObjectPosition || hasSnapshotPosition) {
-      return {
-        ...studioPosition(document, frame, hasObjectPosition ? objectKey : snapshot.id),
-        explicit: true
-      };
-    }
-
-    const offsetX = Number(snapshot?.placementOffset?.x) || 0;
-    const offsetY = Number(snapshot?.placementOffset?.y) || 0;
-    if (snapshot?.kind !== 'frame' && snapshot?.sourceFrameId && snapshot?.sourceVariableId) {
-      const sourceFrame = document.frames?.find(item => item.id === snapshot.sourceFrameId);
-      const sourceKey = objectKeyForVariable(sourceFrame, snapshot.sourceVariableId);
-      const sourcePositions = document.studio?.positions?.[sourceFrame?.id] || {};
-      const inheritedKey = Object.prototype.hasOwnProperty.call(sourcePositions, sourceKey)
-        ? sourceKey
-        : snapshot.sourceVariableId;
-      const inherited = studioPosition(document, sourceFrame || {}, inheritedKey);
-      return {
-        x: inherited.x + offsetX,
-        y: inherited.y + offsetY,
-        absolute: inherited.absolute,
-        explicit: false
-      };
-    }
-    return { x: offsetX, y: offsetY, absolute: false, explicit: false };
+  // 位置完全由指令與自動排版決定（2026-11-14）：快照只保留自動排版記下的位移。
+  function snapshotPlacementOffset(snapshot) {
+    return {
+      x: Number(snapshot?.placementOffset?.x) || 0,
+      y: Number(snapshot?.placementOffset?.y) || 0
+    };
   }
 
   function objectKeyForVariable(frame, variableId) {
+    if (window.ASMTraceModel?.objectKeyForVariable) return window.ASMTraceModel.objectKeyForVariable(frame, variableId);
     const source = frame?.source || {};
     if (source.objectIds?.[variableId]) return source.objectIds[variableId];
     if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
     return variableId;
   }
 
-  function snapshotAutomaticBinding(document, snapshot) {
-    if (!snapshot) return null;
-    if (snapshot.kind !== 'frame' && snapshot.sourceFrameId && snapshot.sourceVariableId) {
-      const sourceFrame = document.frames?.find(item => item.id === snapshot.sourceFrameId);
-      const sourceKey = objectKeyForVariable(sourceFrame, snapshot.sourceVariableId);
-      const inherited = document.studio?.bindings?.[sourceFrame?.id]?.[sourceKey]
-        || document.studio?.bindings?.[sourceFrame?.id]?.[snapshot.sourceVariableId];
-      if (inherited) return { ...inherited };
-    }
-    return snapshot.binding ? { ...snapshot.binding } : null;
+  function snapshotAutomaticBinding(snapshot) {
+    return snapshot?.binding ? { ...snapshot.binding } : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -1236,6 +1282,12 @@
     const root = rootSvg.querySelector('#asm-trace-root');
     const captured = new Map();
     if (!root) return captured;
+    const stylesByCell = new Map();
+    root.querySelectorAll('.asm-trace-style-decoration').forEach(wrapper => {
+      const owner = wrapper._asmStyleCell;
+      if (!stylesByCell.has(owner)) stylesByCell.set(owner, []);
+      stylesByCell.get(owner).push(wrapper);
+    });
     root.querySelectorAll('[data-trace-object-key]').forEach(element => {
       const parentObject = element.parentElement?.closest?.('[data-trace-object-key]');
       if (parentObject && root.contains(parentObject)) return;
@@ -1246,6 +1298,13 @@
       const key = element.dataset.traceObjectKey;
       if (!key || captured.has(key)) return;
       const clone = element.cloneNode(true);
+      // 外層 style 不在物件 DOM 子樹內；先保存格子局部模板，供事件複本使用。
+      // 此處不插入可見節點，避免 point／mark 影響後續量測的格子尺寸。
+      const sourceCells = [element, ...element.querySelectorAll('[data-trace-index]')];
+      const capturedCells = [clone, ...clone.querySelectorAll('[data-trace-index]')];
+      sourceCells.forEach((cell, index) => {
+        capturedCells[index]._asmCapturedCellStyles = cellStyleTemplates(cell, stylesByCell.get(cell) || []);
+      });
       clone.querySelectorAll('animate, animateTransform, animateMotion').forEach(animation => animation.remove());
       [clone, ...clone.querySelectorAll('[id]')].forEach(node => node.removeAttribute?.('id'));
       clone.removeAttribute('data-trace-object-key');
@@ -1662,17 +1721,9 @@
   }
 
   function keepAnchorPlacement(document, frame, placements, elements, sourceObjectKey = '') {
-    const snapshotsById = new Map((document?.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
-    const visibilityStates = document?.studio?.visibility?.[frame?.id] || {};
-    const snapshotIdsByObjectKey = new Map((frame?.snapshotIds || []).map(snapshotId => {
-      const objectKey = snapshotObjectKey(snapshotsById.get(snapshotId));
-      return [objectKey, snapshotId];
-    }));
-    const boxes = keepSnapshotObjectKeys(document, frame, sourceObjectKey).map(objectKey => {
-      const snapshotId = snapshotIdsByObjectKey.get(objectKey);
-      if (!objectKey || (visibilityStates[objectKey] || visibilityStates[snapshotId]) === 'hidden') return null;
-      return semanticTargetPlacement(objectKey, placements, elements);
-    }).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
+    const boxes = keepSnapshotObjectKeys(document, frame, sourceObjectKey).map(objectKey => (
+      objectKey ? semanticTargetPlacement(objectKey, placements, elements) : null
+    )).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
     if (!boxes.length) return null;
     const left = Math.min(...boxes.map(box => box.x));
     const top = Math.min(...boxes.map(box => box.y));
@@ -1877,6 +1928,7 @@
   }
 
   function fitObjectNames(group) {
+    group?.querySelectorAll?.('[data-trace-index] > text[data-trace-content-role="value"]').forEach(text => window.fitSvgCellValueText?.(text));
     group?.querySelectorAll?.('.outerframe-label').forEach(label => {
       const owner = label.parentElement;
       const box = owner.querySelector(':scope > .outerframe-nb');
@@ -2102,6 +2154,14 @@
           // locals reuse variable keys across activations, so looking up an
           // old live `part` key in the new scene can incorrectly return the
           // newly-created descendant and drag an ancestor edge with it.
+          const liveKey = tween.previous.dataset[`traceArrow${role}Key`];
+          const liveBox = tween.followLive && model.presentedBounds(elements.get(liveKey), root,
+            tween.previous.dataset[`traceArrow${role}Cell`] !== 'true');
+          if (liveBox) {
+            const point = anchorPoint(liveBox, tween.previous.dataset[`traceArrow${role}Anchor`]);
+            return { x: point.x + Number(tween.previous.dataset[`traceArrow${role}Dx`] || 0),
+              y: point.y + Number(tween.previous.dataset[`traceArrow${role}Dy`] || 0) };
+          }
           const x = Number(tween.previous.dataset[`traceArrow${role}X`]);
           const y = Number(tween.previous.dataset[`traceArrow${role}Y`]);
           if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
@@ -2226,6 +2286,36 @@
     return true;
   }
 
+  function cellStyleTemplates(cell, wrappers = null) {
+    if (cell?._asmCapturedCellStyles) return cell._asmCapturedCellStyles;
+    const root = cell?.closest?.('#asm-trace-root');
+    if (!root) return [];
+    return (wrappers || [...root.querySelectorAll('.asm-trace-style-decoration')])
+      .filter(wrapper => wrapper._asmStyleCell === cell
+        && !wrapper.classList.contains('asm-trace-style-compare'))
+      .map(wrapper => ({
+        basis: wrapper._asmStyleBasis,
+        visual: wrapper.firstElementChild?.cloneNode(true)
+      })).filter(item => item.basis && item.visual);
+  }
+
+  function copyCellStyles(source, target) {
+    if (!source || !target || target.querySelector?.(':scope > .asm-trace-cell-style-copy')) return;
+    cellStyleTemplates(source).forEach(({ basis, visual }) => {
+      const wrapper = svg('g', {
+        class: 'asm-trace-cell-style-copy', 'pointer-events': 'none',
+        transform: `matrix(${basis.a} ${basis.b} ${basis.c} ${basis.d} ${basis.e} ${basis.f})`
+      });
+      const copy = visual.cloneNode(true);
+      [copy, ...copy.querySelectorAll('[id], [data-trace-object-key], [data-trace-attached-to]')].forEach(node => {
+        ['id', 'data-trace-object-key', 'data-trace-attached-to'].forEach(name => node.removeAttribute(name));
+      });
+      // 和格子共用同一個 transform；不另做位移／縮放，也不加入選取或定位資料。
+      wrapper.append(copy);
+      target.append(wrapper);
+    });
+  }
+
   function updatePresentedHints(cell, highlight, key) {
     const root = cell?.closest?.('#asm-trace-root');
     const rect = cell?.querySelector?.(':scope > rect');
@@ -2284,14 +2374,49 @@
     });
   }
 
+  function styleForeground(root) {
+    let layer=[...root.children].find(child=>child.classList?.contains('asm-trace-style-layer'));
+    if (!layer) {
+      layer=svg('g',{class:'asm-trace-style-layer','data-trace-style-layer':'foreground','pointer-events':'none'});
+      root.insertBefore(layer,[...root.children].find(child=>child.classList?.contains('asm-trace-foreground-arrows'))||null);
+    }
+    return layer;
+  }
+
+  function presentedStyleParent(root,wrapper,cell) {
+    const promoted=Boolean(cell.closest('.asm-trace-animation-effect-layer'));
+    const home=wrapper._asmStyleHome;
+    if (promoted) {
+      const foreground=styleForeground(root);
+      if (wrapper.parentElement!==foreground) {
+        if (!home) {
+          const parent=wrapper.parentElement,placeholder=window.document.createComment('asm-trace-style-home');
+          parent.insertBefore(placeholder,wrapper);
+          wrapper._asmStyleHome={parent,placeholder};
+        }
+        foreground.append(wrapper);
+      }
+    } else if (home) {
+      if (home.parent?.isConnected&&root.contains(home.parent)) {
+        home.parent.insertBefore(wrapper,home.placeholder.parentNode===home.parent?home.placeholder:null);
+      }
+      home.placeholder.remove();
+      delete wrapper._asmStyleHome;
+    }
+    return wrapper.parentElement;
+  }
+
   function refreshPresentedStyles(root) {
-    const layer = [...(root?.children || [])].find(child => child.classList?.contains('asm-trace-style-layer'));
     const rootMatrix = root?.getScreenCTM?.();
-    if (!layer || !rootMatrix) return;
-    let inverse;
-    try { inverse = rootMatrix.inverse(); } catch { return; }
-    [...layer.children].forEach(wrapper => {
-      if (!wrapper.firstElementChild) { wrapper.remove(); return; }
+    if (!rootMatrix) return;
+    const inverses = new Map();
+    // @keep frame 的 style 層位於巢狀 scene 內。格子被提升到動畫層後，
+    // 仍須更新這些 style，並用實際 style 父層的座標反算，不能只更新根層。
+    root.querySelectorAll('.asm-trace-style-decoration').forEach(wrapper => {
+      if (!wrapper.firstElementChild) {
+        wrapper._asmStyleHome?.placeholder?.remove();
+        wrapper.remove(); return;
+      }
       const sourceCell = wrapper._asmStyleCell;
       const cell = sourceCell?._asmStylePresentationCell || sourceCell;
       const basis = wrapper._asmStyleBasis;
@@ -2299,6 +2424,16 @@
         wrapper.setAttribute('display', 'none');
         return;
       }
+      // 座標同步仍不足以保證可見：格子在動畫前景時，style 也必須畫在它上面。
+      // 回復／取消動畫後移回原本快照層，讓 keep 重用及層次維持原樣。
+      const parent = presentedStyleParent(root,wrapper,cell);
+      if (!parent) return;
+      if (!inverses.has(parent)) {
+        try { inverses.set(parent, (parent.getScreenCTM?.() || rootMatrix).inverse()); }
+        catch { inverses.set(parent, null); }
+      }
+      const inverse = inverses.get(parent);
+      if (!inverse) return;
       const cellMatrix = cell.getScreenCTM?.();
       if (!cellMatrix) { wrapper.setAttribute('display', 'none'); return; }
       const matrix = inverse.multiply(cellMatrix).multiply(basis);
@@ -2415,7 +2550,26 @@
       : objectKeyForVariable(frame, variableId);
     const expression = target.indexExpression;
     if (expression != null && String(expression).trim() !== '') {
-      const parts = String(expression).split(',').map(part => part.trim()).filter(Boolean);
+      const parts = window.ASMTraceSelection
+        ? window.ASMTraceSelection.split(String(expression))
+        : String(expression).split(',').map(part => part.trim()).filter(Boolean);
+      if (window.ASMTraceSelection && parts.some(part => window.ASMTraceSelection.dimension(part).type === 'range')) {
+        const dimensions = parts.map(part => window.ASMTraceSelection.dimension(part));
+        const candidates = [];
+        const prefix = `${targetObjectKey}#`;
+        placements.forEach((box, key) => {
+          if (!key.startsWith(prefix)) return;
+          const suffix = key.slice(prefix.length);
+          const match = suffix.match(target.indexLabel ? /^(\d+(?:,\d+)*):index$/ : /^(\d+(?:,\d+)*)$/);
+          if (match) candidates.push({box, indices:match[1].split(',').map(Number)});
+        });
+        const sizes = dimensions.map((_,axis) => Math.max(0,...candidates.map(item => (item.indices[axis] ?? -1)+1)));
+        const boxes = candidates.filter(item => item.indices.length === dimensions.length && dimensions.every((dimension,axis) =>
+          window.ASMTraceSelection.matches(dimension,item.indices[axis],sizes[axis],value => window.ASMTraceRules.resolveExpression(document,frame,value,target.drawLocals)))).map(item=>item.box);
+        if (!boxes.length) return null;
+        const x=Math.min(...boxes.map(box=>box.x)),y=Math.min(...boxes.map(box=>box.y));
+        return {x,y,width:Math.max(...boxes.map(box=>box.x+box.width))-x,height:Math.max(...boxes.map(box=>box.y+box.height))-y};
+      }
       const indices = parts.map(part => {
         const value = window.ASMTraceRules.resolveExpression(document, frame, part);
         return value == null ? NaN : Number(value);
@@ -2601,9 +2755,14 @@
     content.querySelectorAll('[data-trace-object-key]').forEach(element => {
       const key = element.dataset.traceObjectKey;
       if (!key) return;
-      const box = measuredBox(element, null);
+      let measured = element;
+      let box = measuredBox(element, null);
+      if ((!box || box.width <= 0 || box.height <= 0) && element.matches?.('tspan[data-trace-field-variable]')) {
+        measured = element.closest('g[data-trace-index]');
+        box = measured && measuredBox(measured, null);
+      }
       if (!box) return;
-      const shift = translateWithin(element, content);
+      const shift = translateWithin(measured, content);
       placements.set(key, {
         x: baseX + box.x + shift.x,
         y: baseY + box.y + shift.y,
@@ -3001,16 +3160,12 @@
     if (!keys.length || frame?.source?.layoutId) return null;
     const preferredKey = objectKeyForVariable(frame, frame?.source?.primaryVariableId || '');
     const primaryKey = keys.includes(preferredKey) ? preferredKey : keys[0];
-    const framePositions = document?.studio?.positions?.[frame?.id] || {};
     const frameBindings = frame?.objectBindings || [];
-    const studioBindings = document?.studio?.bindings?.[frame?.id] || {};
-    const explicitlyPositioned = Object.prototype.hasOwnProperty.call(framePositions, primaryKey)
-      || Object.prototype.hasOwnProperty.call(framePositions, frame?.source?.primaryVariableId || '');
     const explicitlyBound = frameBindings.some(binding => (
       binding?.sourceObjectKey === primaryKey
       || binding?.sourceVariableId === frame?.source?.primaryVariableId
-    )) || Object.prototype.hasOwnProperty.call(studioBindings, primaryKey);
-    if (explicitlyPositioned || explicitlyBound) return null;
+    ));
+    if (explicitlyBound) return null;
 
     const delta = defaultLiveObjectPlacementDelta(placements.get(primaryKey));
     // Keep the horizontal default, but never reset an automatically stacked
@@ -3021,98 +3176,15 @@
     keys.forEach(key => {
       const element = elements.get(key);
       if (!element) return;
-      const hasOwnPosition = Object.prototype.hasOwnProperty.call(framePositions, key);
       const hasOwnBinding = frameBindings.some(binding => (
         binding?.sourceObjectKey === key || binding?.sourceVariableId === element.dataset.traceVariable
-      )) || Object.prototype.hasOwnProperty.call(studioBindings, key);
-      if (hasOwnPosition || hasOwnBinding) return;
+      ));
+      if (hasOwnBinding) return;
       translatedTransform(element, delta.x, delta.y);
       shiftPlacementTree(element, delta.x, delta.y, placements, elements);
       element.dataset.traceDefaultBinding = 'canvas.top offset(0,80)';
     });
     return delta;
-  }
-
-  function applyStoredPartPositions(document, frame, placements, elements) {
-    const positions = document.studio?.positions?.[frame.id] || {};
-    Object.entries(positions).forEach(([key, position]) => {
-      const element = elements.get(key);
-      const placement = placements.get(key);
-      if (!element || !placement || element.dataset.tracePositionApplied === '1') return;
-      const dx = position?.absolute === true ? (Number(position.x) || 0) - placement.x : Number(position?.x) || 0;
-      const dy = position?.absolute === true ? (Number(position.y) || 0) - placement.y : Number(position?.y) || 0;
-      if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
-        translatedTransform(element, dx, dy);
-        shiftPlacementTree(element, dx, dy, placements, elements);
-      }
-      const current = placements.get(key) || placement;
-      element.dataset.tracePositionSpace = 'bounds';
-      element.dataset.tracePositionX = String(current.x);
-      element.dataset.tracePositionY = String(current.y);
-    });
-  }
-
-  function applyVisibilityStates(document, frame, elements) {
-    const states = document.studio?.visibility?.[frame.id] || {};
-    const editing = window.document.body.classList.contains('asm-trace-studio-open');
-    const hiddenElements = Object.entries(states)
-      .filter(([, state]) => state === 'hidden')
-      .map(([key]) => elements.get(key))
-      .filter(Boolean);
-    hiddenElements.forEach(element => {
-      element.dataset.traceVisibility = 'hidden';
-    });
-    hiddenElements.forEach(element => {
-      if (!editing) {
-        element.setAttribute('display', 'none');
-        return;
-      }
-      if (!element.parentElement?.closest('[data-trace-visibility="hidden"]')) {
-        element.classList.add('trace-studio-hidden-object');
-      }
-    });
-  }
-
-  function applyObjectColorStyles(document, frame, elements) {
-    const styles = document.studio?.objectStyles?.[frame.id] || {};
-    Object.entries(styles).forEach(([key, style]) => {
-      const element = elements.get(key);
-      if (!element || !style) return;
-      const fillTargets = element.matches?.('text, rect, circle, ellipse, polygon')
-        ? [element]
-        : [...element.querySelectorAll(':scope > rect, :scope > circle, :scope > ellipse, :scope > polygon, :scope > .asm-trace-motion > rect, :scope > .asm-trace-motion > circle, :scope > .asm-trace-motion > ellipse, :scope > .asm-trace-motion > polygon, :scope > .asm-trace-motion > g > rect, :scope > .asm-trace-motion > g > circle, :scope > .asm-trace-motion > g > polygon')];
-      if (!fillTargets.length) fillTargets.push(...element.querySelectorAll('text'));
-      const strokeTargets = element.matches?.('path, line, polyline, rect, circle, ellipse, polygon')
-        ? [element]
-        : [...element.querySelectorAll('path, line, polyline, rect, circle, ellipse, polygon')];
-      if (style.fill) {
-        fillTargets.forEach(target => {
-          if (target.getAttribute('fill') !== 'none') target.setAttribute('fill', style.fill);
-        });
-        if (!fillTargets.length && element.matches?.('path, line, polyline')) {
-          element.setAttribute('stroke', style.fill);
-        }
-      }
-      if (style.stroke) {
-        strokeTargets.forEach(target => {
-          if (target.getAttribute('stroke') !== 'none') target.setAttribute('stroke', style.stroke);
-        });
-      }
-      const fontSize = Number(style.fontSize);
-      if (Number.isFinite(fontSize) && fontSize > 0) {
-        // @text objects consume their object-level font size while calculating
-        // layout, so the bubble, padding and pointer scale with the glyphs.
-        // Rewriting only their <text> nodes here would distort that geometry.
-        if (element.matches?.('.asm-trace-text-object')) return;
-        const textTargets = element.matches?.('text')
-          ? [element]
-          : [...element.querySelectorAll('text')];
-        textTargets.forEach(target => {
-          target.setAttribute('font-size', String(fontSize));
-          if (target.classList.contains('outerframe-label')) target.dataset.traceNameFontLimit = String(fontSize);
-        });
-      }
-    });
   }
 
   function applyBindings(document, frame, placements, elements) {
@@ -3125,7 +3197,7 @@
       ...(frame.objectBindings || []),
       ...(frame.snapshotIds || []).map(id => {
         const snapshot = snapshotsById.get(id);
-        const binding = snapshotAutomaticBinding(document, snapshot);
+        const binding = snapshotAutomaticBinding(snapshot);
         return binding
           ? { ...binding, sourceObjectKey: snapshotObjectKey(snapshot) }
           : null;
@@ -3157,13 +3229,12 @@
         dy: (binding.sourceAnchor ? 0 : anchor.includes('top') ? -8 : anchor.includes('bottom') ? 8 : 0)
           + (Number(binding.offsetY) || 0),
         semanticDirective: true,
+        semanticTarget: semanticBindingTarget(binding),
+        sourceIndexExpressions: binding.sourceIndexExpressions || [],
         targetExpression: binding.targetExpression || ''
       };
     });
-    const bindings = {
-      ...directiveBindings,
-      ...(document.studio?.bindings?.[frame.id] || {})
-    };
+    const bindings = directiveBindings;
     const applied = new Set();
     const applying = new Set();
 
@@ -3184,7 +3255,9 @@
       } else {
         applyOne(targetKey);
       }
-      const sourcePlacement = binding.semanticDirective
+      const sourcePlacement = binding.sourceIndexExpressions?.length
+        ? targetPlacement(document,frame,placements,{objectKey:key,indexExpression:binding.sourceIndexExpressions.join(',')},elements)
+        : binding.semanticDirective
         ? semanticTargetPlacement(key, placements, elements)
         : placements.get(key);
       const boundPlacement = targetKey === '$canvas'
@@ -3192,7 +3265,7 @@
         : targetKey === '$keep'
           ? keepAnchorPlacement(document, frame, placements, elements,
             snapshotObjectKeys.has(key) ? key : '')
-          : targetPlacement(document, frame, placements, { objectKey: targetKey }, elements);
+          : targetPlacement(document, frame, placements, binding.semanticTarget || { objectKey: targetKey }, elements);
       if (sourcePlacement && boundPlacement && targetKey !== key) {
         const sourcePoint = anchorPoint(sourcePlacement, binding.sourceAnchor || 'top');
         const targetPoint = anchorPoint(boundPlacement, binding.targetAnchor || 'center');
@@ -3888,7 +3961,6 @@
           }
         });
       }
-      const positions = document.studio?.positions?.[frame.id] || {};
       sourceNodes.forEach(node => {
         const snapshot = snapshotsById.get(node.id);
         const destination = coordinates.get(node.id);
@@ -3897,9 +3969,7 @@
         // wrapper by the delta needed to put that exact box in the layout
         // slot; this keeps @frame ... in and @keep ... in pixel-aligned.
         const current = node.box;
-        const explicitlyPlaced = Object.prototype.hasOwnProperty.call(positions, node.objectKey)
-          || Object.prototype.hasOwnProperty.call(positions, node.id)
-          || Boolean(snapshot?.binding)
+        const explicitlyPlaced = Boolean(snapshot?.binding)
           || Boolean(node.live && (frame.objectBindings || []).some(binding => (
             binding?.sourceVariableId === frame.source?.primaryVariableId
           )));
@@ -4183,6 +4253,15 @@
           : direction === 'left-right' ? ['right', 'left']
             : direction === 'right-left' ? ['left', 'right']
               : ['bottom', 'top'];
+        const arrowDirection = layout.arrowDirection || 'parent-to-child';
+        // 排版方向與箭頭方向互相獨立；保留端點、邊 ID 與移動綁定，僅切換箭頭端。
+        const dx = to.x + to.width / 2 - from.x - from.width / 2;
+        const dy = to.y + to.height / 2 - from.y - from.height / 2;
+        const reversed = arrowDirection === 'child-to-parent'
+          || (arrowDirection === 'up' && dy > 0)
+          || (arrowDirection === 'down' && dy < 0)
+          || (arrowDirection === 'left' && dx > 0)
+          || (arrowDirection === 'right' && dx < 0);
         models.push({
           // Live recursion nodes and the @keep snapshots that replace them
           // have different object keys but the same activation identity. A
@@ -4197,7 +4276,7 @@
           style: {
             color: layout.edgeColor || 'black',
             width: Math.max(0.5, Number(layout.edgeWidth) || 2),
-            head: 'end',
+            head: reversed ? 'start' : 'end',
             line: 'straight'
           },
           _fromPlacement: from,
@@ -4598,44 +4677,6 @@
     return window.parseTTSMarkup?.(value) || { display: String(value ?? ''), speech: String(value ?? '') };
   }
 
-  function styledTextPieces(document, frame, objectKey, segment, segmentIndex, resolvedText) {
-    const baseKey = `${objectKey}:segment:${segment?.segmentId || segmentIndex}`;
-    const styles = document.studio?.objectStyles?.[frame.id] || {};
-    const baseStyle = styles[baseKey] || {};
-    if (segment?.kind === 'expression' || /[{}]/.test(resolvedText)) {
-      return [{ text: resolvedText, segmentKey: baseKey, baseKey, sourceStart: 0, sourceEnd: resolvedText.length, storedStyle: baseStyle }];
-    }
-    const escaped = baseKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`^${escaped}:range:(\\d+)-(\\d+)$`);
-    const ranges = Object.entries(styles).map(([key, style]) => {
-      const match = key.match(pattern);
-      if (!match) return null;
-      return {
-        key,
-        start: Math.max(0, Math.min(resolvedText.length, Number(match[1]) || 0)),
-        end: Math.max(0, Math.min(resolvedText.length, Number(match[2]) || 0)),
-        style
-      };
-    }).filter(range => range && range.end > range.start);
-    if (!ranges.length) {
-      return [{ text: resolvedText, segmentKey: baseKey, baseKey, sourceStart: 0, sourceEnd: resolvedText.length, storedStyle: baseStyle }];
-    }
-    const boundaries = [...new Set([0, resolvedText.length, ...ranges.flatMap(range => [range.start, range.end])])]
-      .sort((left, right) => left - right);
-    return boundaries.slice(0, -1).map((start, index) => {
-      const end = boundaries[index + 1];
-      const covering = ranges.filter(range => range.start <= start && end <= range.end).at(-1);
-      return {
-        text: resolvedText.slice(start, end),
-        segmentKey: covering?.key || baseKey,
-        baseKey,
-        sourceStart: start,
-        sourceEnd: end,
-        storedStyle: { ...baseStyle, ...(covering?.style || {}) }
-      };
-    });
-  }
-
   function renderFrameTexts(root, document, frame, startY, placements, elements, options = {}) {
     let y = startY;
     const textLayer = svg('g', { class: 'asm-trace-text-layer' });
@@ -4657,45 +4698,32 @@
             })
             : segment?.text;
         const resolvedText = expressionValue == null ? '' : String(expressionValue);
-        styledTextPieces(document, frame, key, segment, segmentIndex, resolvedText).forEach((piece, pieceIndex) => {
-          piece.text.split('\n').forEach((part, partIndex, parts) => {
+        const segmentKey = `${key}:segment:${segment?.segmentId || segmentIndex}`;
+        resolvedText.split('\n').forEach((part, partIndex, parts) => {
             const parsed = traceTextMarkup(part);
-            const storedStyle = piece.storedStyle;
             lines.at(-1).push({
               ...segment,
-              ...piece,
+              text: resolvedText,
+              segmentKey,
               segmentIndex,
               display: parsed.display,
               speech: explicitSpeech
-                ? (Object.hasOwn(segment || {}, 'speech') && pieceIndex === 0 && partIndex === 0
+                ? (Object.hasOwn(segment || {}, 'speech') && partIndex === 0
                   ? String(segment.speech ?? '') : '')
                 : parsed.speech,
-              textColor: storedStyle.textColor || traceTextColor(segment?.color, '#111827'),
-              background: Object.hasOwn(storedStyle, 'background')
-                ? storedStyle.background
-                : traceTextColor(segment?.background, 'none'),
-              fontSize: Math.max(8, Number(storedStyle.fontSize) || Number(segment?.fontSize) || 14),
-              bold: Object.hasOwn(storedStyle, 'bold') ? storedStyle.bold === true : segment?.bold === true
+              textColor: traceTextColor(segment?.color, '#111827'),
+              background: traceTextColor(segment?.background, 'none'),
+              fontSize: Math.max(8, Number(segment?.fontSize) || 14),
+              bold: segment?.bold === true
             });
             if (partIndex < parts.length - 1) lines.push([]);
-          });
         });
       });
-      const objectTextStyle = document.studio?.objectStyles?.[frame.id]?.[key] || {};
       const renderedBaseFontSize = Math.max(
         authoredBaseFontSize,
         ...lines.flat().map(segment => Number(segment.fontSize) || 0)
       );
-      const requestedFontSize = Number(objectTextStyle.fontSize);
-      const hasObjectFontSize = Number.isFinite(requestedFontSize) && requestedFontSize > 0;
-      const targetBaseFontSize = hasObjectFontSize ? requestedFontSize : renderedBaseFontSize;
-      const glyphScale = hasObjectFontSize ? requestedFontSize / renderedBaseFontSize : 1;
-      const objectScale = targetBaseFontSize / authoredBaseFontSize;
-      if (Math.abs(glyphScale - 1) > 0.0001) {
-        lines.forEach(line => line.forEach(segment => {
-          segment.fontSize *= glyphScale;
-        }));
-      }
+      const objectScale = renderedBaseFontSize / authoredBaseFontSize;
       const lineHeight = lines.map(line => Math.max(
         12 * objectScale,
         ...line.map(segment => segment.fontSize * 1.25)
@@ -4720,9 +4748,8 @@
       const boxWidth = Math.max(28 * objectScale, ...widths) + padX * 2;
       const boxHeight = lineHeight.reduce((sum, height) => sum + height, 0)
         + Math.max(0, lines.length - 1) * lineGap + padY * 2;
-      const position = studioPosition(document, frame, key);
-      const baseX = position.x;
-      const baseY = position.absolute ? position.y : y + position.y;
+      const baseX = 0;
+      const baseY = y;
       const object = markSelectable(svg('g', {
         id: `msg-${options.idPrefix || 'trace'}-text-${String(descriptor.id || descriptorIndex).replace(/[^A-Za-z0-9_-]/g, '-')}`,
         class: 'asm-trace-object draggable-object asm-trace-text-object',
@@ -4795,9 +4822,6 @@
             'data-trace-text-segment': segment.kind || 'literal',
             'data-trace-text-expression': segment.kind === 'expression' ? segment.source || `\${${segment.expression}}` : '',
             'data-trace-text-segment-id': segment.segmentId || String(segment.segmentIndex),
-            'data-trace-text-base-key': segment.baseKey || segment.segmentKey,
-            'data-trace-text-source-start': segment.sourceStart ?? 0,
-            'data-trace-text-source-end': segment.sourceEnd ?? segment.display.length,
             'data-trace-text-background': segment.background || 'none'
           });
           segmentGroup.append(svg('rect', {
@@ -4817,11 +4841,6 @@
             y: lineHeight[lineIndex] * 0.78,
             'font-size': segment.fontSize,
             'font-weight': segment.bold ? 'bold' : 'normal',
-            'font-style': segment.storedStyle?.italic === true ? 'italic' : 'normal',
-            'text-decoration': [
-              segment.storedStyle?.underline === true ? 'underline' : '',
-              segment.storedStyle?.strike === true ? 'line-through' : ''
-            ].filter(Boolean).join(' ') || 'none',
             'font-family': 'Arial',
             fill: segment.textColor,
             'xml:space': 'preserve',
@@ -4901,7 +4920,7 @@
   }
 
   function renderStudioObjects(root, document, frame, placements, elements, options = {}, sourceObjects = null) {
-    const objects = (sourceObjects || document.studio?.objects || []).filter(object => studioObjectVisible(object, frame));
+    const objects = (sourceObjects || []).filter(object => studioObjectVisible(object, frame));
     objects.forEach(studioObject => {
       // Auto bindings may supply a transient placement without inventing a
       // real array index. It is not persisted in the Trace Studio document.
@@ -4914,9 +4933,8 @@
         ? resolveAnchor(document, frame, studioObject.pointerTarget, placements, elements)
         : target;
       const key = `studio:${studioObject.id}`;
-      const position = studioPosition(document, frame, key);
-      const offsetX = (Number(studioObject.offsetX) || 0) + position.x;
-      const offsetY = (Number(studioObject.offsetY) || 0) + position.y;
+      const offsetX = Number(studioObject.offsetX) || 0;
+      const offsetY = Number(studioObject.offsetY) || 0;
       const baseX = target.x + offsetX;
       const baseY = target.y + offsetY;
       const object = markSelectable(svg('g', {
@@ -4924,7 +4942,6 @@
         class: 'asm-trace-object asm-trace-bound-object',
         transform: `translate(${baseX}, ${baseY})`,
         'data-base-offset': `${baseX},${baseY}`,
-        'data-studio-offset': `${position.x},${position.y}`,
         'data-trace-bound': '1',
         'data-translate': '0,0',
         'data-trace-object-key': key
@@ -4981,12 +4998,25 @@
       if (studioObject.indexExpression) {
         object.dataset.traceMarkerIndexExpression = studioObject.indexExpression;
       }
+      if (studioObject.indexExpressions) {
+        object.dataset.traceMarkerIndexExpressions = JSON.stringify(studioObject.indexExpressions);
+      }
       const boundTargetKey = markerPlacement ? '' : resolvedTargetKey(document, frame, studioObject.target, placements);
-      if (boundTargetKey) object.dataset.traceBindingTarget = boundTargetKey;
+      // Canonical pointers already distinguish matrix row/column anchors
+      // from cells. Generic target resolution may collapse row 0 into #0,
+      // which has no cell SVG and must not overwrite that canonical key.
+      if (boundTargetKey && !(studioObject.pointerId && studioObject.targetKey)) {
+        object.dataset.traceBindingTarget = boundTargetKey;
+      }
       if (markerPlacement) {
         object.dataset.traceMarkerUnresolved = '1';
+      }
+      // Publish the actual rendered anchor, including layout offsets. Exit
+      // ghosts must not reconstruct it from a differently sized cell box.
+      if (studioObject.type === 'variable-marker' && pointerTarget) {
         object.dataset.traceMarkerTargetX = String(pointerTarget.x + (Number(studioObject.pointerTargetOffsetX) || 0));
         object.dataset.traceMarkerTargetY = String(pointerTarget.y);
+        object.dataset.tracePointerArrowAnchorMode = studioObject.pointerArrowAnchorMode || 'target';
       }
       const motion = svg('g', { class: 'asm-trace-motion' });
       object.append(motion);
@@ -5023,7 +5053,9 @@
           const labelTop = -labelSize / 2;
           const labelLength = Math.max(1, Array.from(String(label)).length);
           const fontSize = Math.max(4, Math.min(8, (labelSize - 4) / (labelLength * 0.62)));
-          const borderColor = pointerColor || '#333';
+          // @pointer color affects only the label fill; lines keep their
+          // normal paint and can still receive explicit saved style overrides.
+          const borderColor = '#333';
           const point = svg('g', { class: 'trace-variable-marker-point' });
           point.append(
             svg('path', {
@@ -5052,7 +5084,7 @@
           const labelLength = Math.max(1, Array.from(String(label)).length);
           const fontSize = Math.max(4, Math.min(8, (labelWidth - 4) / (labelLength * 0.62)));
           // Mirrors a normal draw_array cell: #333 with a 1px outline.
-          const borderColor = pointerColor || '#333';
+          const borderColor = '#333';
           const borderWidth = 1;
           const labelTop = -40;
           const labelBottom = labelTop + labelHeight;
@@ -5293,6 +5325,7 @@
         item.offsetX = relativeLayout?.offsets.get(item) ?? (cursor + item.labelWidth / 2);
         item.pointerTargetOffsetX = relativeLayout ? item.offsetX
           : keepArrowsVertical ? item.offsetX : 0;
+        item.pointerArrowAnchorMode = relativeLayout || keepArrowsVertical ? 'label' : 'target';
         cursor += item.labelWidth + gap;
         const {
           targetVariableId, targetObjectKey, targetRuntimeIdentity,
@@ -5399,6 +5432,14 @@
       const indexExpression = binding.indexExpression || binding.sourceName;
       const relativeIndexOffset = relativeMarkerOffset(indexExpression, binding.sourceName);
       const rawIndexValue = window.ASMTraceRules.resolveExpression(document, frame, indexExpression);
+      if (binding.targetSelection && window.ASMTraceSelection) {
+        const data = frame.state?.[binding.targetVariableId]?.data;
+        const count = binding.pointerAxis === 'column'
+          ? Math.max(0,...(data?.items || []).map(row=>row.items?.length || 0))
+          : data?.items?.length ?? (typeof data?.value === 'string' ? Array.from(data.value).length : 0);
+        if (!window.ASMTraceSelection.matches(binding.targetSelection,Number(rawIndexValue),count,
+          value=>window.ASMTraceRules.resolveExpression(document,frame,value))) return;
+      }
       const resolvedIndexValue = rawIndexValue == null ? NaN : Number(rawIndexValue);
       const hasIndexValue = Number.isInteger(resolvedIndexValue);
       const indexValue = hasIndexValue ? resolvedIndexValue : null;
@@ -5412,6 +5453,7 @@
         let targetKey = `${targetObjectKey}:${axisName}-label:${indexValue}`;
         let targetExpression = String(indexValue);
         let targetAxis = axisName;
+        let indexExpressions = [indexExpression];
         if (hasIndexValue && dimension === 1 && !binding.pointerAxis && rendererOptions.markerLayout === 'inner') {
           const rowBinding = bindings.find(candidate => (
             candidate.targetVariableId === binding.targetVariableId
@@ -5424,6 +5466,7 @@
           targetKey = `${targetObjectKey}#${rowValue},${indexValue}`;
           targetExpression = `${rowValue},${indexValue}`;
           targetAxis = '';
+          indexExpressions = [rowBinding?.indexExpression || '', indexExpression];
         }
         if (!hasIndexValue) {
           const prefix = `${targetObjectKey}:${axisName}-label:`;
@@ -5457,7 +5500,7 @@
           baseCellWidth: 40, indexValue, unresolvedIndex: !hasIndexValue, label,
           markerSortOrder: index, markerSortKey: binding.sourceName || label,
           markerSortExpression: indexExpression, relativeMarkerBase: '', relativeMarkerOffset: null,
-          indexExpression, labelWidth: 18,
+          indexExpression, indexExpressions, labelWidth: 18,
           target: {
             variableId: binding.targetVariableId,
             indexExpression: targetExpression,
@@ -5496,8 +5539,8 @@
       const unresolvedReference = hasIndexValue ? null : leftmostVisibleIndexPlacement(
         frame, binding.targetVariableId, placements, elements
       );
-      if (binding.explicitPointer && (!hasIndexValue || indexValue < 0 || indexValue >= targetItems.length)) return;
-      if (binding.explicitPointer ? !placements.has(`${retainedTarget?.objectKey || objectKeyForVariable(frame, binding.targetVariableId)}#${indexValue}`) : hasIndexValue ? !ensureLinearIndexPlacement(
+      if (binding.explicitPointer && !hasIndexValue) return;
+      if (retainedTarget ? !placements.has(`${retainedTarget.objectKey}#${indexValue}`) : hasIndexValue ? !ensureLinearIndexPlacement(
         frame,
         binding.targetVariableId,
         indexValue,
@@ -5688,38 +5731,11 @@
     });
   }
 
-  function renderStudioArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
-    const arrows = Array.isArray(document.studio?.arrows) ? document.studio.arrows : [];
-    if (!arrows.length) return;
-    const models = arrows.map(arrow => {
-      const fromTarget = arrow.from || { variableId: arrow.fromVariableId, anchor: 'right' };
-      const toTarget = arrow.to || { variableId: arrow.toVariableId, anchor: 'left' };
-      const withinSameObject = fromTarget.variableId === toTarget.variableId
-        && fromTarget.indexExpression && toTarget.indexExpression;
-      return {
-        ...arrow,
-        source: 'studio',
-        from: fromTarget,
-        to: toTarget,
-        style: {
-          ...(arrow.style || {}),
-          color: arrow.style?.color || arrow.color || '#e53935',
-          width: arrow.style?.width || arrow.width || 3,
-          line: arrow.style?.line || arrow.line || (withinSameObject ? 'curve' : 'straight'),
-          head: arrow.style?.head || arrow.head || 'end',
-          dash: arrow.style?.dash || arrow.dash || ''
-        }
-      };
-    });
-    renderArrowModels(rootSvg, root, document, frame, placements, elements,
-      models, options, 'studio');
-  }
-
   function renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
     const current = window.ASMTraceModel?.drawingDirectives?.(document, frame, 'arrows') || frame.arrows || [];
-    const trails = window.ASMTraceModel?.returnTrailArrows?.(document, frame) || [];
+    const trails = options.onlyCurrent ? [] : window.ASMTraceModel?.returnTrailArrows?.(document, frame) || [];
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
-    const retained = (frame.snapshotIds || []).flatMap(id => snapshotsById.get(id)?.arrows || []);
+    const retained = options.onlyCurrent ? [] : (frame.snapshotIds || []).flatMap(id => snapshotsById.get(id)?.arrows || []);
     const arrows = [...new Map([...trails, ...retained, ...current]
       .map(arrow => {
         // The same directive runs once per recursive activation. Collapsing
@@ -5754,50 +5770,86 @@
       materialized.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
   }
 
-  function renderDecorations(root, document, frame, startY, placements, elements, options = {}) {
-    let y = startY;
-    for (const decoration of window.ASMTraceRules.decorations(document, frame)) {
-      if (decoration.count <= 0) continue;
-      const key = `rule:${decoration.ruleId}`;
-      const position = studioPosition(document, frame, key);
-      const baseX = position.x;
-      const baseY = position.absolute ? position.y : y + position.y;
-      const object = markSelectable(svg('g', {
-        id: `${options.idPrefix || 'trace'}-decoration-${String(decoration.ruleId).replace(/[^A-Za-z0-9_-]/g, '-')}`,
-        class: 'asm-trace-object asm-trace-decoration',
-        transform: `translate(${baseX}, ${baseY})`,
-        'data-base-offset': `${baseX},${baseY}`,
-        'data-translate': '0,0',
-        'data-trace-object-key': key
-      }), key, { ...options, movable: true });
-      object.dataset.tracePositionApplied = '1';
-      object.dataset.tracePositionSpace = 'origin';
-      object.dataset.tracePositionX = String(baseX);
-      object.dataset.tracePositionY = String(baseY);
-      const motion = svg('g', { class: 'asm-trace-motion' });
-      const content = svg('g');
-      motion.append(content);
-      object.append(motion);
-      const items = Array.from({ length: decoration.count }, () => ({ kind: 'scalar', value: '' }));
-      const decorationHighlights = Object.fromEntries(items.map((item, index) => [String(index), {
-        fill: decoration.color || '#dcecff',
-        stroke: decoration.stroke || '#3976b8'
-      }]));
-      const height = renderOriginal(content, { data: { kind: 'sequence', items } }, {
-        variable: { kind: 'sequence', name: decoration.label || '條件產生物件' }, variableId: key,
-        skin: { options: { showIndex: false, gap: Number(decoration.gap) || 0 } },
-        rendererName: 'original-array', highlights: decorationHighlights, diff: [],
-        idPrefix: `${options.idPrefix || 'trace'}-original`, interactive: options.interactive
-      });
-      root.append(object);
-      animateObjectPosition(motion, options, key, { x: baseX, y: baseY });
-      const box = measuredBox(content, { x: 0, y: 0, width: Math.max(40, decoration.count * 40), height });
-      placements.set(key, { x: baseX + box.x, y: baseY + box.y, width: box.width, height: box.height });
-      elements.set(key, object);
-      collectElementPlacements(content, baseX, baseY, placements, elements);
-      y += Math.max(76, Number(height) || 76) + 28;
+  function createDirectivePresenter(document, frame, root, placements, elements, records) {
+    const owners = [];
+    for (const record of records.filter(item => item.kind !== 'styles')) {
+      const descriptor = record.descriptor, textKey = `text:${descriptor.id}`;
+      const activation = descriptor.trailActivationId || (descriptor.until === 'return' ? frame.source?.recursionActivationId : '');
+      const original = record.kind === 'texts' ? elements.get(textKey)
+        : elements.get(`arrow:directive:${descriptor.id}${activation ? '@' + activation : ''}`)
+        || [...root.querySelectorAll('.asm-trace-directive-arrows [data-trace-arrow-identity]')]
+          .find(arrow => arrow.dataset.traceArrow === descriptor.id || arrow.dataset.traceArrowId === descriptor.id || arrow.dataset.traceArrowIdentity === descriptor.id
+            || arrow.getAttribute('data-trace-object-key') === `arrow:directive:${descriptor.id}`);
+      const host = svg('g', { class: 'asm-trace-dependent-presentation', 'data-trace-follow-kind': record.kind,
+        'data-trace-source-variable-ids': JSON.stringify(record.ids),
+        'data-trace-source-lifetimes': JSON.stringify(record.ids.map(id => ({ id,
+          identity: frame.state[id]?.identity, lifetime: frame.state[id]?.lifetime }))) });
+      root.append(host);
+      const originalVisibility = original?.getAttribute('visibility');
+      original?.setAttribute('visibility', 'hidden');
+      const originalElements = new Map(), originalPlacements = new Map();
+      let signature = '', arrow = null, appearAt = null;
+      const draw = snapshot => {
+        host.replaceChildren();
+        const projected = { ...snapshot, texts: record.kind === 'texts' ? [descriptor] : [],
+          arrows: record.kind === 'arrows' ? [descriptor] : [], snapshotIds: [] };
+        const localElements = new Map(elements), localPlacements = new Map(placements);
+        if (record.kind === 'texts') {
+          renderFrameTexts(host, document, projected, Number(original?.dataset.tracePositionY) || 0,
+            localPlacements, localElements, { idPrefix: 'trace-follow', interactive: true });
+          applySemanticTextBindings(document, projected, localPlacements, localElements);
+          const object = host.querySelector('.asm-trace-text-object');
+          if (object) object.dataset.traceSourceVariableIds = JSON.stringify(record.ids);
+          for (const [key, element] of localElements) if (key === textKey || key.startsWith(textKey + ':')) {
+            if (!originalElements.has(key)) { originalElements.set(key, elements.get(key)); originalPlacements.set(key, placements.get(key)); }
+            elements.set(key, element); placements.set(key, localPlacements.get(key));
+          }
+        } else renderDirectiveArrows(root.ownerSVGElement, host, document, projected, localPlacements, localElements,
+          { idPrefix: 'trace-follow', interactive: true, onlyCurrent: true });
+        const arrow = host.querySelector('[data-trace-arrow-identity]');
+        if (arrow) arrow.dataset.traceSourceVariableIds = JSON.stringify(record.ids);
+        return arrow;
+      };
+      owners.push({ record, host, update(elapsed) {
+        const index = record.steps.findLastIndex(step => elapsed >= step.start), step = record.steps[index];
+        if (signature !== String(index)) {
+          signature = String(index);
+          const old = record.kind === 'arrows' && step ? draw(step.before)?.cloneNode(true) : null;
+          const hadText = Boolean(host.querySelector('.asm-trace-text-object'));
+          arrow = draw(step ? step.after : record.initial);
+          if (record.kind === 'texts' && !hadText && index >= 0) appearAt = step.start;
+          if (arrow && old && step.end > step.start) arrow._asmArrowTween = {
+            previous: old, targetColor: arrow.getAttribute('stroke'), targetWidth: Number(arrow.getAttribute('stroke-width')),
+            color: (a, b) => b, progress: 0, followLive: true };
+          else if (arrow && original?._asmArrowTween) {
+            // The projection is the visible arrow; share the frame handoff
+            // clock instead of leaving motion on its hidden source node.
+            arrow._asmArrowTween = original._asmArrowTween;
+          }
+        }
+        if (step && arrow?._asmArrowTween && arrow._asmArrowTween !== original?._asmArrowTween) arrow._asmArrowTween.progress = Math.max(0, Math.min(1,
+          (elapsed - step.start) / Math.max(1, step.end - step.start)));
+        if (record.kind === 'texts') host.setAttribute('opacity', appearAt == null ? '1'
+          : String(Math.max(0, Math.min(1, (elapsed - appearAt) / 220))));
+      }, syncLifecycle() {
+        if (!arrow || !original) return;
+        const opacity=original.getAttribute('opacity');
+        if(opacity==null)arrow.removeAttribute('opacity');else arrow.setAttribute('opacity',opacity);
+        // Explicit draw-in uses the same progress as the authored source.
+        for(const name of ['pathLength','stroke-dasharray','stroke-dashoffset']) {
+          const value=original.getAttribute(name);
+          if(value==null)arrow.removeAttribute(name);else arrow.setAttribute(name,value);
+        }
+      }, remove() {
+        host.remove();
+        if (original) {
+          if (originalVisibility == null) original.removeAttribute('visibility'); else original.setAttribute('visibility', originalVisibility);
+        }
+        originalElements.forEach((element, key) => { if (element) elements.set(key, element); else elements.delete(key); });
+        originalPlacements.forEach((placement, key) => { if (placement) placements.set(key, placement); else placements.delete(key); });
+      } });
     }
-    return y;
+    return { update(elapsed) { owners.forEach(owner => owner.update(elapsed)); }, syncLifecycle() { owners.forEach(owner => owner.syncLifecycle()); }, remove() { owners.forEach(owner => owner.remove()); } };
   }
 
   function snapshotRuntimeIdentity(document, snapshot) {
@@ -5826,10 +5878,6 @@
       snapshot, document.variables?.[snapshot.sourceVariableId],
       document.skins?.[snapshot.sourceVariableId],
       sourceFrame?.state, sourceFrame?.styles,
-      related(document.studio?.objectStyles?.[frame.id]),
-      related(document.studio?.visibility?.[frame.id]),
-      related(document.studio?.positions?.[frame.id]),
-      related(document.studio?.bindings?.[frame.id]),
       (document.layouts || []).find(layout => layout.id === snapshot.layoutId)
     ]);
   }
@@ -5840,8 +5888,6 @@
     const usesAutomaticKeepArrows = snapshot => (
       !snapshot.layoutId || ['linear', 'line', 'group'].includes(layoutTypes.get(snapshot.layoutId))
     );
-    const visibilityStates = document.studio?.visibility?.[frame.id] || {};
-    const editingVisibility = window.document.body.classList.contains('asm-trace-studio-open');
     // Registration is frame-local even when the painted DOM is cached. Both
     // paths must contribute the same descendants, geometry and keep endpoints.
     const registerObjectSnapshot = (snapshot, object, motion, box, contentBox, baseX, baseY) => {
@@ -5864,16 +5910,15 @@
     (frame.snapshotIds || []).forEach(snapshotId => {
       const snapshot = snapshotsById.get(snapshotId);
       const objectKey = snapshotObjectKey(snapshot);
-      const visibility = visibilityStates[objectKey] || visibilityStates[snapshotId];
-      if (!snapshot || !objectKey || (!editingVisibility && visibility === 'hidden')) return;
+      if (!snapshot || !objectKey) return;
       const signature = snapshot.kind === 'frame' ? '' : snapshotAppearanceSignature(document, frame, snapshot);
       const candidate = options.reusableSnapshots?.get?.(snapshotId) || null;
       const reusable = candidate?._asmSnapshotAppearance === signature && candidate?._asmSnapshotGeometry
         ? candidate : null;
       if (reusable) {
-        const position = snapshotStudioPosition(document, frame, snapshot);
+        const position = snapshotPlacementOffset(snapshot);
         const baseX = position.x;
-        const baseY = position.absolute ? position.y : y + position.y;
+        const baseY = y + position.y;
         reusable.setAttribute('transform', `translate(${baseX}, ${baseY})`);
         reusable.setAttribute('data-base-offset', `${baseX},${baseY}`);
         reusable.dataset.tracePositionApplied = '1';
@@ -5889,12 +5934,11 @@
         return;
       }
       if (snapshot.kind === 'frame' && snapshot.frame) {
-        const position = snapshotStudioPosition(document, frame, snapshot);
+        const position = snapshotPlacementOffset(snapshot);
         const baseX = position.x;
         // Keep the live portion of the source frame in the same layout row it
-        // occupied before @keep. An explicitly dragged snapshot remains a
-        // standalone group and therefore keeps the legacy absolute behavior.
-        const sourceLayoutY = position.explicit ? 0 : y;
+        // occupied before @keep.
+        const sourceLayoutY = y;
         const baseY = position.y;
         const object = markSelectable(svg('g', {
           id: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`,
@@ -6039,9 +6083,9 @@
         snapshotHighlights.$object = { styleTypes: { background: layoutBackground } };
       }
       const snapshotRenderFrame = snapshotStyleFrame || snapshotSourceFrame || frame;
-      const position = snapshotStudioPosition(document, frame, snapshot);
+      const position = snapshotPlacementOffset(snapshot);
       const baseX = position.x;
-      const baseY = position.absolute ? position.y : y + position.y;
+      const baseY = y + position.y;
       const object = markSelectable(svg('g', {
         id: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`,
         class: 'asm-trace-object asm-trace-snapshot',
@@ -6114,6 +6158,13 @@
   }
 
   function renderScene(rootSvg, parent, document, frame, previousFrame = null, options = {}) {
+    if (!options.snapshotOwner) {
+      const index = document.frames?.indexOf(frame) ?? -1;
+      const recovered = window.ASMTracePointerModel?.recoveredBindings?.(
+        document, frame, index > 0 ? document.frames[index - 1] : null
+      ) || [];
+      if (recovered.length) frame = { ...frame, bindings: [...(frame.bindings || []), ...recovered] };
+    }
     const idPrefix = options.idPrefix || 'trace';
     const rootAttributes = { transform: options.transform == null ? 'translate(90, 80)' : options.transform };
     if (options.rootId) rootAttributes.id = options.rootId;
@@ -6124,11 +6175,7 @@
     const placements = new Map();
     const elements = new Map();
     const liveObjectKeys = [];
-    const editingVisibility = window.document.body.classList.contains('asm-trace-studio-open');
-    const visibilityStates = document.studio?.visibility?.[frame.id] || {};
-    const hiddenVariables = new Set((document.studio?.objects || [])
-      .filter(object => object.hideSource && object.sourceVariableId && studioObjectVisible(object, frame))
-      .map(object => object.sourceVariableId));
+    const hiddenVariables = new Set();
     (frame.captureOnlyVariableIds || []).forEach(variableId => hiddenVariables.add(variableId));
     // A system branch preview materializes the selected recursive call through
     // previewSnapshotId.  Its authored frame still supplies values for text,
@@ -6173,8 +6220,7 @@
     Object.entries(document.variables || {}).forEach(([variableId, variable]) => {
       const entry = frame.state?.[variableId];
       const objectKey = objectKeyForVariable(frame, variableId);
-      if (!entry || hiddenVariables.has(variableId)
-        || (!editingVisibility && visibilityStates[objectKey] === 'hidden')) return;
+      if (!entry || hiddenVariables.has(variableId)) return;
       const displayName = frame.source?.objectIds?.[variableId]
         || (frame.source?.primaryVariableId === variableId ? frame.source?.objectId : '')
         || variable.name;
@@ -6190,9 +6236,8 @@
       const lifecycleKind = ['sequence', 'matrix', 'stack', 'queue'].includes(
         String(variable.kind || entry.data?.kind || '')
       ) ? 'array' : 'object';
-      const position = studioPosition(document, frame, objectKey);
-      const baseX = position.x;
-      const baseY = position.absolute ? position.y : y + position.y;
+      const baseX = 0;
+      const baseY = y;
       const object = markSelectable(svg('g', {
         id: `${idPrefix}-${objectKey.replace(/[^A-Za-z0-9_-]/g, '-')}`,
         class: 'asm-trace-object',
@@ -6222,8 +6267,7 @@
       const canLod = window.ASMStructureLOD && (!previousFrame || options.interactive === false)
         && options.animateEvents === false
         && supportsCellLevelLod(rendererName)
-        && !skin.options.display && !skin.options.fields && !skin.options.indexLabels
-        && !Object.keys(document.studio?.objectStyles?.[frame.id] || {}).length;
+        && !skin.options.display && !skin.options.fields && !skin.options.indexLabels;
       window.ASMStructureLOD?.begin(content, lodScale, canLod);
       let height = (window.withSvgTextFitStyle || ((group, callback) => callback()))(content, () => renderer(content, entry, {
         variable, variableId: objectKey, displayName, skin, rendererName,
@@ -6298,15 +6342,12 @@
     applyBindings(document, frame, placements, elements);
     renderFrameSegments(root, document, frame, placements, elements, options);
     y = renderFrameTexts(root, document, frame, y, placements, elements, options);
-    y = renderDecorations(root, document, frame, y, placements, elements, options);
-    renderStudioObjects(root, document, frame, placements, elements, options);
     applySemanticTextBindings(document, frame, placements, elements);
     renderFrameBindings(root, document, frame, placements, elements, options);
-    renderStudioArrows(rootSvg, root, document, frame, placements, elements, options);
     renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options);
-    applyStoredPartPositions(document, frame, placements, elements);
+    // Final pass: directive bindings stay authoritative after text and marker layout.
     applyBindings(document, frame, placements, elements);
-    // Studio positions and semantic bindings may move recursion nodes after
+    // Semantic bindings may move recursion nodes after
     // their automatic layout. Resolve the parent/child edges only now so the
     // arrowhead lands on the child's final outerframe top/side anchor.
     renderRecursionLayoutEdges(rootSvg, root, document, frame, placements, elements, options);
@@ -6322,9 +6363,7 @@
       if (retained && !options.snapshotOwner) return;
       element.dataset.traceSceneGeneration = sceneGeneration;
     });
-    applyObjectColorStyles(document, frame, elements);
     fitObjectNames(root);
-    applyVisibilityStates(document, frame, elements);
     if (options.interactive !== false || options.evaluateAvailability === true) {
       window.ASMTraceFrameTween?.updateEventAvailability?.(
         document, frame, placements, elements, options.availabilityPreviousObjects ?? null
@@ -6386,8 +6425,6 @@
         )) || '';
       };
       const excluded = new Set([activeId(previousFrame), activeId(frame)].filter(Boolean));
-      const previousVisibility = document.studio?.visibility?.[previousFrame.id] || {};
-      const currentVisibility = document.studio?.visibility?.[frame.id] || {};
       previousRoot.querySelectorAll(':scope > [data-trace-snapshot]').forEach(element => {
         const snapshotId = String(element.dataset.traceSnapshot || '');
         const snapshot = snapshotsById.get(snapshotId);
@@ -6398,8 +6435,7 @@
         // frame contents from the frozen model; stable snapshot keys still
         // preserve transition identity. Simple object snapshots remain reusable.
         if (!snapshot || snapshot.kind === 'frame' || !currentIds.has(snapshotId)
-          || !previousIds.has(snapshotId) || excluded.has(snapshotId)
-          || previousVisibility[objectKey] === 'hidden' || currentVisibility[objectKey] === 'hidden') return;
+          || !previousIds.has(snapshotId) || excluded.has(snapshotId)) return;
         element.remove();
         reusableSnapshots.set(snapshotId, element);
       });
@@ -6507,9 +6543,10 @@
 
   function mainCameraSize(includeCodeInset = true) {
     const canvas = window.document.getElementById('arraySvg');
+    // 版面尺寸優先（不受 CSS transform 影響）：編輯動畫的組裝過場會縮放畫布，取景不能跟著算錯。
     const rect = canvas?.getBoundingClientRect?.();
-    const width = Number(rect?.width) || canvas?.clientWidth || 800;
-    const height = Number(rect?.height) || canvas?.clientHeight || 450;
+    const width = canvas?.clientWidth || Number(rect?.width) || 800;
+    const height = canvas?.clientHeight || Number(rect?.height) || 450;
     return {
       width,
       height,
@@ -6640,8 +6677,7 @@
 
   function canReuseStudioScene(document, frame) {
     return currentScene?.document === document && currentScene?.frame === frame
-      && currentScene.root.isConnected && currentScene.settled
-      && !Object.values(document.studio?.visibility?.[frame.id] || {}).includes('hidden');
+      && currentScene.root.isConnected && currentScene.settled;
   }
 
   function cloneThumbnailScene(document, frame, prefix) {
@@ -6977,11 +7013,10 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-273';
   window.ASMTraceRenderers = {
-    build: 'trace-273', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-294', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
-    displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
+    displayValue, formatDisplayValue, hiddenField, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,
@@ -6992,6 +7027,7 @@
     defaultLiveObjectPlacementDelta, shiftPlacementTree, semanticTargetPlacement,
     keepAnchorPlacement,
     recursionOuterframePlacement,
+    copyCellStyles,
     attachStyleVisual: (visual, cell, kind) => {
       const root = cell?.closest?.('#asm-trace-root');
       const attached = attachStyleVisual(root, visual, cell, kind);
@@ -7005,4 +7041,5 @@
       refreshPresentedKeepArrows(root);
     }
   };
+  document.documentElement.dataset.asmTraceRendererBuild = window.ASMTraceRenderers.build;
 })();

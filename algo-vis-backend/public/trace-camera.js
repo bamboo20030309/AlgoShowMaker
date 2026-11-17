@@ -1,10 +1,10 @@
 /**
  * 模組：Trace 鏡頭規則
  *
- * 責任：依目前 frame、Studio 規則與焦點物件計算 viewport 的平移、縮放與轉場時間。
+ * 責任：依目前 frame 的 @camera 指令與焦點物件計算 viewport 的平移、縮放與轉場時間。
  * 資料流：先選出作用中的 camera rule，再由 renderer 提供的內容邊界與焦點座標推導 transform，最後交由播放器決定是否動畫化。
  * 重要不變條件：同一 frame 的規則解析必須具決定性；沒有可用 bounds 或 focus 時仍要維持安全的預設鏡頭。
- * 相容性：舊文件未保存 cameraRules 時視為無自訂鏡頭，duration 與 transition 的缺值沿用既有預設。
+ * 相容性：鏡頭完全由指令決定（2026-11-14）；舊文件的 Studio cameraRules 在載入時已捨棄。duration 與 transition 的缺值沿用既有預設。
  */
 (function () {
   // ---------------------------------------------------------------------------
@@ -18,32 +18,20 @@
     return window.ASMTraceRules?.conditionMatches?.(frame, condition) !== false;
   }
 
+  // 優先序：本幀／preset／defaults 的 @camera → 自動捕捉（回傳 null）。
   function ruleForFrame(trace, frame) {
-    const matchingStudioRules = (trace?.studio?.cameraRules || []).filter(rule => {
-      const hasFrameScope = Boolean(rule.frameIds?.length || rule.allFrames
-        || rule.directiveNames || rule.frameSelectors || rule.sourceSelectors || rule.sourceFrameSelectors);
-      const frameIds = rule.frameIds?.length
-        ? rule.frameIds
-        : window.ASMTraceViewSource?.frameIdsForDescriptor?.(rule, trace?.frames || []);
-      if (hasFrameScope && !frameIds?.includes(frame.id)) return false;
-      return cameraConditionMatches(trace, frame, rule.condition);
-    });
-    const frameOverride = matchingStudioRules.filter(rule => (
-      rule.allFrames !== true
-      && Boolean(rule.frameIds?.length || rule.directiveNames
-        || rule.frameSelectors || rule.sourceSelectors || rule.sourceFrameSelectors)
-    )).at(-1);
-    if (frameOverride) return frameOverride;
     if (frame?.camera && cameraConditionMatches(trace, frame, frame.camera.condition)) {
       return frame.camera;
     }
-    return matchingStudioRules.at(-1) || null;
+    return null;
   }
   function duration(value) {
     const cssRate = Number(getComputedStyle(window.document.documentElement)
       .getPropertyValue('--asm-animation-playback-rate'));
     const rate = Math.max(0.25, Math.min(4, Number(window.asmGetAnimationPlaybackRate?.()) || cssRate || 1));
-    return Math.max(1, (Number(value) || 520) / rate);
+    const base = value != null && Number.isFinite(Number(value))
+      ? Math.max(0, Number(value)) : 520;
+    return base / rate;
   }
   // ---------------------------------------------------------------------------
   // 區段：鏡頭轉場解析
@@ -57,7 +45,8 @@
     if (!frame || !previousFrame || !animate) return 0;
     const transition = transitionFor(trace, frame, previousFrame);
     if (transition?.mode === 'instant') return 0;
-    return Math.max(0, Number(transition?.duration) || 520);
+    return transition?.duration != null && Number.isFinite(Number(transition.duration))
+      ? Math.max(0, Number(transition.duration)) : 520;
   }
   // ---------------------------------------------------------------------------
   // 區段：viewport 幾何套用

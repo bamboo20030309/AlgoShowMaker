@@ -79,7 +79,7 @@ int main(){
  r.capture(7,"main","frame-b","manual");
  for(int i=0;i<2050;i++)r.add_event("assign",8,"after-last");
 }`);
- execFileSync('g++',['-std=c++17',cpp,'-I',path.join(__dirname,'../lib'),'-o',exe],{windowsHide:true,timeout:30000});
+ execFileSync('g++',['-std=c++17',cpp,'-I',path.join(__dirname, '../lib'),'-o',exe],{windowsHide:true,timeout:30000});
  const file=path.join(dir,'trace.jsonl');execFileSync(exe,[],{env:{...process.env,ASM_TRACE_FILE:file},windowsHide:true,timeout:10000});
  return store.read(file).then(result=>{
   const frames=result.records.filter(r=>r.record==='frame');assert.equal(frames.length,3);
@@ -121,7 +121,7 @@ int main(int argc,char** argv){
  if(builds!=2)return 4;
  if(std::string(argv[1])=="middle")r.capture(4,"main","second","manual");
 }`);
- execFileSync('g++',['-std=c++17',cpp,'-I',path.join(__dirname,'../lib'),'-o',exe],{windowsHide:true,timeout:30000});
+ execFileSync('g++',['-std=c++17',cpp,'-I',path.join(__dirname, '../lib'),'-o',exe],{windowsHide:true,timeout:30000});
  const run=args=>{const file=path.join(dir,'trace-'+(args[0]||'none')+'.jsonl');execFileSync(exe,args,{env:{...process.env,ASM_TRACE_FILE:file},windowsHide:true,timeout:10000});return file;};
  const none=await store.read(run([]));assert.equal(none.stats.events,0);assert.equal(none.records.length,1);
  await assert.rejects(store.read(run(['tail'])),/Trace event limit exceeded/);

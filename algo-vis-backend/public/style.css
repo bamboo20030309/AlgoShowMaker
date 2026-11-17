@@ -38,8 +38,8 @@
   --hover-orange: #ea580c;
 
   /* --- [修改] 尺寸設定 --- */
-  --header-height: 50px;
-  /* 加大導覽列高度 */
+  --header-height: 52px;
+  /* 與 brand.css 的 .site-header 同高（首頁與程式碼頁共用頂部列） */
 }
 
 /* 基礎 Reset */
@@ -85,47 +85,29 @@ html {
 /* =========================================
    3. 頂部導覽列 (Top Bar)
    ========================================= */
+/* 高度、內距、背景與陰影由 brand.css 的 .site-header 提供，與首頁相同。 */
 #top-bar {
-  height: var(--header-height);
-  /* 使用變數 */
-  background-color: var(--bg-header);
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  font-size: 14px;
-  /* 字體稍微大一點點 */
   user-select: none;
-  z-index: 1000;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
-.menu-brand {
-  margin-right: 20px;
+/* 共用模式導覽（樣式在 brand.css）在頂部列中與功能選單之間以分隔線區隔。 */
+
+.top-bar-separator {
+  width: 1px;
+  height: 22px;
+  margin: 0 14px;
+  background: var(--border-color, #454545);
 }
 
-.top-github-link {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  margin-left: auto;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--text-main);
-  text-decoration: none;
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+body[class*="asm-embed-"] .top-bar-separator {
+  display: none;
 }
 
-.top-github-link svg {
-  width: 23px;
-  height: 23px;
-  fill: currentColor;
-}
-
-.top-github-link:hover {
-  border-color: var(--border-color);
-  background: var(--bg-hover);
-  color: var(--text-bright);
+/* 與 mobile-ui.css 相同斷點：功能選單收起時不留分隔線。 */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 900px) {
+  .top-bar-separator {
+    display: none;
+  }
 }
 
 /* --- [修改] 演算法獨立按鈕 (綠色) --- */
@@ -262,7 +244,7 @@ button.auto-stepping:hover {
 }
 
 /* --- [修改] Header 背景改成跟程式碼一樣 --- */
-#codePanel header {
+#codePanel > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -274,7 +256,7 @@ button.auto-stepping:hover {
   /* 固定高度 */
 }
 
-#codePanel header .header-title {
+#codePanel > header .header-title {
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-main);
@@ -298,6 +280,110 @@ button.auto-stepping:hover {
   width: 100%;
   height: 100%;
   border: none;
+}
+
+/* 程式碼編輯器的捲軸：配合深色程式碼面板，細、深灰、透明軌道。 */
+#editor .ace_scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #4a5459 transparent;
+}
+
+#editor .ace_scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+#editor .ace_scrollbar::-webkit-scrollbar-track,
+#editor .ace_scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+#editor .ace_scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid #1e1e1e;
+  border-radius: 6px;
+  background: #4a5459;
+}
+
+#editor .ace_scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #66737a;
+}
+
+/* 左側三個標籤（原始碼／程式碼框／事件動畫）：與右側分頁同樣的圓角與藍色底線，配色跟著深色程式碼面板。 */
+#codePanel > header {
+  gap: 8px;
+}
+
+.side-tabs {
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  margin: -8px 0 -1px -6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.side-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.side-tab {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 7px 11px 9px;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: #9ca3af;
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.side-tab::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px;
+  background-color: var(--primary-blue);
+  opacity: 0;
+  transform: scaleX(0.4);
+  transform-origin: center;
+  transition: all 0.2s ease;
+}
+
+.side-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
+}
+
+.side-tab.is-active {
+  background: #252b2f;
+  color: var(--text-bright);
+}
+
+.side-tab.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.side-tab:focus-visible {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: -2px;
+}
+
+#codePanel .header-buttons .header-title {
+  margin-right: 2px;
+}
+
+#codeBody[hidden] {
+  display: none;
 }
 
 /* 移除邊框讓它無縫接軌 */
@@ -622,6 +708,11 @@ button.auto-stepping:hover {
   transition: all 0.2s;
 }
 
+/* 依動畫類型隱藏的按鈕（例如上一大步／下一大步）：hidden 要勝過上方的 display:flex。 */
+.controls button[hidden] {
+  display: none;
+}
+
 .step-icon {
   width: 18px;
   height: 18px;
@@ -779,21 +870,6 @@ button.auto-stepping:hover {
   color: white !important;
   border-color: var(--success-green) !important;
   box-shadow: 0 0 5px rgba(22, 163, 74, 0.5);
-}
-
-/* 登入按鈕 */
-.btn-login {
-  background-color: var(--success-green);
-  color: white;
-  border: none;
-  padding: 5px 14px;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-login:hover {
-  background-color: var(--hover-green);
 }
 
 /* 播放控制 */
@@ -1045,116 +1121,6 @@ button.auto-stepping:hover {
   border-color: #1e40af !important;
 }
 
-/* =========================================
-   7. 模態視窗與動畫
-   ========================================= */
-/* --------------------------------------------------------------------------
- * 通用對話框
- * 遮罩高於工作區但低於原生瀏覽器 UI，內容區自行限制高度並捲動。
- * -------------------------------------------------------------------------- */
-.modal {
-  display: none;
-  position: fixed;
-  z-index: 9999;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-}
-
-.modal-content {
-  background-color: #fff;
-  margin: 10% auto;
-  padding: 30px;
-  border-radius: 8px;
-  width: 100%;
-  max-width: 380px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-  animation: slideIn 0.3s ease-out;
-  position: relative;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.close-modal {
-  position: absolute;
-  right: 20px;
-  top: 15px;
-  font-size: 24px;
-  color: #999;
-  cursor: pointer;
-}
-
-.close-modal:hover {
-  color: #333;
-}
-
-#modalTitle {
-  text-align: center;
-  margin-bottom: 20px;
-  color: #333;
-}
-
-.form-group {
-  margin-bottom: 15px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
-  color: #555;
-  font-weight: 600;
-}
-
-.form-group input {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.btn-submit {
-  width: 100%;
-  padding: 10px;
-  background-color: var(--primary-blue);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  font-weight: bold;
-  cursor: pointer;
-  margin-top: 10px;
-}
-
-.btn-submit:hover {
-  background-color: var(--hover-blue);
-}
-
-.modal-footer {
-  margin-top: 20px;
-  text-align: center;
-  font-size: 0.9rem;
-  color: #666;
-}
-
-.modal-footer a {
-  color: var(--primary-blue);
-  text-decoration: none;
-  font-weight: 700;
-}
-
 /* ACE Editor 高亮 */
 .code-highlight-line {
   position: absolute;
@@ -1185,7 +1151,7 @@ button.auto-stepping:hover {
    ========================================= */
 
 /* 1. 修改 C++ 標題顏色為全白 */
-#codePanel header .header-title {
+#codePanel > header .header-title {
   color: #ffffff !important;
   /* 強制改為白色 */
 }
@@ -1207,25 +1173,27 @@ button.auto-stepping:hover {
 }
 
 /* 摺疊時：隱藏 Header 裡大部分元素，只留切換按鈕 */
-#codePanel.collapsed header .header-title,
-#codePanel.collapsed header .header-buttons button:not(#panelToggleBtn) {
+#codePanel.collapsed > header .header-title,
+#codePanel.collapsed > header .header-buttons button:not(#panelToggleBtn) {
   display: none !important;
 }
 
-/* 摺疊時：隱藏編輯器本體 */
-#codePanel.collapsed #codeBody {
+/* 摺疊時：隱藏編輯器本體與三個標籤 */
+#codePanel.collapsed #codeBody,
+#codePanel.collapsed .side-tabs,
+#codePanel.collapsed .side-panel {
   display: none !important;
 }
 
 /* 摺疊時：調整 Header 排版，讓箭頭置中 */
-#codePanel.collapsed header {
+#codePanel.collapsed > header {
   padding: 10px 0;
   justify-content: center;
   height: 100%;
   /* 讓它填滿高度，雖然 header 高度是固定的 */
 }
 
-#codePanel.collapsed header .header-buttons {
+#codePanel.collapsed > header .header-buttons {
   width: 100%;
   justify-content: center;
 }
@@ -1350,11 +1318,12 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
  * 演算法清單側欄
  * 側欄以 transform 開關，載入期間仍保留原工作區尺寸，避免 Ace 反覆重排。
  * -------------------------------------------------------------------------- */
-#algoSidePanel {
+#algoSidePanel,
+#myCodesPanel {
   position: fixed;
   /* 固定在視窗上 */
-  top: 50px;
-  /* 避開上方導覽列 (假設 Nav 高度約 50px) */
+  top: var(--header-height, 52px);
+  /* 從共用頂部列下緣開始 */
   left: 0;
   bottom: 0;
   /* 延伸到底部 */
@@ -1378,7 +1347,8 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
 }
 
 /* 當加上 open class 時，滑出來 */
-#algoSidePanel.open {
+#algoSidePanel.open,
+#myCodesPanel.open {
   transform: translateX(0);
 }
 
@@ -1523,7 +1493,8 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
 }
 
 /* [關鍵互動] 滑鼠滑到 wrapper 上時，顯示測資列表 */
-.code-wrapper:hover .input-list-container {
+.code-wrapper:hover .input-list-container,
+.code-wrapper.inputs-open .input-list-container {
   display: block;
   animation: fadeInDown 0.2s ease;
 }
@@ -1569,365 +1540,6 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* 1. 訊息顯示區塊 */
-#authMessage {
-  margin-bottom: 15px;
-  padding: 10px;
-  border-radius: 4px;
-  text-align: center;
-  font-size: 14px;
-  display: none;
-  /* 預設隱藏 */
-}
-
-#authMessage.success {
-  display: block;
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
-}
-
-#authMessage.error {
-  display: block;
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
-}
-
-/* 2. 登入後的按鈕狀態*/
-.btn-login.logged-in {
-  /* 重置背景與邊框，改成簡約風格 */
-  background-color: #ffffff;
-  /* 純白背景，配合您說的白色底色 */
-  color: #374151;
-  /* 深灰文字，閱讀舒適 */
-  border: 1px solid #d1d5db;
-  /* 淡淡的灰色邊框 */
-
-  /* 字體與排版 */
-  font-size: 13px;
-  font-weight: 500;
-  /* 不用太粗 */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-
-  /* 膠囊形狀 */
-  border-radius: 20px;
-  /* 大圓角 */
-  padding: 4px 12px;
-  /* 適當的留白 */
-
-  /* 版面配置 */
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-
-  /* 陰影與過渡 */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  /* 極淡的陰影增加層次感 */
-  transition: all 0.2s ease;
-}
-
-.btn-login.logged-in:hover {
-  background-color: #f3f4f6;
-  /* 微亮灰色 */
-  color: #111827;
-  /* 文字變黑 */
-  border-color: #9ca3af;
-  /* 邊框加深 */
-  transform: translateY(0px);
-  /* 登入狀態不建議亂跳動，維持穩定 */
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-/* 3. 點擊狀態 */
-.btn-login.logged-in:active {
-  background-color: #e5e7eb;
-  transform: translateY(1px);
-  /* 微幅下壓感 */
-}
-
-/* =========================================
-   我的程式碼列表樣式
-   ========================================= */
-.code-item {
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  padding: 15px;
-  margin-bottom: 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.code-item:hover {
-  background: #e9ecef;
-  transform: translateX(5px);
-  border-color: #adb5bd;
-}
-
-.code-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 18px;
-  color: #333;
-}
-
-.code-info p {
-  margin: 0;
-  color: #666;
-  font-size: 14px;
-}
-
-.code-meta {
-  font-size: 12px;
-  color: #999;
-  margin-top: 5px;
-}
-
-.btn-small {
-  background-color: transparent;
-  color: var(--primary-blue);
-  border: 1px solid var(--primary-blue);
-  padding: 6px 16px;
-  border-radius: 20px;
-  /* 圓角膠囊狀 */
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-  /* 防止文字換行 */
-}
-
-.btn-small:hover {
-  background-color: var(--primary-blue);
-  color: white;
-  box-shadow: 0 2px 8px rgba(0, 122, 204, 0.4);
-}
-
-/* 3. 簡化「重新整理」按鈕 (純圖示) */
-.btn-icon-refresh {
-  background: transparent;
-  border: none;
-  color: var(--text-main);
-  font-size: 18px;
-  padding: 8px;
-  border-radius: 50%;
-  /* 圓形 */
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-}
-
-.btn-icon-refresh:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  /* 淺灰背景 */
-  color: var(--primary-blue);
-  transform: rotate(180deg);
-  /* 滑鼠移過去會轉圈圈 */
-}
-
-/* 1. 美化下拉選單 (Select) */
-#saveLangSelect {
-  width: 100%;
-  padding: 10px 12px;
-  background-color: #ffffff;
-  /* 使用深黑背景 */
-  color: #333333;
-  /* 文字顏色 */
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  font-size: 14px;
-  outline: none;
-  cursor: pointer;
-  appearance: none;
-  /* 移除瀏覽器預設的醜醜箭頭 */
-
-  /* 自訂一個小箭頭 (SVG 編碼) */
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23cccccc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 16px;
-}
-
-/* 讓箭頭顏色也配合白底 (改成深色箭頭) */
-.select-wrapper::after {
-  background-color: #555555;
-  /* 箭頭改成深灰色 */
-}
-
-#saveLangSelect:focus {
-  border-color: var(--primary-blue);
-  /* 聚焦時變藍色 */
-  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* 2. 美化 Checkbox 區域 (讓整條變成可點擊的區塊) */
-/* 選取包含 checkbox 的那個 form-group */
-#saveCodeForm .form-group[style*="row"] {
-  background-color: rgba(255, 255, 255, 0.05);
-  /* 微微反白 */
-  padding: 12px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  margin-top: 5px;
-  transition: all 0.2s;
-  cursor: pointer;
-}
-
-#saveCodeForm .form-group[style*="row"]:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: var(--border-color);
-}
-
-/* Checkbox 本體 */
-#saveInputCheckbox {
-  accent-color: var(--primary-blue);
-  /* 讓勾勾變成藍色 */
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-}
-
-/* Checkbox 文字標籤 */
-#saveCodeForm label[for="saveInputCheckbox"] {
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--text-bright);
-  user-select: none;
-  /* 防止連點時選取文字 */
-}
-
-/* 3. 美化儲存按鈕 */
-#saveCodeForm .auth-btn {
-  background-color: var(--success-green);
-  /* 綠色代表「儲存」 */
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-  padding: 12px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  width: 100%;
-  margin-top: 20px;
-  transition: all 0.2s;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-}
-
-#saveCodeForm .auth-btn:hover {
-  filter: brightness(1.1);
-  /* 變亮一點 */
-  transform: translateY(-2px);
-  /* 微微浮起 */
-  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
-}
-
-#saveCodeForm .auth-btn:active {
-  transform: translateY(0);
-  /* 按下去回復 */
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-/* 1. 勾選框區域容器 */
-.checkbox-group {
-  /* [關鍵] 在白底上，背景要用淺灰色，才看得到區塊 */
-  background-color: #f5f5f5;
-  border: 1px solid #ddd;
-  /* 邊框改淺灰，比較柔和 */
-
-  /* 以下維持佈局設定 */
-  display: flex;
-  align-items: center;
-  padding: 10px 12px;
-  border-radius: 4px;
-  margin-top: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  user-select: none;
-  -webkit-user-select: none;
-  /* Safari / Chrome */
-  -moz-user-select: none;
-}
-
-/* 滑鼠移過去變稍微深一點的灰 */
-.checkbox-group:hover {
-  background-color: #e9e9e9;
-  border-color: #ccc;
-}
-
-/* 2. 勾選框文字 */
-.checkbox-group label {
-  color: #333333 !important;
-  /* 深灰色文字，比全黑(#000)看起來舒服一點 */
-  font-weight: normal;
-  margin-left: 8px;
-  /* 讓文字跟格子分開一點 */
-  cursor: pointer;
-}
-
-/* 3. (選用) 修正 Checkbox 本體顏色 */
-#saveInputCheckbox {
-  accent-color: var(--primary-blue);
-  /* 保持藍色勾選 */
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-/* 1. 儲存視窗內的訊息 (顯示在按鈕上方) */
-#saveMessage {
-  margin-top: 15px;
-  /* 與上方欄位保持距離 */
-  margin-bottom: 10px;
-  /* 與下方按鈕保持距離 */
-  padding: 12px;
-  border-radius: 6px;
-  text-align: center;
-  font-size: 15px;
-  font-weight: 500;
-  display: none;
-  /* 預設隱藏 */
-}
-
-/* 成功時的樣式 (綠底深綠字) */
-#saveMessage.success {
-  display: block !important;
-  /* 強制顯示 */
-  background-color: #d1e7dd;
-  color: #0f5132;
-  border: 1px solid #badbcc;
-  animation: fadeIn 0.3s ease-in;
-  /* 淡入動畫 */
-}
-
-/* 失敗時的樣式 (紅底深紅字) */
-#saveMessage.error {
-  display: block !important;
-  /* 強制顯示 */
-  background-color: #f8d7da;
-  color: #842029;
-  border: 1px solid #f5c2c7;
-  animation: fadeIn 0.3s ease-in;
 }
 
 /* 2. 全域浮動通知 (Toast) - 用於顯示 "載入成功" 或 "請先登入" */
@@ -1996,175 +1608,6 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
     opacity: 0;
     transform: translateY(-20px);
   }
-}
-
-/* 1. 側邊欄本體 */
-.sidebar-panel {
-  position: fixed;
-  top: var(--header-height);
-  left: 0;
-  height: calc(100vh - var(--header-height));
-  width: 300px;
-  /* 側邊欄寬度 */
-  background-color: var(--bg-panel);
-  /* 使用原本的面板背景色 */
-  border-right: 1px solid var(--border-color);
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
-  z-index: 900;
-
-  /* 動畫關鍵：預設往左藏起來 */
-  transform: translateX(-100%);
-  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-
-  display: flex;
-  flex-direction: column;
-}
-
-/* 2. 啟動狀態 (滑出來) */
-.sidebar-panel.active {
-  transform: translateX(0);
-  /* 回到原位 */
-}
-
-/* 3. 標題區 */
-.sidebar-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px;
-  background-color: var(--bg-header);
-  /* 使用原本的頂部背景色 */
-  border-bottom: 1px solid var(--border-color);
-}
-
-.sidebar-header h3 {
-  margin: 0;
-  font-size: 16px;
-  color: var(--text-bright);
-}
-
-/* 4. 關閉按鈕 (X) */
-.btn-icon-close {
-  background: none;
-  border: none;
-  color: var(--text-main);
-  font-size: 24px;
-  cursor: pointer;
-  line-height: 1;
-}
-
-.btn-icon-close:hover {
-  color: #fff;
-}
-
-/* 5. 工具列 (重新整理) */
-.sidebar-toolbar {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  background-color: #252526;
-  /* 與標題區一致的背景色 */
-  border-bottom: 1px solid #454545;
-  gap: 10px;
-  /* 元件之間的間距 */
-}
-
-.sidebar-hint {
-  font-size: 12px;
-  color: #666;
-}
-
-/* 6. 內容列表區 */
-.sidebar-content {
-  flex: 1;
-  /* 佔滿剩餘空間 */
-  overflow-y: auto;
-  /* 內容多時可捲動 */
-  padding: 10px;
-}
-
-/* 7. 列表項目微調 (適應側邊欄寬度) */
-.code-item {
-  flex-direction: column;
-  /* 改成垂直排列，因為側邊欄比較窄 */
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  background-color: rgba(255, 255, 255, 0.03);
-}
-
-.code-item .btn-small {
-  width: 100%;
-  /* 按鈕變寬，方便點擊 */
-  text-align: center;
-}
-
-/* 讓 code-item 變成定位點，方便按鈕絕對定位 */
-.code-item {
-  position: relative;
-  /* 原本的樣式保持不變... */
-}
-
-/* 刪除按鈕 (垃圾桶) */
-.btn-delete-code {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-
-  background: transparent;
-  border: none;
-  font-size: 16px;
-  cursor: pointer;
-  opacity: 0;
-  /* 平常隱藏，保持介面乾淨 */
-  transition: all 0.2s;
-  padding: 4px;
-  border-radius: 4px;
-  z-index: 5;
-  /* 確保在最上層 */
-}
-
-/* 滑鼠移到卡片上時，才顯示刪除按鈕 */
-.code-item:hover .btn-delete-code {
-  opacity: 1;
-}
-
-/* 滑鼠移到垃圾桶上時，變紅色背景 */
-.btn-delete-code:hover {
-  background-color: rgba(255, 77, 77, 0.2);
-  transform: scale(1.1);
-}
-
-.btn-save-code {
-  background-color: #238636;
-  /* GitHub 綠色 */
-  color: #ffffff;
-  border: 1px solid rgba(240, 246, 252, 0.1);
-  border-radius: 6px;
-  padding: 5px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  /* 圖示與文字的距離 */
-  transition: background-color 0.2s, transform 0.1s;
-
-  /* 確保按鈕不會太小 */
-  height: 28px;
-  white-space: nowrap;
-}
-
-.btn-save-code:hover {
-  background-color: #2ea043;
-  /* Hover 時稍微變亮 */
-}
-
-.btn-save-code:active {
-  background-color: #1f6f2e;
-  /* 點擊時變深 */
-  transform: translateY(1px);
 }
 
 /* =========================================
@@ -2289,4 +1732,182 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
 #drawSize::-moz-range-track {
   background: transparent;
   height: 100%;
+}
+
+/* Physical buttons and mouse shortcuts share the same pressed feedback. */
+.controls button:active, .controls button.asm-shortcut-pressed {
+  background: #dbeafe; border-color: var(--primary-blue); color: var(--primary-blue);
+  transform: translateY(1px) scale(.96); box-shadow: inset 0 1px 3px #0002;
+}
+
+/* --------------------------------------------------------------------------
+ * 我的程式碼側欄（my-codes.js）
+ * 外框與開關沿用 #algoSidePanel；這裡只定義內容：登入提示、儲存表單、清單與刪除確認。
+ * -------------------------------------------------------------------------- */
+#myCodesBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 20px;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.my-codes-signed-out {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.my-codes-hint {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.my-codes-subtle {
+  margin: 0;
+  color: #9a9a9a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.my-codes-primary,
+.my-codes-secondary,
+.my-codes-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0 14px;
+  font: 600 13px Arial, "Noto Sans TC", sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.my-codes-primary { background: #007acc; color: #fff; }
+.my-codes-primary:hover:not(:disabled) { background: #1b8ee0; }
+.my-codes-secondary { border-color: var(--border-color); background: transparent; color: var(--text-main); }
+.my-codes-secondary:hover { color: var(--text-bright); border-color: #6a6a6a; }
+.my-codes-danger { background: #c94b4b; color: #fff; }
+.my-codes-danger:hover:not(:disabled) { background: #dc5a5a; }
+.my-codes-primary:disabled,
+.my-codes-danger:disabled { opacity: .6; cursor: default; }
+.my-codes-signed-out .my-codes-primary { margin-top: 4px; }
+.my-codes-add { align-self: stretch; }
+
+.my-codes-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.my-codes-form input[type="text"],
+.my-codes-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 7px 9px;
+  background: #1e1e1e;
+  color: var(--text-bright);
+  font: 14px Arial, "Noto Sans TC", sans-serif;
+  resize: vertical;
+}
+
+.my-codes-form input[type="text"]:focus,
+.my-codes-form textarea:focus {
+  border-color: #007acc;
+  outline: none;
+}
+
+.my-codes-check { display: flex; align-items: center; gap: 6px; color: var(--text-main); font-size: 13px; cursor: pointer; }
+.my-codes-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.my-codes-message { margin: 0; color: #9a9a9a; font-size: 13px; }
+.my-codes-message.is-error { color: #ff7b72; }
+
+.my-codes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-codes-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-radius: 4px;
+}
+
+.my-codes-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+.my-codes-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 8px 8px 8px 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.my-codes-title { overflow: hidden; color: var(--text-bright); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.my-codes-meta { color: #8a8a8a; font-size: 12px; white-space: nowrap; }
+.my-codes-desc { grid-column: 1 / -1; overflow: hidden; color: #9a9a9a; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
+.my-codes-delete {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  margin: 5px 4px 0 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #8a8a8a;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.my-codes-item:hover .my-codes-delete,
+.my-codes-delete:focus-visible { opacity: 1; }
+.my-codes-delete:hover { color: #ff6b6b; background: rgba(255, 107, 107, 0.1); }
+
+.my-codes-item.is-confirming {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(201, 75, 75, 0.12);
+}
+
+.my-codes-confirm { margin: 0; color: var(--text-bright); font-size: 13px; line-height: 1.5; }
+
+.my-codes-open:focus-visible,
+.my-codes-primary:focus-visible,
+.my-codes-secondary:focus-visible,
+.my-codes-danger:focus-visible,
+.my-codes-delete:focus-visible,
+#myCodesBtn:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+@media (hover: none) {
+  .my-codes-delete { opacity: 1; }
 }

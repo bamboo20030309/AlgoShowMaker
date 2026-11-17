@@ -40,7 +40,9 @@ async function startServer() {
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('header and workspace sample navigation share their target and active state',
+// 2026-11-11 規格變更：頂部只留「投影片／程式碼」兩種模式；範例改為登入後工作區的分頁，
+// 訪客首頁與訪客的 /?examples=1 維持原樣。
+test('home offers two modes and signed-in users switch between their decks and examples',
   { timeout: 90000 }, async () => {
     const { server, base } = await startServer();
     let browser;
@@ -49,33 +51,152 @@ test('header and workspace sample navigation share their target and active state
         headless: true,
         ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
       });
+
+      // Guest: two modes only; the login panel stays beside the gallery.
+      const guest = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await guest.route('**/guest-decks.json', route => route.fulfill({ json: { decks: [] } }));
+      await guest.goto(base);
+      const modes = guest.locator('.mode-nav .nav-link');
+      assert.deepEqual(await modes.allTextContents(), ['投影片', '程式碼']);
+      assert.deepEqual(await modes.evaluateAll(links => links.map(link => link.getAttribute('href'))),
+        ['/', '/algorithm.html']);
+      assert.equal(await modes.first().getAttribute('aria-current'), 'page');
+      assert.equal(await guest.locator('.auth-panel').isVisible(), true);
+      assert.equal(await guest.locator('#headerLoginBtn').isVisible(), true);
+
+      // Clicking the mode you are already in does not reload the page.
+      await guest.evaluate(() => { window.__homeMarker = true; });
+      await modes.first().click();
+      await guest.waitForTimeout(300);
+      assert.equal(await guest.evaluate(() => window.__homeMarker === true), true);
+
+      // On wide screens the gallery scrolls in its own column, left of the login panel.
+      const columns = await guest.evaluate(() => {
+        const gallery = document.querySelector('.guest-view > .guest-gallery');
+        return { overflowY: getComputedStyle(gallery).overflowY,
+          galleryRight: gallery.getBoundingClientRect().right,
+          authLeft: document.querySelector('.auth-panel').getBoundingClientRect().left,
+          pageScrolls: document.documentElement.scrollHeight > innerHeight };
+      });
+      assert.equal(columns.overflowY, 'auto');
+      assert.ok(columns.galleryRight <= columns.authLeft + 1, JSON.stringify(columns));
+      assert.equal(columns.pageScrolls, false);
+
+      // Guest /?examples=1 keeps the full-page gallery; the header login returns to the login panel.
+      await guest.goto(`${base}/?examples=1`);
+      assert.equal(await guest.locator('.auth-panel').isVisible(), false);
+      await guest.locator('#headerLoginBtn').click();
+      await guest.waitForURL(`${base}/`);
+      assert.equal(await guest.locator('.auth-panel').isVisible(), true);
+
+      // Signed in (API stubbed, no database writes): "my decks" is the default entry.
       const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await page.addInitScript(() => localStorage.setItem('algo_jwt_token', 'fixture-token'));
       await page.route('**/guest-decks.json', route => route.fulfill({ json: { decks: [] } }));
+      await page.route('**/api/auth/me', route => route.fulfill({
+        json: { user: { id: 'fixture', username: 'fixture@example.test' } }
+      }));
+      await page.route('**/api/slides', route => route.fulfill({ json: { slides: [], layout: null } }));
       await page.goto(base);
+      await page.waitForSelector('#dashboardView:not([hidden])');
+      const mineTab = page.locator('#workspaceMineTab');
+      const examplesTab = page.locator('#workspaceExamplesTab');
+      assert.equal(await mineTab.getAttribute('aria-selected'), 'true');
+      assert.equal(await page.locator('#workspaceMinePanel').isVisible(), true);
+      assert.equal(await page.locator('#workspaceExamplesPanel').isVisible(), false);
+      assert.equal(await page.locator('#createDeckBtn').isVisible(), true);
+      assert.equal(await page.locator('#headerLoginBtn').isVisible(), false);
 
-      const headerSlides = page.locator('#headerSlidesLink');
-      const headerExamples = page.locator('#headerExamplesLink');
-      const workspaceSlides = page.locator('#workspaceSlidesNav');
-      const workspaceExamples = page.locator('#workspaceExamplesNav');
-      assert.equal(await headerExamples.getAttribute('href'), '/?examples=1');
-      assert.equal(await workspaceExamples.getAttribute('href'), '/?examples=1');
-      assert.equal(await headerSlides.getAttribute('aria-current'), 'page');
-      assert.equal(await workspaceSlides.getAttribute('aria-current'), 'page');
-      assert.equal(await headerExamples.getAttribute('aria-current'), null);
-      assert.equal(await workspaceExamples.getAttribute('aria-current'), null);
-
-      await headerExamples.click();
+      await examplesTab.click();
       await page.waitForURL(`${base}/?examples=1`);
-      assert.equal(await headerSlides.getAttribute('aria-current'), null);
-      assert.equal(await workspaceSlides.getAttribute('aria-current'), null);
-      assert.equal(await headerExamples.getAttribute('aria-current'), 'page');
-      assert.equal(await workspaceExamples.getAttribute('aria-current'), 'page');
-      assert.equal(await page.locator('.auth-panel').isVisible(), false);
+      assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
+      assert.equal(await page.locator('#workspaceExamplesPanel .guest-gallery').count(), 1);
+      assert.equal(await page.locator('#workspaceExamplesPanel').isVisible(), true);
+      assert.equal(await page.locator('#createDeckBtn').isVisible(), false);
+      assert.equal(await page.locator('.workspace-sidebar').count(), 0, 'tabs replace the old left sidebar');
 
-      await headerSlides.click();
+      // The URL keeps the tab on reload; signed-in /?examples=1 opens the tab directly.
+      await page.reload();
+      await page.waitForSelector('#dashboardView:not([hidden])');
+      assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
+
+      // The 投影片 mode link returns to "my decks" in place, without a reload.
+      await page.evaluate(() => { window.__dashboardMarker = true; });
+      await page.locator('.mode-nav .nav-link').first().click();
       await page.waitForURL(`${base}/`);
-      assert.equal(await headerSlides.getAttribute('aria-current'), 'page');
-      assert.equal(await workspaceSlides.getAttribute('aria-current'), 'page');
+      assert.equal(await page.evaluate(() => window.__dashboardMarker === true), true);
+      assert.equal(await mineTab.getAttribute('aria-selected'), 'true');
+
+      // The folder action is an icon button with an accessible name.
+      assert.equal(await page.locator('#createFolderBtn').getAttribute('aria-label'), '新增資料夾');
+      assert.equal((await page.locator('#createFolderBtn').innerText()).trim(), '');
+      await mineTab.focus();
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'workspaceExamplesTab');
+
+      // Only the area below the top bar scrolls, so the scrollbar never reaches into the top bar.
+      const scrollArea = await page.evaluate(() => {
+        const main = document.querySelector('body > main');
+        const filler = document.createElement('div'); filler.style.height = '3000px';
+        document.getElementById('workspaceMinePanel').append(filler);
+        main.scrollTop = 500;
+        const result = { overflowY: getComputedStyle(main).overflowY, mainTop: main.getBoundingClientRect().top,
+          headerBottom: document.querySelector('.site-header').getBoundingClientRect().bottom,
+          mainScrolled: main.scrollTop, pageScrolls: document.scrollingElement.scrollHeight > innerHeight };
+        main.scrollTop = 0; filler.remove();
+        return result;
+      });
+      assert.deepEqual(scrollArea, { overflowY: 'auto', mainTop: 52, headerBottom: 52, mainScrolled: 500, pageScrolls: false });
+
+      // A deck file dragged anywhere over "my decks" shows the drop hint (not only over a button).
+      await mineTab.click();
+      const dropHint = await page.evaluate(() => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(['{}'], 'deck.json', { type: 'application/json' }));
+        document.querySelector('.library-toolbar').dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        const view = document.getElementById('dashboardView');
+        const active = view.classList.contains('deck-file-drop-active');
+        document.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+        return active;
+      });
+      assert.equal(dropHint, true);
+
+      // The shared top bar is drawn with the right sign-in state before first paint (no pop-in).
+      const firstPaint = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await firstPaint.addInitScript(() => {
+        localStorage.setItem('algo_jwt_token', 'fixture-token');
+        localStorage.setItem('algo_username', 'fixture@example.test');
+        // Sample every rendered frame; the first frame that contains the header must already
+        // show the signed-in account (no frame of an empty account area = no flash).
+        window.__headerFrames = [];
+        const sample = () => {
+          const header = document.querySelector('.site-header');
+          if (header) window.__headerFrames.push({
+            login: document.getElementById('topLoginLink')?.hidden,
+            name: document.getElementById('topAccountName')?.textContent,
+            logout: document.getElementById('topLogoutBtn')?.hidden
+          });
+          if (window.__headerFrames.length < 4) requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      });
+      await firstPaint.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'fixture', username: 'fixture@example.test' } } }));
+      // A slow revalidation of the header script (served with max-age=0) must not expose a bare header.
+      await firstPaint.route('**/site-header.js*', async route => { await new Promise(resolve => setTimeout(resolve, 400)); await route.continue(); });
+      await firstPaint.goto(`${base}/algorithm.html`);
+      await firstPaint.waitForFunction(() => window.__headerFrames.length >= 4);
+      assert.deepEqual(await firstPaint.evaluate(() => window.__headerFrames[0]),
+        { login: true, name: 'fixture@example.test', logout: false });
+      assert.equal(await firstPaint.evaluate(() => getComputedStyle(document.querySelector('.site-header')).viewTransitionName), 'site-header');
+
+      // On the code page, clicking 程式碼 keeps the page (and any unsaved code) instead of reloading.
+      const code = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await code.goto(`${base}/algorithm.html`);
+      await code.evaluate(() => { window.__codeMarker = true; });
+      await code.locator('.mode-nav .nav-link.is-active').click();
+      await code.waitForTimeout(300);
+      assert.equal(await code.evaluate(() => window.__codeMarker === true), true);
     } finally {
       await browser?.close();
       server.kill();

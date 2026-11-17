@@ -1,4 +1,4 @@
-// Temporary camera modifiers belong to the current browser tab, never to a deck or Trace.
+// Temporary camera modifiers belong to the current document lifetime, never to a deck or Trace.
 (function (root, factory) {
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -11,22 +11,20 @@
     return { panXRatio: number('panXRatio', 0), panYRatio: number('panYRatio', 0),
       zoomFactor: Math.max(0.05, number('zoomFactor', 1) > 0 ? number('zoomFactor', 1) : 1) };
   }
+  // 清掉舊版本留在 sessionStorage 的偏移；新偏移只存在目前文件記憶體。
+  try {
+    for (let index = root.sessionStorage.length - 1; index >= 0; index--) {
+      const key = root.sessionStorage.key(index);
+      if (key?.startsWith(prefix)) root.sessionStorage.removeItem(key);
+    }
+  } catch {}
   function read(scope) {
-    let value = memory.get(scope);
-    try { value = JSON.parse(root.sessionStorage.getItem(prefix + scope)) ?? value; } catch {}
-    return normalize(value);
+    return normalize(memory.get(scope));
   }
   function write(scope, value) {
     const camera = normalize(value);
     memory.set(scope, camera);
-    try { root.sessionStorage.setItem(prefix + scope, JSON.stringify(camera)); } catch {}
     return camera;
   }
-  // Import an old deck's saved modifier once. A newer local gesture wins, including identity.
-  function migrate(scope, value) {
-    if (!value || memory.has(scope)) return;
-    try { if (root.sessionStorage.getItem(prefix + scope) !== null) return; } catch {}
-    write(scope, value);
-  }
-  return { read, write, migrate };
+  return { read, write };
 });

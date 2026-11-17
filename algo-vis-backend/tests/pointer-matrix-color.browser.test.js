@@ -34,7 +34,7 @@ i=1;
  const checks=await page.evaluate(async raw=>{
    let trace=ASMTraceModel.normalizeTraceDocument(raw);
    const frames=trace.frames.filter(f=>f.bindings?.some(b=>b.explicitPointer));
-   const inspect=()=>[...document.querySelectorAll('[data-trace-pointer-id]')].filter(n=>!n.closest('.asm-trace-snapshot')).map(n=>({name:n.querySelector('.trace-variable-marker-label-text')?.textContent,target:n.dataset.tracePointerTargetKey,fill:n.querySelector('.trace-variable-marker-label-box')?.getAttribute('fill'),stroke:n.querySelector('.trace-variable-marker-point path')?.getAttribute('stroke'),lane:n.dataset.tracePointerLane}));
+   const inspect=()=>[...document.querySelectorAll('[data-trace-pointer-id]')].filter(n=>!n.closest('.asm-trace-snapshot')).map(n=>({name:n.querySelector('.trace-variable-marker-label-text')?.textContent,target:n.dataset.tracePointerTargetKey,fill:n.querySelector('.trace-variable-marker-label-box')?.getAttribute('fill'),border:n.querySelector('.trace-variable-marker-label-box')?.getAttribute('stroke'),textFill:n.querySelector('.trace-variable-marker-label-text')?.getAttribute('fill'),stroke:n.querySelector('.trace-variable-marker-point path')?.getAttribute('stroke'),lane:n.dataset.tracePointerLane}));
    const outputs=[];
    for(const frame of frames){await ASMTraceRenderers.renderFrame(trace,frame,null,{animatePositions:false,animateEvents:false});outputs.push(inspect());}
    // Persist and reopen the new metadata and custom settings through IndexedDB.
@@ -52,7 +52,12 @@ i=1;
    await store.putTrace(oldKey,old);
    const legacy=ASMTraceModel.normalizeTraceDocument(await store.loadTrace(oldKey));
    await ASMTraceRenderers.renderFrame(legacy,legacy.frames.find(f=>f.id===frame.id),null,{animatePositions:false,animateEvents:false});
-   return {outputs,reopened,legacy:inspect(),options:trace.frames.find(f=>f.bindings.some(b=>b.pointerAxis)).rendererOptions};
+   const legacyShown=inspect();
+   const legacySavedKey=await ASMSlideStorage.digest(ASMSlideStorage.canonical(legacy));
+   await store.putTrace(legacySavedKey,legacy);
+   const legacyAgain=ASMTraceModel.normalizeTraceDocument(await store.loadTrace(legacySavedKey));
+   await ASMTraceRenderers.renderFrame(legacyAgain,legacyAgain.frames.find(f=>f.id===frame.id),null,{animatePositions:false,animateEvents:false});
+   return {outputs,reopened,legacy:legacyShown,legacyReopened:inspect(),options:trace.frames.find(f=>f.bindings.some(b=>b.pointerAxis)).rendererOptions};
  },result.traceDocument || result.trace);
  assert.equal(checks.outputs.length,4);
  const find=(list,name)=>list.find(p=>p.name===name);
@@ -61,16 +66,22 @@ i=1;
  assert.equal(find(checks.outputs[0],'i').lane,'left');
  assert.equal(find(checks.outputs[0],'j').lane,'top');
  assert.equal(find(checks.outputs[0],'i').fill,'rgba(144, 202, 249, 0.6)');
- assert.equal(find(checks.outputs[0],'i').stroke,'rgba(144, 202, 249, 0.6)');
+ assert.equal(find(checks.outputs[0],'i').stroke,'#333');
  assert.equal(find(checks.outputs[0],'j').fill,'#ff0088');
  assert.ok(find(checks.outputs[1],'i').target.endsWith(':row-label:0'));
  assert.ok(find(checks.outputs[1],'j').target.endsWith(':column-label:1'));
  assert.equal(find(checks.outputs[2],'i'),undefined);
  assert.equal(find(checks.outputs[2],'j').fill,'#bfe8f7');
- assert.equal(find(checks.outputs[3],'i').stroke,'rgb(1, 2, 3)');
- assert.equal(find(checks.outputs[3],'j').stroke,'#a5d6a7');
+ assert.equal(find(checks.outputs[3],'i').fill,'rgb(1, 2, 3)');
+ assert.equal(find(checks.outputs[3],'j').fill,'#a5d6a7');
+ for(const marker of checks.outputs.flat()) {
+   assert.equal(marker.stroke,'#333','pointer color must not repaint the arrow');
+   assert.equal(marker.border,'#333','pointer color must not repaint the border');
+   assert.equal(marker.textFill,'#1f282d','pointer color must not repaint the text');
+ }
  assert.deepEqual(checks.reopened,checks.outputs[0]);
  assert.equal(checks.legacy[0].fill,'#bfe8f7');assert.equal(checks.legacy[0].stroke,'#333');
+ assert.deepEqual(checks.legacyReopened,checks.legacy);
  assert.equal(Object.values(checks.options)[0].markerLayout,'none');
  assert.deepEqual(errors,[]);
 });

@@ -13,8 +13,25 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   // Bump ENGINE_VERSION when newly generated events/state require a new RUN.
   // Renderer-only improvements do not invalidate saved trace data.
-  const ENGINE_VERSION = 14;
+  const ENGINE_VERSION = 15;
   const FORMAT_VERSION = 1;
+  let generationFingerprint = '';
+  let versionRequest = null;
+  function configure(version) {
+    if ((version?.engineVersion != null && version.engineVersion !== ENGINE_VERSION)
+      || (version?.formatVersion != null && version.formatVersion !== FORMAT_VERSION)) throw new Error('追蹤引擎已更新，請重新整理網頁');
+    if (!/^[a-f0-9]{64}$/.test(version?.generationFingerprint || '')) throw new Error('追蹤引擎指紋無效');
+    generationFingerprint = version.generationFingerprint;
+    return version;
+  }
+  function ready(fetcher = (...args) => fetch(...args)) {
+    if (!versionRequest) versionRequest = Promise.resolve().then(async () => {
+      const response = await fetcher('/api/trace/version', { cache: 'no-store' });
+      if (!response.ok) throw new Error('無法確認追蹤引擎版本，請稍後重試');
+      return configure(await response.json());
+    }).catch(error => { versionRequest = null; throw error; });
+    return versionRequest;
+  }
   const text = value => String(value ?? '').replace(/\r\n?/g, '\n');
   // ---------------------------------------------------------------------------
   // 區段：可執行來源正規化
@@ -44,7 +61,8 @@
   // ---------------------------------------------------------------------------
   function create(code, input) {
     return { engineVersion: ENGINE_VERSION, formatVersion: FORMAT_VERSION,
-      sourceFingerprint: fingerprint(sourceText(code)), inputFingerprint: fingerprint(String(input ?? '')) };
+      sourceFingerprint: fingerprint(sourceText(code)), inputFingerprint: fingerprint(String(input ?? '')),
+      ...(generationFingerprint ? { generationFingerprint } : {}) };
   }
   function status(trace, code, input) {
     if (!trace?.frames?.length) return { kind: 'empty', message: '' };
@@ -54,11 +72,19 @@
         (saved.sourceFingerprint !== current.sourceFingerprint || saved.inputFingerprint !== current.inputFingerprint)) {
       return { kind: 'dirty', message: '程式或輸入已修改，動畫尚未更新。請 RUN 後再儲存；目前播放的是上次執行結果。' };
     }
-    if (!saved || saved.engineVersion !== ENGINE_VERSION || saved.formatVersion !== FORMAT_VERSION ||
+    // 插樁座標固定以 LF 計算。舊封裝曾把 CRLF 編輯文字覆蓋回 sourceCode，
+    // 來源摘要因正規化而相同，但反白座標已錯位，不能當成可播放的最新結果。
+    if (typeof trace.sourceCode === 'string' &&
+        (trace.sourceCode.includes('\r') || sourceText(trace.sourceCode) !== sourceText(code))) {
+      return { kind: 'outdated', message: '動畫程式碼與事件來源座標不一致，正在等待重新建立。' };
+    }
+    if (!saved || (generationFingerprint && saved.generationFingerprint !== generationFingerprint)
+        || saved.engineVersion !== ENGINE_VERSION || saved.formatVersion !== FORMAT_VERSION ||
         trace.schemaVersion !== '1.0' || !saved.sourceFingerprint || !saved.inputFingerprint) {
       return { kind: 'outdated', message: '動畫資料版本過舊或無法確認相容性。請在編輯器重新 RUN 後儲存；目前仍保留原動畫。' };
     }
     return { kind: 'current', message: '' };
   }
-  return { ENGINE_VERSION, FORMAT_VERSION, create, status, sourceText };
+  return { ENGINE_VERSION, FORMAT_VERSION, create, status, sourceText, configure, ready,
+    get generationFingerprint() { return generationFingerprint; } };
 });

@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
-const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
+const { TWEEN_BUILD, RENDERER_BUILD, POINTER_BUILD } = require('./helpers/builds');
 
 test('browser renderer uses canonical pointer states without a silent legacy fallback', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
@@ -23,9 +23,9 @@ test('browser renderer uses canonical pointer states without a silent legacy fal
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base + '/algorithm.html');
     await page.waitForFunction(build => (
-      window.ASMTracePointerModel?.build === 'pointer-4'
-      && window.ASMTraceRenderers?.build === build
-    ), RENDERER_BUILD);
+      window.ASMTracePointerModel?.build === build.pointer
+      && window.ASMTraceRenderers?.build === build.renderer
+    ), {renderer:RENDERER_BUILD,pointer:POINTER_BUILD});
     const result = await page.evaluate(async () => {
       const scalar = value => ({ kind: 'scalar', value });
       const traceDocument = {

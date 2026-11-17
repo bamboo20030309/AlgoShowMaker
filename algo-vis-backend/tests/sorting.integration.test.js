@@ -32,8 +32,8 @@ for (const name of ['bubble', 'insertion']) {
           'for declaration initialization is explicitly position-only');
         assert.ok(initializer.source?.contexts?.some(context => context.type === 'ForStatement'),
           'for initializer must retain its AST context');
-        assert.equal(window.ASMTraceEvents.showInspector(initializer, trace), false,
-          'the raw initializer must be represented by its declaration row');
+        assert.equal(window.ASMTraceEvents.showInspector(initializer, trace), true,
+          'raw declaration and assignment remain available independently');
         assert.match(initializer.source?.text || '', /^[ij]\s*=\s*0$/,
           'initialized assignment source excludes its declaration type');
         const targetId = initializer.targets.find(target => target.role === 'target')?.variableId;

@@ -65,7 +65,7 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.match(code, /pre\[r\]\[c\] \+= num\[r\]\[c\]/);
   assert.match(code, /if \(r == 1 \|\| r == n \/ 2 \+ 1\)/);
   assert.match(code, /pre\[r\]\[c\] = pre\[r - 1\]\[c\]\s*\+ pre\[r\]\[c - 1\]\s*- pre\[r - 1\]\[c - 1\]\s*\+ num\[r\]\[c\]/);
-  assert.match(code, /@object pre\[r\]\[c\] render matrix with marker-layout\(none\)/);
+  assert.match(code, /@object pre render matrix with marker-layout\(none\)[\s\S]*@pointer r at pre.row[\s\S]*@pointer c at pre.column/);
   assert.doesNotMatch(code, /\bint row, column\b|pre\[row\]\[column\]/);
   assert.match(code, /@object pre render matrix\s*$/m);
   assert.match(code, /@object num render matrix\s*$/m);

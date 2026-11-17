@@ -27,7 +27,7 @@ test('old covers remain optional and malformed lengths fail before content parsi
 test('static server serves a cover through actual HTTP ranges',async t=>{
  const fs=require('node:fs');const path=require('node:path');
  const name='cover-fixture-'+require('node:crypto').randomUUID()+'.asmdeck';
- const file=path.join(__dirname,'../public',name);const blob=await archive.encode(fixture());
+ const file=path.join(__dirname, '../public',name);const blob=await archive.encode(fixture());
  fs.writeFileSync(file,Buffer.from(await blob.arrayBuffer()));t.after(()=>fs.unlinkSync(file));
  const {base}=await require('./helpers/isolated-server').startIsolatedServer(t);
  let transferred=0,requests=0;

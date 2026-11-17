@@ -14,8 +14,9 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=color-swatches-123" />
-  <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
+  <link rel="stylesheet" href="slides.css?v=animation-sidebar-3" />
+  <link rel="stylesheet" href="slide-presentation-controls.css?v=6" />
+  <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-7" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <script src="ui-motion.js?v=1" defer></script>
@@ -152,6 +153,11 @@
       <span>Table</span>
     </button>
 
+    <button type="button" class="palette-item tool-video" draggable="true" data-tool="video" title="YouTube 影片" aria-label="YouTube 影片">
+      <svg class="structure-palette-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="3"></rect><path d="M10 9.2v5.6l4.8-2.8z"></path></svg>
+      <span>Video</span>
+    </button>
+
     <div class="shape-tool">
       <button id="shapeMenuBtn" type="button" class="palette-item tool-shape" title="Shapes">
         <span class="shape-stack" aria-hidden="true">
@@ -210,10 +216,30 @@
       </div>
     </div>
 
-    <button id="algorithmEditSlideBtn" type="button" class="palette-item algorithm-edit-sidebar-action" hidden>
-      <span class="tool-icon">{;}</span>
-      <span>編輯演算法動畫</span>
-    </button>
+    <!-- 動畫投影片：編輯動畫（同一個畫布展開成完整頁面）、輸入與 RUN。只改輸入時伺服器重用快取的執行檔，只重新執行。 -->
+    <section id="algorithmSidebarBlock" class="algorithm-sidebar-block" aria-label="動畫" hidden>
+      <button id="algorithmEditSlideBtn" type="button" class="palette-item algorithm-edit-sidebar-action">
+        <span class="tool-icon">{;}</span>
+        <span>編輯動畫</span>
+        <i class="algorithm-edit-alert" aria-hidden="true" hidden></i>
+      </button>
+      <div class="algorithm-input-head">
+        <label for="algorithmSlideInput">輸入</label>
+        <button id="algorithmSlideRunBtn" type="button" class="algorithm-run-btn"
+          title="用這張投影片的程式與輸入重新執行">
+          <span>▶ RUN</span>
+        </button>
+      </div>
+      <div id="algorithmSlideError" class="algorithm-slide-error" role="alert" hidden>
+        <strong>執行失敗</strong>
+        <span>請到「編輯動畫」查看錯誤。</span>
+        <code></code>
+        <button type="button" id="algorithmSlideErrorOpen">開啟編輯動畫</button>
+      </div>
+      <textarea id="algorithmSlideInput" class="algorithm-slide-input" spellcheck="false" wrap="off"
+        placeholder="程式執行時的輸入（stdin）" aria-describedby="algorithmSlideStatus"></textarea>
+      <p id="algorithmSlideStatus" class="algorithm-slide-status" role="status" aria-live="polite"></p>
+    </section>
     </div>
 
     <div id="overviewSidebarPanel" class="sidebar-panel overview-sidebar-panel" hidden>
@@ -253,6 +279,34 @@
         <button type="button" data-insert="\neq">≠</button>
         <button type="button" data-insert="\rightarrow">→</button>
       </div>
+    </div>
+
+    <div id="videoEditorPanel" class="sidebar-panel widget-editor-panel video-editor-panel" hidden>
+      <div class="panel-title">
+        <strong>影片</strong>
+        <button id="exitVideoEditorBtn" type="button" title="退出">×</button>
+      </div>
+      <label class="field-label" for="videoUrlInput">YouTube 網址</label>
+      <input id="videoUrlInput" type="text" spellcheck="false" autocomplete="off" placeholder="https://youtu.be/…" />
+      <div id="videoUrlStatus" class="video-field-status" role="status" aria-live="polite"></div>
+      <div class="video-time-row">
+        <label class="field-label" for="videoStartInput">開始
+          <input id="videoStartInput" type="text" inputmode="numeric" placeholder="0:00" />
+        </label>
+        <label class="field-label" for="videoEndInput">結束
+          <input id="videoEndInput" type="text" inputmode="numeric" placeholder="到結尾" />
+        </label>
+      </div>
+      <label class="field-label" for="videoTitleInput">標題（選填）</label>
+      <input id="videoTitleInput" type="text" maxlength="120" />
+      <label class="check-field" for="videoAutoplayInput">
+        <input id="videoAutoplayInput" type="checkbox" />
+        <span>進入此頁時自動播放</span>
+      </label>
+      <label class="check-field" for="videoMutedInput">
+        <input id="videoMutedInput" type="checkbox" />
+        <span>靜音（自動播放較不會被瀏覽器阻擋）</span>
+      </label>
     </div>
 
     <div id="codeEditorPanel" class="sidebar-panel widget-editor-panel" hidden>
@@ -501,17 +555,20 @@
     </div>
   </div>
 
-  <div id="algorithmEditorModal" class="algorithm-editor-modal" hidden>
-    <div class="algorithm-editor-dialog">
-      <div class="algorithm-editor-header">
-        <div>
-          <strong>演算法動畫投影片</strong>
-          <span id="algorithmEditorStatus">編譯成功後，動畫腳本會儲存在這張投影片中。</span>
-        </div>
-        <button id="saveAlgorithmEditorBtn" type="button" title="將目前腳本儲存到投影片">儲存</button>
-      </div>
-      <iframe id="algorithmEditorFrame" title="演算法動畫編輯器" src="about:blank"></iframe>
-    </div>
+  <!-- 編輯動畫：投影片上的同一個動畫 iframe 以 moveBefore 搬進這裡並展開成完整頁面（不重新載入）。
+       返回時自動存回投影片；程式或輸入改過但沒 RUN，回到投影片後在背景重新執行。 -->
+  <div id="algorithmEditorPage" class="algorithm-editor-page" role="dialog" aria-modal="true"
+    aria-labelledby="algorithmEditorTitle" hidden>
+    <div class="algorithm-editor-backdrop" aria-hidden="true"></div>
+    <header class="algorithm-editor-bar">
+      <button id="algorithmEditorBackBtn" type="button" class="algorithm-editor-back" title="返回投影片（Esc）">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/><path d="M8 12h12"/></svg>
+        <span>返回投影片</span>
+      </button>
+      <strong id="algorithmEditorTitle" class="algorithm-editor-title">編輯動畫</strong>
+      <span id="algorithmEditorStatus" class="algorithm-editor-status" role="status" aria-live="polite"></span>
+    </header>
+    <div id="algorithmEditorStage" class="algorithm-editor-stage"></div>
   </div>
 
   <div id="codeEditorModal" class="code-editor-modal" hidden>
@@ -529,6 +586,28 @@
       <div id="codeAceEditor" class="code-ace-editor"></div>
     </div>
   </div>
+
+  <dialog id="videoInsertDialog" class="share-dialog t-modal video-insert-dialog" aria-labelledby="videoInsertTitle">
+    <form id="videoInsertForm" method="dialog">
+      <div class="share-dialog-header">
+        <div>
+          <span class="share-eyebrow">插入影片</span>
+          <h2 id="videoInsertTitle">貼上 YouTube 網址</h2>
+        </div>
+        <button id="closeVideoInsertBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <input id="videoInsertUrl" class="video-insert-url" type="text" spellcheck="false" autocomplete="off"
+        placeholder="https://www.youtube.com/watch?v=… 或 https://youtu.be/…" />
+      <div class="video-insert-preview">
+        <img id="videoInsertPoster" alt="" hidden />
+        <span id="videoInsertStatus" class="share-dialog-status" role="status" aria-live="polite">支援 watch、youtu.be、shorts、embed 連結，網址中的開始時間會一併帶入。</span>
+      </div>
+      <div class="share-dialog-actions">
+        <button id="cancelVideoInsertBtn" type="button">取消</button>
+        <button id="confirmVideoInsertBtn" class="share-save-btn" type="submit" disabled>插入</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="shareDialog" class="share-dialog t-modal">
     <form id="shareForm">
@@ -770,35 +849,42 @@
   <script src="draw/draw_block.js?v=lod-1"></script>
   <script src="draw/draw_array_outerframe.js?v=outerframe-1"></script>
   <script src="draw/draw_array_hintWidget.js?v=trace-4"></script>
-  <script src="draw/draw_array_normal.js?v=gap-1"></script>
+  <script src="draw/draw_array_normal.js?v=outerframe-3"></script>
   <script src="draw/draw_array_heap.js?v=gap-1"></script>
   <script src="draw/draw_array_segment_tree.js?v=segment-label-3"></script>
   <script src="draw/draw_array_BIT.js?v=gap-1"></script>
   <script src="draw/draw_array_disk.js?v=capacity-2"></script>
   <script src="draw/draw_array_stack.js?v=gap-1"></script>
   <script src="draw/draw_array_queue.js?v=gap-1"></script>
-  <script src="slide-structures.js?v=geometry-7"></script>
-  <script src="deck-thumbnail.js?v=4"></script>
-  <script src="slides-storage.js?v=7"></script>
-  <script src="slide-trace-store.js?v=2"></script>
-  <script src="slides-cloud.js?v=3"></script>
+  <script src="slide-structures.js?v=geometry-8"></script>
+  <script src="deck-thumbnail.js?v=5"></script>
+  <script src="slide-video.js?v=1"></script>
+  <script src="animation-recipe.js?v=1"></script>
+  <script src="slides-storage.js?v=executable-only-1"></script>
+  <script src="slide-trace-store.js?v=executable-only-1"></script>
+  <script src="sample-trace-assets.js?v=2"></script>
+  <script src="slides-cloud.js?v=executable-only-1"></script>
   <script src="tts.js?v=10"></script>
-  <script src="local-camera.js?v=1"></script>
-  <script src="algorithm-animation.js?v=animation-6"></script>
-  <script src="trace-view-source.js?v=trace-17"></script>
-  <script src="trace-model.js?v=trace-42"></script>
-  <script src="trace-provenance.js?v=indexed-value-14"></script>
+  <script src="local-camera.js?v=2"></script>
+  <script src="algorithm-animation.js?v=executable-only-1"></script>
+  <script src="trace-selection.js?v=1"></script>
+  <script src="trace-view-source.js?v=trace-19"></script>
+  <script src="trace-label-sources.js?v=labels-1"></script>
+  <script src="trace-model.js?v=trace-49"></script>
+  <script src="trace-provenance.js?v=generation-2"></script>
+  <script src="trace-version-check.js?v=1"></script>
   <script src="compile-session.js?v=2"></script>
-  <script src="asmdeck.js?v=12"></script>
+  <script src="asmdeck.js?v=executable-only-1"></script>
   <script src="deck-file-drop.js?v=2"></script>
   <script src="slide-inline-scripts.js?v=2"></script>
-  <script src="trace-arrow-model.js?v=arrow-12"></script>
+  <script src="trace-arrow-model.js?v=arrow-12-range1"></script>
   <script src="slide-cell-interactions.js?v=1"></script>
   <script src="slide-fabric-layers.js?v=6"></script>
-  <script src="slide-fabric-selection.js?v=6"></script>
+  <script src="slide-fabric-selection.js?v=8"></script>
   <script src="color-picker-policy.js?v=4"></script>
-  <script src="slides.js?v=slides-287"></script>
-  <script src="mobile-ui.js?v=mobile-5"></script>
+  <script src="slide-presentation-controls.js?v=9"></script>
+  <script src="slides.js?v=slides-395"></script>
+  <script src="mobile-ui.js?v=mobile-7"></script>
 </body>
 
 </html>

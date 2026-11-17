@@ -26,8 +26,7 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
 }
 
 .trace-mode-button,
-.trace-variables-button,
-.trace-studio-open-button {
+.trace-variables-button {
   height: 30px;
   border: 0;
   border-right: 1px solid rgba(255, 255, 255, 0.16);
@@ -46,41 +45,6 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
 
 .trace-variables-button {
   border-right: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-.trace-studio-open-button {
-  border-right: 0;
-}
-
-.trace-studio-open-button:disabled {
-  color: #7f8a8f;
-  cursor: default;
-  opacity: 0.62;
-}
-
-.top-action-button {
-  height: 100%;
-  margin-left: 0;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-main, #cccccc);
-  font: inherit;
-  cursor: pointer;
-  transition: background-color 0.2s, color 0.2s;
-}
-
-.top-action-button:hover:not(:disabled) {
-  background: var(--bg-hover, #505050);
-  color: var(--text-bright, #fff);
-}
-
-.top-action-button:disabled {
-  background: transparent;
-  color: #777;
-  cursor: default;
-  opacity: 1;
 }
 
 /* --------------------------------------------------------------------------
@@ -484,19 +448,6 @@ body.asm-trace-mode .trace-event-panel {
   transition: none;
 }
 
-body.asm-trace-studio-open .asm-trace-selectable {
-  cursor: move;
-}
-
-body.asm-trace-studio-open .asm-trace-selectable text,
-body.asm-trace-studio-open text.asm-trace-selectable {
-  cursor: move;
-}
-
-body.asm-trace-studio-open .asm-trace-object.selected {
-  transition: none;
-}
-
 .trace-lift {
   animation: asm-trace-lift var(--asm-trace-lift-duration, 340ms) ease both;
   transform-box: fill-box;
@@ -569,28 +520,24 @@ body.asm-embed-runtime .trace-event-panel {
   display: none !important;
 }
 
-body.asm-trace-mode *,
-body.asm-trace-studio-open * {
+body.asm-trace-mode *{
   scrollbar-width: thin;
   scrollbar-color: #657177 #15191c;
 }
 
-body.asm-trace-mode *::-webkit-scrollbar,
-body.asm-trace-studio-open *::-webkit-scrollbar {
+body.asm-trace-mode *::-webkit-scrollbar{
   width: 10px;
   height: 10px;
   background: #15191c;
 }
 
-body.asm-trace-mode *::-webkit-scrollbar-track,
-body.asm-trace-studio-open *::-webkit-scrollbar-track {
+body.asm-trace-mode *::-webkit-scrollbar-track{
   border: 0;
   border-radius: 0;
   background: #15191c;
 }
 
-body.asm-trace-mode *::-webkit-scrollbar-thumb,
-body.asm-trace-studio-open *::-webkit-scrollbar-thumb {
+body.asm-trace-mode *::-webkit-scrollbar-thumb{
   min-width: 36px;
   min-height: 36px;
   border: 2px solid #15191c;
@@ -598,20 +545,17 @@ body.asm-trace-studio-open *::-webkit-scrollbar-thumb {
   background: #657177;
 }
 
-body.asm-trace-mode *::-webkit-scrollbar-thumb:hover,
-body.asm-trace-studio-open *::-webkit-scrollbar-thumb:hover {
+body.asm-trace-mode *::-webkit-scrollbar-thumb:hover{
   background: #7b898f;
 }
 
-body.asm-trace-mode *::-webkit-scrollbar-button,
-body.asm-trace-studio-open *::-webkit-scrollbar-button {
+body.asm-trace-mode *::-webkit-scrollbar-button{
   display: none;
   width: 0;
   height: 0;
 }
 
-body.asm-trace-mode *::-webkit-scrollbar-corner,
-body.asm-trace-studio-open *::-webkit-scrollbar-corner {
+body.asm-trace-mode *::-webkit-scrollbar-corner{
   background: #15191c;
 }
 

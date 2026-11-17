@@ -14,8 +14,8 @@ const path = require('node:path');
 async function runSample(name) {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
-  const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree',`${name}.cpp`),'utf8');
-  const input=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree',`${name}-sample_input.txt`),'utf8');
+  const code=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree',`${name}.cpp`),'utf8');
+  const input=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree',`${name}-sample_input.txt`),'utf8');
   const analyze=await fetch(base+'/trace/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code})});
   const analysis=await analyze.json();
   assert.equal(analyze.ok,true,JSON.stringify(analysis));
@@ -35,7 +35,7 @@ async function runSample(name) {
 test('Segment_Tree_easy query animation starts from a completed tree and preserves output', async()=>{
   const {code,result,trace}=await runSample('Segment_Tree_easy');
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_/);
-  assert.match(code,/@preset query_pointer_view[\s\S]*@object tree\[now\] render heap[\s\S]*@object sum render cell/);
+  assert.match(code,/@preset query_pointer_view[\s\S]*@object tree render heap[\s\S]*@object sum render cell[\s\S]*@pointer now at tree/);
   assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
   assert.match(code,/with split\(now,after\)/);
   assert.match(code,/sum \+= tree\[now\]/);
@@ -60,7 +60,7 @@ test('Segment_Tree_easy_build is a complete standalone construction animation', 
   const {code,result,trace}=await runSample('Segment_Tree_easy_build');
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_/);
   assert.match(code,/@preset build_view[\s\S]*@object tree render heap with range\(1,Tcapacity\)/);
-  assert.match(code,/@preset build_pointer_view[\s\S]*@object tree\[i\] render heap with range\(1,Tcapacity\)/);
+  assert.match(code,/@preset build_pointer_view[\s\S]*@object tree render heap with range\(1,Tcapacity\)[\s\S]*@pointer i at tree/);
   assert.match(code,/讀入第 \$\{i-\(Tsize-n\)\+1\} 個值/);
   assert.match(code,/tree\[i\] = tree\[left\] \+ tree\[right\]/);
   assert.match(code,/@arrow from tree\[left\] to tree\[i\][\s\S]*@arrow from tree\[right\] to tree\[i\]/);
@@ -85,7 +85,7 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_modify|_draw_segment/);
   assert.match(code,/fields\(tree,lazy,sets\), hide\(lazy=0,\s*sets=LM\)/);
   assert.match(code,/format\(lazy=signed,sets=assign\)/);
-  assert.match(code,/@preset operation_pointer_view[\s\S]*@object tree\[now\] render heap/);
+  assert.match(code,/@preset operation_pointer_view[\s\S]*@object tree render heap[\s\S]*@pointer now at tree/);
   assert.doesNotMatch(code,/@style tree\[now\][^\n]*\bpoint\b/);
   assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
   assert.match(code,/with split\(now,after\)/);

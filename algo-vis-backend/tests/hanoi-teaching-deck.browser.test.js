@@ -17,7 +17,7 @@ test('Tower of Hanoi teaching deck explains the lesson and rebuilds its final an
   { timeout: 120000 }, async () => {
     const root = path.resolve(__dirname, '..');
     const archivePath = path.join(root, 'public', 'guest-decks', 'hanoi-teaching.asmdeck');
-    const sourcePath = path.join(root, 'algorithm_sample', 'Backtracking', 'hanoi-recursion.cpp');
+    const sourcePath = path.join(root, 'algorithm_sample', 'Backtracking', 'hanoi.cpp');
     const decoded = await ASMDeck.decode(new Blob([fs.readFileSync(archivePath)]));
     const slides = decoded.deck.groups.flatMap(group => group.slides || []);
     const lessonText = slides.flatMap(slide => slide.canvas?.objects || [])
@@ -74,7 +74,7 @@ test('Tower of Hanoi teaching deck explains the lesson and rebuilds its final an
       await page.waitForFunction(() => document.body.dataset.asmdeckRebuild === 'ready', null,
         { timeout: 90000 });
       assert.equal(await page.locator('.slides section').count(), 8);
-      assert.equal(await page.locator('body').getAttribute('data-asmdeck-rebuild-progress'), '0/0', 'prebuilt animation needs no recompilation');
+      assert.equal(await page.locator('body').getAttribute('data-asmdeck-rebuild-progress'), '1/1', 'all animation recipes finish execution');
       assert.equal(await page.locator('.algorithm-slide-frame:not([hidden])').count(), 1);
       assert.deepEqual(errors, []);
     } finally {

@@ -12,7 +12,7 @@ const {
   readTestState,
   recordFileResult,
   writeTestState
-} = require('../scripts/regression');
+} = require('../scripts/validation/regression');
 
 function withTemporaryState(run) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'asm-regression-resume-'));

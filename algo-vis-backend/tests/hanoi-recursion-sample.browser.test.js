@@ -9,7 +9,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const code = fs.readFileSync(path.join(
-    __dirname, '../algorithm_sample/Backtracking/hanoi-recursion.cpp'
+    __dirname, '../algorithm_sample/Backtracking/hanoi.cpp'
   ), 'utf8');
   const { trace } = await compile(code, '4\n');
   const browser = await chromium.launch({

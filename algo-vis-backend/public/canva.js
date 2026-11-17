@@ -16,8 +16,10 @@
   let presentationCamera = { panXRatio: 0, panYRatio: 0, zoomFactor: 1 };
   let presentationCameraEnabled = true;
   let cameraSurface = 'algorithm';
-  let cameraStudio = false;
-  const cameraScope = () => cameraSurface + (cameraStudio ? ':studio' : ':playback');
+  let wheelZoomSelected = false;
+  window.isCanvasWheelZoomSelected = () => wheelZoomSelected;
+  window.resetCanvasWheelSelection = () => { wheelZoomSelected = false; };
+  const cameraScope = () => cameraSurface + ':playback';
   let manualCameraSaveTimer = null;
   const GRID_SPACING  = 50;      // 格線間距
   const GRID_EXTENT   = 10000;   // 世界座標覆蓋範圍半徑
@@ -80,13 +82,32 @@
   // 平移縮放狀態
   // translate 與 scale 是唯一鏡頭狀態；所有手勢只更新這三個值，再由此函式套用 transform。
   // -----------------------------------------------------------------------------
+  // 過場覆寫：投影片與編輯動畫之間的組裝過場逐幀改寫畫面上的平移縮放，
+  // 但不改動鏡頭狀態；期間鏡頭照常更新，覆寫函式拿到的永遠是最新鏡頭。
+  // 鏡頭計算用的畫布大小：版面尺寸（clientWidth/Height），不受 CSS transform 影響。
+  // 編輯動畫的組裝過場會縮放整個畫布；過場中若重新取景，用畫面上的大小算中心會偏掉，結束後也不會修正。
+  function svgLayoutRect() {
+    const rect = svg?.getBoundingClientRect?.() || { left: 0, top: 0, width: 0, height: 0 };
+    const width = svg?.clientWidth || rect.width;
+    const height = svg?.clientHeight || rect.height;
+    return { left: rect.left, top: rect.top, width, height, right: rect.left + width, bottom: rect.top + height };
+  }
+  let transformOverride = null;
   function updateTransform() {
     const physicalScale = scale * getScreenScaleFactor();
+    const view = transformOverride?.({ translateX, translateY, physicalScale }) || null;
     viewport.setAttribute(
       'transform',
-      `translate(${translateX},${translateY}) scale(${physicalScale})`
+      view
+        ? `translate(${view.translateX},${view.translateY}) scale(${view.physicalScale})`
+        : `translate(${translateX},${translateY}) scale(${physicalScale})`
     );
   }
+  window.setViewportTransformOverride = function (override) {
+    transformOverride = typeof override === 'function' ? override : null;
+    if (viewport) updateTransform();
+  };
+  window.getCameraState = () => ({ translateX, translateY, physicalScale: scale * getScreenScaleFactor() });
 
   // -----------------------------------------------------------------------------
   // 滑鼠與觸控手勢
@@ -95,7 +116,15 @@
   function bindInteractions() {
     let dragging = false;
     let dragButton = -1;
-    let startX = 0, startY = 0;
+    let startX = 0, startY = 0, originX = 0, originY = 0, moved = false;
+    window.isCanvasGestureDragged = () => moved;
+    const shortcutsEnabled = () => document.documentElement.classList.contains('asm-slide-laser-frame')
+      && !window.isDrawingMode;
+    const shortcut = e => {
+      if (!shortcutsEnabled()) return;
+      const button = { 0: 'prevBtn', 1: 'playToggleBtn', 2: 'nextBtn' }[e.button];
+      if (button) window.ASMPlaybackNavigation?.invokeButton?.(button);
+    };
 
     const beginDrag = e => {
       e.preventDefault();
@@ -104,29 +133,28 @@
       dragButton = e.button;
       startX = e.clientX;
       startY = e.clientY;
+      originX = startX; originY = startY; moved = false;
     };
 
     // 物件本身可能攔截 mousedown，因此右鍵要在捕獲階段先交給畫布。
     svg.addEventListener('mousedown', e => {
-      if (e.button === 2) beginDrag(e);
+      if (e.button === 2 || (e.button === 1 && shortcutsEnabled())) beginDrag(e);
     }, true);
 
     svg.addEventListener('mousedown', e => {
       if (e.button !== 0 || window.isDrawingMode) return;
-      if (!document.body.classList.contains('asm-embed-runtime')
-        && document.body.classList.contains('asm-trace-studio-open')
-        && e.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor], [data-trace-camera-frame], .asm-trace-selectable, .draggable-object')) {
-        return;
-      }
       beginDrag(e);
     });
 
-    // 右鍵只用於平移畫布，不開啟瀏覽器或物件選單。
+    // 右鍵拖曳平移；展示模式的點擊交給播放快捷鍵，不開啟選單。
     svg.addEventListener('contextmenu', e => {
       e.preventDefault();
     });
     const moveDrag = e => {
       if (!dragging) return;
+      if (!moved && Math.hypot(e.clientX - originX, e.clientY - originY) < 4) return;
+      moved = true;
+      wheelZoomSelected = true;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       startX = e.clientX;
@@ -136,26 +164,30 @@
       updateTransform();
     };
     svg.addEventListener('mousemove', e => {
+      if (dragButton === 1 && Math.hypot(e.clientX - originX, e.clientY - originY) >= 4) moved = true;
       if (dragButton === 2) moveDrag(e);
     }, true);
     svg.addEventListener('mousemove', e => {
       if (dragButton === 0) moveDrag(e);
     });
-    const finishDrag = () => {
+    const finishDrag = e => {
       if (!dragging) return;
       dragging = false;
       dragButton = -1;
-      notifyManualCameraChange();
+      if (moved) notifyManualCameraChange();
+      else if (e?.type === 'mouseup') shortcut(e);
     };
     svg.addEventListener('mouseup', e => {
-      if (dragButton === 2) finishDrag();
+      if (dragButton === 2 || dragButton === 1) finishDrag(e);
     }, true);
     svg.addEventListener('mouseup', e => {
-      if (dragButton === 0) finishDrag();
+      if (dragButton === 0) finishDrag(e);
     });
     svg.addEventListener('mouseleave', finishDrag);
 
+    svg.addEventListener('auxclick', e => e.preventDefault());
     svg.addEventListener('wheel', e => {
+      if (document.body.classList.contains('asm-embed-runtime') && !wheelZoomSelected) return;
       e.preventDefault();
       stopAnimation(); // 手動操作時停止動畫
       const rect = svg.getBoundingClientRect();
@@ -242,7 +274,7 @@
   window.getScale        = () => scale * getScreenScaleFactor(); // 回傳物理縮放（供 interaction.js 等外部使用）
   window.getCameraViewport = function (requestedScale = scale) {
     if (!svg) return null;
-    const rect = svg.getBoundingClientRect();
+    const rect = svgLayoutRect();
     const factor = getScreenScaleFactor();
     const currentPhysical = Math.max(0.0001, scale * factor);
     const nextScale = Math.max(0.05, Number(requestedScale) || scale);
@@ -257,7 +289,7 @@
   };
   window.cameraScaleForViewportWidth = function (worldWidth) {
     if (!svg || !(Number(worldWidth) > 0)) return scale;
-    return svg.getBoundingClientRect().width / (Number(worldWidth) * getScreenScaleFactor());
+    return svgLayoutRect().width / (Number(worldWidth) * getScreenScaleFactor());
   };
 
   const AUTO_CAMERA_PADDING = Object.freeze({ horizontal: 30, vertical: 20 });
@@ -269,7 +301,7 @@
     const contentHeight = Number(bounds?.height);
     if (!(contentWidth > 0) || !(contentHeight > 0)) return null;
 
-    let rect = rectOverride || svg?.getBoundingClientRect?.();
+    let rect = rectOverride || svgLayoutRect();
     if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) {
       const parent = svg?.parentElement;
       rect = {
@@ -356,7 +388,7 @@
   function animateCamera(targetX, targetY, targetScale, duration = 400) {
     stopAnimation();
 
-    const rect = svg.getBoundingClientRect();
+    const rect = svgLayoutRect();
     if (rect.width === 0 || rect.height === 0) {
       // 如果 SVG 還沒佈局好，直接立即設定並回傳
       const factor = getScreenScaleFactor();
@@ -367,23 +399,34 @@
       return;
     }
 
-    // 延遲 100ms 後開始動畫
+    // Start in the next task without a separate delay: the event plan reserves
+    // exactly this camera duration before allowing data effects to begin.
     delayTimeoutId = setTimeout(() => {
       delayTimeoutId = null;
 
       const factor = getScreenScaleFactor();
 
       // 計算當前視圖中心的世界座標
-      const rect = svg.getBoundingClientRect();
+      const rect = svgLayoutRect();
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
       const physicalScale = scale * factor;
       const startX = (centerX - translateX) / physicalScale;
       const startY = (centerY - translateY) / physicalScale;
       const startScale = scale;
-      const startTime = performance.now();
+      let startTime = performance.now();
+      let previousTime = startTime;
 
       function step(currentTime) {
+        // Camera and event effects share the pause boundary. Shift the origin
+        // while paused instead of jumping to the wall-clock destination later.
+        if (window.ASMTraceFrameTween?.isPaused?.()) {
+          startTime += Math.max(0, currentTime - previousTime);
+          previousTime = currentTime;
+          animationId = requestAnimationFrame(step);
+          return;
+        }
+        previousTime = currentTime;
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
 
@@ -413,7 +456,7 @@
       }
 
       animationId = requestAnimationFrame(step);
-    }, 100);
+    }, 0);
   }
 
   /**
@@ -433,7 +476,7 @@
     } else {
       stopAnimation();
 
-      let rect = svg.getBoundingClientRect();
+      let rect = svgLayoutRect();
       // 確保 SVG 尺寸有效，否則嘗試使用父容器尺寸
       if (rect.width === 0 || rect.height === 0) {
         const parent = svg.parentElement;
@@ -540,7 +583,7 @@
     }
 
     // 先保留原縮放；原縮放放不下時，改用仍可完整容納物件的最大倍率。
-    let rect = svg.getBoundingClientRect();
+    let rect = svgLayoutRect();
     if (rect.width === 0 || rect.height === 0) {
       // 嘗試從父容器獲取尺寸
       const parent = svg.parentElement;
@@ -589,7 +632,7 @@
   }
 
   function presentationCameraTarget(x, y, baseScale) {
-    let rect = svg?.getBoundingClientRect?.();
+    let rect = svgLayoutRect();
     if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) {
       rect = {
         width: svg?.parentElement?.clientWidth || 800,
@@ -619,7 +662,7 @@
   function capturePresentationCamera() {
     if (!presentationCameraEnabled) return { ...presentationCamera };
     if (!hasBaseCamera || !svg) return { ...presentationCamera };
-    const rect = svg.getBoundingClientRect();
+    const rect = svgLayoutRect();
     if (!(rect.width > 0) || !(rect.height > 0)) return { ...presentationCamera };
     const baseScale = Math.max(0.0001, Number(lastCameraScale) || 1);
     const physicalScale = scale * getScreenScaleFactor();
@@ -672,13 +715,8 @@
   window.setLocalCameraSurface = function (surface) {
     if (cameraSurface === surface) return;
     if (manualCameraSaveTimer) window.ASMLocalCamera?.write(cameraScope(), capturePresentationCamera());
+    window.resetCanvasWheelSelection();
     cameraSurface = String(surface);
-    restoreLocalCamera();
-  };
-  window.setLocalCameraStudio = function (enabled) {
-    if (cameraStudio === (enabled === true)) return;
-    if (manualCameraSaveTimer) window.ASMLocalCamera?.write(cameraScope(), capturePresentationCamera());
-    cameraStudio = enabled === true;
     restoreLocalCamera();
   };
   presentationCamera = normalizedPresentationCamera(window.ASMLocalCamera?.read(cameraScope()));
@@ -688,6 +726,12 @@
     if (!hasBaseCamera) window.resetCanvasView();
   };
   window.getPresentationCameraTransform = () => ({ ...presentationCamera });
+  // 基準鏡頭（作者／自動取景的目標，不含手動偏移）與手動偏移：供過場推算另一個版面的取景。
+  window.getBaseCamera = () => (hasBaseCamera ? {
+    x: lastCameraX, y: lastCameraY, scale: lastCameraScale,
+    modifier: presentationCameraEnabled ? { ...presentationCamera } : { panXRatio: 0, panYRatio: 0, zoomFactor: 1 },
+    factor: getScreenScaleFactor()
+  } : null);
   window.capturePresentationCameraTransform = capturePresentationCamera;
 
   window.addEventListener('resize', () => {

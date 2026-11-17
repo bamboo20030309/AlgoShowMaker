@@ -7,12 +7,23 @@ function readPackage(bytes) {
   const offset = magic === 'ASMDECK2\n' ? 13 + bytes.readUInt32LE(9) : 9;
   return JSON.parse(gunzipSync(bytes.subarray(offset)));
 }
+// Existing visual contracts keep this synchronous fixture API. Its input now
+// comes from real isolated execution, never from a saved public result file.
+const runtimeResults = new Map();
 function savedTrace(body, animation, { presentation = true } = {}) {
-  const result = animation.traceRef
-    ? JSON.parse(fs.readFileSync(path.join(__dirname, '../../public/deck-traces', animation.traceRef + '.json')))
-    : body.prebuiltTraces[animation.prebuilt.traceId];
-  // The content-addressed result excludes per-slide presentation settings.
-  // Rehydrate those settings just as the slide loader does before playback.
-  return presentation ? { ...result, ...(animation.traceView || {}) } : result;
+  const recipe = require('../../public/animation-recipe').strip(animation);
+  if (!presentation) { delete recipe.traceView; delete recipe.rebuild; }
+  const key = JSON.stringify(recipe);
+  if (!runtimeResults.has(key)) {
+    const child = require('node:child_process').spawnSync(process.execPath,
+      [path.join(__dirname, 'execute-deck-animation.js')], {
+        cwd: path.join(__dirname, '../..'), input: key, encoding: 'utf8',
+        timeout: 120000, maxBuffer: 256 * 1024 * 1024, windowsHide: true,
+      });
+    if (child.status !== 0) throw new Error(`Isolated animation fixture execution failed: ${child.stderr || child.error || child.stdout}`);
+    runtimeResults.set(key, JSON.parse(child.stdout));
+  }
+  return JSON.parse(JSON.stringify(runtimeResults.get(key)));
 }
+
 module.exports = { readPackage, savedTrace };

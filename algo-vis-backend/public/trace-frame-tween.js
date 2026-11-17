@@ -9,8 +9,91 @@
 (function () {
   let activeRun = 0;
   let finishActiveRun = null;
+  let currentCompletion = null;
+  let playbackPaused = false;
   let visibilityResumeAt = 0;
   const markerEntrancesByFrame = new Map();
+  const cellTextScaleRecords = new Map();
+  const cellTextScaleControllers = new Set();
+
+  // Event geometry may resize a cell independently on each axis. Cancel only
+  // those transient scales on its text; camera and saved object scales remain.
+  // Multiple owners (container + cell) compose instead of overwriting each
+  // other's compensation, and the original text transform is restored exactly.
+  function preserveCellTextSize(owner, allText = false) {
+    if (!owner) return null;
+    const texts = [ ...(owner.matches?.('text') ? [owner] : []), ...owner.querySelectorAll('text') ]
+      .filter(text => allText || text.hasAttribute('data-trace-content-role')
+        || text.closest('[data-trace-index]'));
+    if (!texts.length) return null;
+    const token = Symbol('cell-text-scale'), originalOwnerTransform = owner.getAttribute('transform');
+    const records = texts.map(text => {
+      let record = cellTextScaleRecords.get(text);
+      if (!record) {
+        const box = svgBox(text);
+        record = { text, base: text.getAttribute('transform'), x: box ? box.x + box.width / 2 : 0,
+          y: box ? box.y + box.height / 2 : 0, scales: new Map() };
+        cellTextScaleRecords.set(text, record);
+      }
+      record.scales.set(token, { x: 1, y: 1 });
+      return record;
+    });
+    const render = record => {
+      let x = 1, y = 1;record.scales.forEach(scale => { x *= scale.x; y *= scale.y; });
+      const inverse = Math.abs(x - 1) > .000001 || Math.abs(y - 1) > .000001
+        ? `translate(${record.x}, ${record.y}) scale(${1 / x}, ${1 / y}) translate(${-record.x}, ${-record.y})` : '';
+      const transform = [record.base, inverse].filter(Boolean).join(' ');
+      if (transform) record.text.setAttribute('transform', transform); else record.text.removeAttribute('transform');
+    };
+    let lastX = 1, lastY = 1, removed = false;
+    const controller = {
+      update(x = 1, y = x) {
+        if (removed) return;
+        x = Math.max(.001, Number(x) || 1); y = Math.max(.001, Number(y) || 1);
+        if (x === lastX && y === lastY) return;
+        lastX = x; lastY = y;
+        records.forEach(record => {
+          const box = svgBox(record.text);
+          if (box) { record.x = box.x + box.width / 2; record.y = box.y + box.height / 2; }
+          record.scales.set(token, { x, y }); render(record);
+        });
+      },
+      remove(restoreOwner = false) {
+        if (removed) return; removed = true;
+        if (restoreOwner) {
+          if (originalOwnerTransform == null) owner.removeAttribute('transform');
+          else owner.setAttribute('transform', originalOwnerTransform);
+        }
+        records.forEach(record => {
+          record.scales.delete(token); render(record);
+          if (!record.scales.size) cellTextScaleRecords.delete(record.text);
+        });
+        cellTextScaleControllers.delete(controller);
+      }
+    };
+    cellTextScaleControllers.add(controller);
+    return controller;
+  }
+
+  function cloneWithoutCellTextScale(source) {
+    const clone = source.cloneNode(true);
+    const originals = [...(source.matches?.('text') ? [source] : []), ...source.querySelectorAll('text')];
+    const copies = [...(clone.matches?.('text') ? [clone] : []), ...clone.querySelectorAll('text')];
+    originals.forEach((text, index) => {
+      const record = cellTextScaleRecords.get(text), copy = copies[index];
+      if (!copy) return;
+      if (record) {
+        if (record.base == null) copy.removeAttribute('transform'); else copy.setAttribute('transform', record.base);
+      }
+      if (text.isConnected) {
+        const font = window.getComputedStyle(text);
+        for (const property of ['font-size','font-family','font-weight','font-style','letter-spacing']) {
+          copy.style.setProperty(property, font.getPropertyValue(property));
+        }
+      }
+    });
+    return clone;
+  }
 
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
     document.addEventListener('visibilitychange', () => {
@@ -22,6 +105,11 @@
     true: 'rgb(165, 214, 167)',
     false: 'rgb(239, 154, 154)'
   });
+  // One 1x motion vocabulary. Dependencies live in event plans, not in
+  // algorithm-specific timers. Read emphasis runs concurrently with its owner.
+  const MOTION_TIME = Object.freeze({ codePrompt: 200, enter: 220, exit: 220, move: 520, reflow: 300,
+    swap: 520, compareApproach: 300, compareHold: 420, compareReset: 260,
+    emphasize: 400, camera: 520 });
   const COMPARE_TIMING = Object.freeze({ popup: 180, wait: 400, size: 300, result: 420, reset: 260 });
   const COMPARE_DURATION = Object.values(COMPARE_TIMING).reduce((sum, value) => sum + value, 0);
   const COMPARE_SCALE_DELTA = 0.14;
@@ -32,7 +120,71 @@
   const HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION = 320;
   const MARKER_REFLOW_TIMING = Object.freeze({ duration: 180, entranceDelay: 80 });
   const EXIT_OFFSET_Y = -16;
-  const SEQUENCE_TIMING = Object.freeze({ duration: 440, travel: 48 });
+  const SEQUENCE_TIMING = Object.freeze({ duration: MOTION_TIME.reflow + MOTION_TIME.enter, travel: 0 });
+
+  function operationKind(event) {
+    if (event?.semantics?.kind) return event.semantics.kind;
+    if (event?.selectionOperation) return 'select';
+    if (event?.binaryOperation || event?.multiSourceArithmetic || event?.compound || event?.update) return 'compute';
+    const sources = (event?.targets || []).filter(t => String(t.role || '').startsWith('source'));
+    if (sources.length && sources.every(t => t.literal)) return 'literal';
+    return sources.length ? 'copy' : event?.type || 'unknown';
+  }
+
+  function selectionDuration(event) {
+    if (event?.selectionEventsRecorded === true) return 0;
+    if (event?.selectionSteps?.length) return event.selectionSteps.length * COMPARE_DURATION;
+    // Older results saved only the winner. Do not fabricate the other value
+    // or compare two undefined operands as zero; their selected copy is valid.
+    return event?.selectionOperation && event.payload?.left != null && event.payload?.right != null ? COMPARE_DURATION : 0;
+  }
+
+  // Public, inspectable action DAG. An edge is a dependency; actions sharing
+  // a stage have identical start/end and may execute in parallel.
+  function eventActionPlan(event, { marker = false, motionMs = MOTION_TIME.move, fieldExitKind = '' } = {}) {
+    const kind = operationKind(event);
+    const stages = [];
+    const add = (id, duration, actions) => {
+      const start = stages.at(-1)?.endMs || 0;
+      stages.push({ id, startMs: start, endMs: start + duration, durationMs: duration, actions });
+    };
+    const compareStages = prefix => {
+      add(prefix + 'prepare', COMPARE_TIMING.popup, ['enter']);
+      add(prefix + 'observe', COMPARE_TIMING.wait, ['hint']);
+      add(prefix + 'approach', COMPARE_TIMING.size, ['move']);
+      add(prefix + 'relation', COMPARE_TIMING.result, ['hint', 'emphasize']);
+      add(prefix + 'restore', COMPARE_TIMING.reset, ['move']);
+    };
+    if (event?.type === 'declare' || event?.type === 'visual-enter') add('enter', MOTION_TIME.enter, ['enter']);
+    else if (['scope-exit', 'visual-exit'].includes(event?.type)) add('exit', MOTION_TIME.exit, ['exit']);
+    else if (event?.type === 'compare' || ['select-max', 'select-min'].includes(event?.type)) {
+      compareStages('');
+    } else if (event?.type === 'swap') add('swap', motionMs, ['move']);
+    else if (['assign', 'input-assign', 'write'].includes(event?.type) && fieldExitKind === 'remove') {
+      add('cleanup', ASSIGN_TIMING.exit, ['exit']);
+      add('close-field-gap', ASSIGN_TIMING.frame, ['move']);
+    } else if (['assign', 'input-assign', 'write'].includes(event?.type)) {
+      for (let i = 0; i < selectionDuration(event) / COMPARE_DURATION; i++) {
+        compareStages('select-');
+      }
+      add('prepare', ASSIGN_TIMING.frame, ['enter']);
+      if (marker) add('source-hold', ASSIGN_TIMING.valueHold, ['hint']);
+      add('transfer', ASSIGN_TIMING.drop, kind === 'literal' ? ['hint', 'move'] : ['copy', 'move']);
+      add('result-hold', ASSIGN_TIMING.hold, ['hint']);
+      add('cleanup', ASSIGN_TIMING.exit, ['exit']);
+      if (fieldExitKind) add('close-field-gap', ASSIGN_TIMING.frame, ['move']);
+      if (marker) add('pointer-motion', motionMs, ['move']);
+    } else if (event?.type === 'sequence-operation') {
+      const inserting = Number(event.payload?.afterSize) > Number(event.payload?.beforeSize);
+      add(inserting ? 'make-room' : 'remove', inserting ? MOTION_TIME.reflow : MOTION_TIME.exit, inserting ? ['move'] : ['exit']);
+      add(inserting ? 'insert' : 'close-gap', inserting ? MOTION_TIME.enter : MOTION_TIME.reflow, inserting ? ['enter'] : ['move']);
+    } else add('code', event?.type === 'return' ? 260 : GENERIC_EVENT_DURATION.code, ['hint']);
+    const transfer = stages.find(s => s.id === 'transfer');
+    return { version: 1, kind, primitives: ['enter', 'exit', 'copy', 'move', 'emphasize', 'hint', 'camera'],
+      stages, readHighlight: 'owner', commitMs: transfer?.endMs
+        ?? (fieldExitKind === 'remove' ? stages.find(stage => stage.id === 'cleanup').endMs : stages.at(-1)?.endMs) ?? 0,
+      durationMs: stages.at(-1)?.endMs || 0 };
+  }
 
   // ---------------------------------------------------------------------------
   // 區段：序列生命週期與指標延續
@@ -55,6 +207,78 @@
     const explicit = Number(event?.payload?.insertIndex);
     if (Number.isInteger(explicit) && explicit >= 0) return explicit;
     return sequenceEdge(event) === 'front' ? 0 : (inserted ? before : after);
+  }
+
+  // 外框只跟隨騰位／補位階段；新增格子入場和刪除格子退場時不伸縮。
+  // resize、clear、整體 assign 保留各自的批次事件規則。
+  function sequenceOuterframeProgress(slot, elapsed) {
+    const event = slot?.event;
+    const before = Number(event?.payload?.beforeSize);
+    const after = Number(event?.payload?.afterSize);
+    const phased = Number.isFinite(before) && Number.isFinite(after) && before !== after
+      && !/resize|clear|assign/.test(String(event?.operation || ''));
+    const start = (Number(slot?.start) || 0) + (phased && after < before ? MOTION_TIME.exit : 0);
+    const duration = phased ? MOTION_TIME.reflow : Math.max(1, Number(slot?.duration) || 1);
+    return easeOutCubic(clamp01((elapsed - start) / duration));
+  }
+
+  // Hidden C++ has no runtime operation events. Known prefix growth/shrink
+  // still needs the same visual lifecycle, without inventing a push/pop call
+  // or writing synthetic operations into the saved Trace.
+  function visualSequenceFrame(frame, previousFrame, currentElements, previousPlacements, previousObjects) {
+    if (!previousFrame) return frame;
+    const events = frame.events || [];
+    const visual = [];
+    const firstOrder = events.reduce((order, event) => Math.min(order, Number(event.order) || 0), 0);
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    for (const [id, state] of Object.entries(frame.state || {})) {
+      const before = previousFrame.state?.[id]?.data;
+      const after = state?.data;
+      if (!Array.isArray(before?.items) || !Array.isArray(after?.items)
+        || before.items.length === after.items.length) continue;
+      // An authored event, including an explicitly disabled one, owns this
+      // change. The visual fallback must never re-enable it.
+      if (events.some(event => ['declare', 'assign', 'input-assign', 'write', 'swap', 'sequence-operation', 'visual-exit'].includes(event.type)
+        && (event.targets || []).some(target => target.variableId === id && !/^source/.test(target.role || '')))) continue;
+      const count = Math.min(before.items.length, after.items.length);
+      if (!before.items.slice(0, count).every((item, index) => same(item, after.items[index]))) continue;
+      const key = objectKeyForVariable(frame, id);
+      if (!currentElements?.has?.(key) || !previousPlacements?.has?.(key)) continue;
+      const current = currentElements.get(key);
+      const previous = previousVisualElement(previousObjects, key);
+      // This fallback describes normal array cells only. Disk/heap renderers
+      // already own their identity-based movement between containers.
+      if (!current?.querySelector?.('[data-layout="normal"]')) continue;
+      if (current?.dataset?.traceRuntimeIdentity && previous?.dataset?.traceRuntimeIdentity
+        && !sameRuntimeVisual(current, previous)) continue;
+      visual.push({ id: `visual-sequence:${frame.id}:${id}`, type: 'sequence-operation',
+        operation: after.items.length > before.items.length ? 'visual-insert' : 'visual-remove',
+        presentationOnly: true, enabled: true,
+        // State-only geometry belongs to the frame handoff, not after later
+        // output/call hints whose hidden source statements cannot order it.
+        order: firstOrder - 1,
+        targets: [{ role: 'target', variableId: id, expression: id, indexExpression: '' }],
+        payload: { before, after, beforeSize: before.items.length, afterSize: after.items.length,
+          edge: 'back', insertedValue: after.items[before.items.length] ?? null } });
+    }
+    return visual.length ? { ...frame, events: [...events, ...visual] } : frame;
+  }
+
+  function sequenceDataStates(traceDocument, frame, event) {
+    const payload = event?.payload || {};
+    if (Array.isArray(payload.before?.items) && Array.isArray(payload.after?.items)) return payload;
+    const target = (event.targets || []).find(t=>t.role === 'target') || event.targets?.[0];
+    const frames = traceDocument?.frames || [];
+    const index = frames.findIndex(f=>f.id===frame?.id);
+    const before = frames[index-1]?.state?.[target?.variableId]?.data;
+    const after = frame.state?.[target?.variableId]?.data;
+    const mutations = orderedEvents(frame).filter(candidate=>['assign', 'input-assign','write','swap','sequence-operation'].includes(candidate.type)
+      && (candidate.targets || []).some(t=>t.variableId===target?.variableId && !String(t.role||'').startsWith('source')));
+    // An old capture with exactly one mutation has unambiguous saved states.
+    // Multiple mutations cannot be reconstructed from the final array alone.
+    return mutations.length===1 && Array.isArray(before?.items) && Array.isArray(after?.items)
+      && before.items.length===Number(payload.beforeSize) && after.items.length===Number(payload.afterSize)
+      ? { before, after } : null;
   }
 
   function sequenceCellKeys(document, frame, event, inserted = true) {
@@ -123,6 +347,10 @@
 
   function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
+  }
+
+  function timedProgress(elapsed, duration) {
+    return duration <= 0 ? (elapsed >= 0 ? 1 : 0) : clamp01(elapsed / duration);
   }
 
   function parseColor(value, alpha = 1) {
@@ -220,7 +448,7 @@
   function captureAssignmentSourceGeometry(traceDocument, eventFrame, root, previousObjects) {
     const capturedKeys = new Set();
     for (const event of orderedEvents(eventFrame)) {
-      if (!['assign', 'write'].includes(event?.type)) continue;
+      if (!['assign', 'input-assign', 'write'].includes(event?.type)) continue;
       for (const target of event.targets || []) {
         if (!String(target.role || '').startsWith('source')) continue;
         const key = eventTargetKey(traceDocument, eventFrame, target);
@@ -500,42 +728,18 @@
       || markerActivationChanged(element, previousVisual);
   }
 
+  let initialExecution = null;
   function markerTargetBeforeFrameEvents(traceDocument, eventFrame, element) {
-    const currentTarget = String(element?.dataset?.traceBindingTarget || '');
-    const currentParts = markerTargetParts(currentTarget);
-    if (!currentParts) return currentTarget;
-    const sourceVariableIds = markerSourceVariableIds(element);
-    if (!sourceVariableIds.length) return currentTarget;
-    let startsUnresolved = false;
-    for (const event of orderedEvents(eventFrame)) {
-      const target = (event?.targets || []).find(candidate => (
-        candidate?.role !== 'source'
-        && sourceVariableIds.includes(candidate?.variableId)
-        && markerMatchesEventTarget(element, candidate)
-        && markerLifetimeActiveAtEvent(eventFrame, event, element)
-        && eventMutatesVariable(event, candidate?.variableId)
-      ));
-      if (!target) continue;
-      const initialValue = displayEventValue(event?.payload?.before);
-      if (initialValue === '') {
-        startsUnresolved = true;
-        continue;
-      }
-      const variableName = traceDocument?.variables?.[target.variableId]?.name;
-      const locals = variableName ? { [variableName]: initialValue } : {};
-      const expression = String(
-        element.dataset.traceMarkerIndexExpression
-        || element.dataset.traceMarkerSortKey
-        || ''
-      );
-      const rawResolved = window.ASMTraceRules?.resolveExpression?.(
-        traceDocument, eventFrame, expression, locals
-      );
-      const resolved = rawResolved == null ? NaN : Number(rawResolved);
-      if (Number.isInteger(resolved)) return `${currentParts.prefix}#${resolved}`;
+    // One render preparation can query many peers. Retain only the latest
+    // frame's context, not one context per saved frame for the entire deck.
+    if (initialExecution?.document !== traceDocument || initialExecution.frame !== eventFrame
+        || initialExecution.events !== eventFrame?.events || initialExecution.count !== eventFrame?.events?.length) {
+      const plan = createForwardReplayPlan(traceDocument, eventFrame, []);
+      initialExecution = { document: traceDocument, frame: eventFrame, events: eventFrame?.events,
+        count: eventFrame?.events?.length, first: plan.checkpoints[0]?.event,
+        context: createExecutionContext(traceDocument, eventFrame, plan) };
     }
-    if (startsUnresolved) return `unresolved:${currentParts.prefix}`;
-    return currentTarget;
+    return initialExecution.context.pointerTarget(element, initialExecution.first);
   }
 
   function markerGroupReflowDuration({
@@ -769,7 +973,7 @@
     deferredMarkerEntranceKeys = [], deferredMarkerEntranceStartMs = 0,
     deferredMarkerReflowKeys = [],
     initialDelayMs = 0, keepTransitionKeys = [], keepTransitionDurationMs = 0,
-    cameraTransitionDurationMs = 0
+    cameraTransitionDurationMs = 0, eventGapAfterMs = 0
   } = {}) {
     const initialDelay = Math.max(0, Number(initialDelayMs) || 0);
     const preKeepSlots = eventTimeline.filter(slot => slot?.event?.preKeepExit === true);
@@ -805,6 +1009,7 @@
       : 0;
     const eventStart = Math.max(
       frameTransitionStart + transitionDuration,
+      frameTransitionStart + cameraDuration,
       entranceStart + entranceDuration,
       scheduledEventStart
     );
@@ -834,6 +1039,10 @@
     const eventEnd = regularSlots.reduce(
       (end, slot) => Math.max(end, Number(slot.end) || 0), eventStart
     );
+    // 幀內由事件槽位保留間隔；最後一個事件到下一幀也需要同一段等待。
+    // 放進播放計畫而非 setTimeout，讓暫停、倍速、取消都共用原本時鐘。
+    const eventGapAfter = eventTimeline.length
+      ? Math.max(0, Math.min(2000, Number(eventGapAfterMs) || 0)) : 0;
     const deferredEntranceTargets = [...new Set(deferredMarkerEntranceKeys)].filter(Boolean);
     const deferredEntranceStart = deferredEntranceTargets.length
       ? Math.max(eventStart, Number(deferredMarkerEntranceStartMs) || 0)
@@ -846,7 +1055,7 @@
       frameId: String(frame?.id || ''),
       direction: Number(direction) || 0,
       preEventDurationMs: eventStart,
-      totalDurationMs: Math.max(preKeepEnd, eventStart, eventEnd, deferredEntranceEnd),
+      totalDurationMs: Math.max(preKeepEnd, eventStart, eventEnd + eventGapAfter, deferredEntranceEnd),
       phases: [
         ...(initialDelay ? [{
           id: 'code-transition',
@@ -923,6 +1132,12 @@
           durationMs: Math.max(0, eventEnd - eventStart),
           steps: eventSteps
         },
+        ...(eventGapAfter ? [{
+          id: 'event-gap', mode: 'sequence', startMs: eventEnd,
+          durationMs: eventGapAfter,
+          steps: [{ id: 'event-gap-after-frame', kind: 'event-gap',
+            durationMs: eventGapAfter, blocking: true, enabled: true, source: 'settings' }]
+        }] : []),
         ...(deferredEntranceTargets.length ? [{
           id: 'deferred-object-entrance',
           mode: 'parallel',
@@ -1346,6 +1561,7 @@
           beforeFontSize + (afterFontSize - beforeFontSize) * t
         ));
       }
+      window.fitSvgCellValueText?.(text);
     });
   }
 
@@ -1549,8 +1765,8 @@
       const variableKey = objectKeyForVariable(frame, targets[0].variableId);
       const keys = indices.map(index => `${variableKey}#${index}`);
       const start = Math.max(0, Number(slot?.start) || 0);
-      sources.set(keys[0], { sourceKey: keys[1], start });
-      sources.set(keys[1], { sourceKey: keys[0], start });
+      sources.set(keys[0], { sourceKey: keys[1], start, duration: slot.duration });
+      sources.set(keys[1], { sourceKey: keys[0], start, duration: slot.duration });
     });
     return sources;
   }
@@ -1660,6 +1876,7 @@
       if (presentationOverlay) appendBelowTraceIndicators(root, presentationOverlay);
 
       const ghostHeap = heapLayoutElement(ghost);
+      const ghostTextSize = preserveCellTextSize(ghost, true);
       const ghostCellStates = new Map();
       [...ghostHeap.querySelectorAll('[data-trace-index]')].forEach(cell => {
         const index = Number(cell.dataset.traceIndex);
@@ -1669,6 +1886,7 @@
           cell,
           box,
           baseTransform: cell.getAttribute('transform') || '',
+          textSize: preserveCellTextSize(cell, true),
           eventTransforms: [],
           highlight: null
         });
@@ -1704,7 +1922,7 @@
         const rect = cell.querySelector(':scope > rect');
         return { rect };
       });
-      const counterScaledElements = [...ghostHeap.querySelectorAll('text, path')].map(element => {
+      const counterScaledElements = [...ghostHeap.querySelectorAll('path')].map(element => {
         const box = svgBox(element);
         return {
           element,
@@ -1747,6 +1965,7 @@
         targetCellBoxes,
         cellVisuals,
         counterScaledElements,
+        ghostTextSize,
         baseTransforms,
         ghostHeap,
         ghostHeapBaseTransform,
@@ -1798,6 +2017,7 @@
             state.cell.setAttribute(
               'transform', [eventTranslate, state.baseTransform, eventScaleTransform].filter(Boolean).join(' ')
             );
+            state.textSize?.update(eventScale);
 
             const sourceHighlight = this.currentCellsByIndex.get(index)
               ?.querySelector?.(':scope > .asm-trace-compare-highlight');
@@ -1837,6 +2057,7 @@
               const localWidth = desiredWidth / Math.max(0.001, scaleX);
               visual.rect.setAttribute('x', String(ownCenterX - localWidth / 2));
               visual.rect.setAttribute('width', String(localWidth));
+              cell.querySelectorAll('text[data-trace-content-role="value"]').forEach(text => window.fitSvgCellValueText?.(text));
             }
           });
           const heapScale = Math.abs(scaleX - 1) > 0.001 ? `scale(${scaleX}, 1)` : '';
@@ -1850,6 +2071,7 @@
               : '';
             element.setAttribute('transform', [baseTransform, counterScale].filter(Boolean).join(' '));
           });
+          this.ghostTextSize?.update(scaleX, 1);
           const finished = swapProgress >= 1;
           stylePresentationCells.forEach((presentationCell, cell) => {
             if (finished) delete cell._asmStylePresentationCell;
@@ -1860,6 +2082,8 @@
           this.resizeWrapper.removeAttribute('transform');
         },
         remove() {
+          this.ghostTextSize?.remove();
+          this.ghostCellStates.forEach(state => state.textSize?.remove());
           stylePresentationCells.forEach((_, cell) => { delete cell._asmStylePresentationCell; });
           this.presentationOverlay?.remove();
           this.ghost.remove();
@@ -1880,7 +2104,9 @@
   }
 
   function objectKeyForVariable(frame, variableId) {
+    if (window.ASMTraceModel?.objectKeyForVariable) return window.ASMTraceModel.objectKeyForVariable(frame, variableId);
     const source = frame?.source || {};
+    if (source.objectIds?.[variableId]) return source.objectIds[variableId];
     if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
     return variableId;
   }
@@ -1903,16 +2129,51 @@
       && Number.isFinite(Number(scalar)) ? Number(scalar) : scalar;
   }
 
-  function displayEventFieldValue(value, frame, variableId) {
+  function displayEventFieldValue(value, frame, variableId, includeHidden = false) {
     if (!variableId || typeof window.ASMTraceRenderers?.formatDisplayValue !== 'function') {
       return displayEventValue(value);
     }
     for (const options of Object.values(frame?.rendererOptions || {})) {
       const entry = options?.format?.entries?.find(item => item.variableId === variableId);
-      if (!entry) continue;
-      return window.ASMTraceRenderers.formatDisplayValue(value, options, entry.field, variableId);
+      const fieldIndex = options?.fields?.variableIds?.indexOf(variableId) ?? -1;
+      if (!entry && fieldIndex < 0) continue;
+      const name = entry?.field || options.fields.names?.[fieldIndex] || '';
+      if (!includeHidden && window.ASMTraceRenderers.hiddenField?.(options, name, value)) return '';
+      return window.ASMTraceRenderers.formatDisplayValue(value, options, name, variableId);
     }
     return displayEventValue(value);
+  }
+
+  function fieldCellKey(frame, target) {
+    const owner = Object.entries(frame?.rendererOptions || {}).find(([, options]) =>
+      options?.fields?.variableIds?.includes(target?.variableId));
+    const indices = target?.resolvedIndices || (Number.isInteger(target?.resolvedIndex) ? [target.resolvedIndex] : null);
+    return owner && indices ? `${owner[0]}#${indices.join(',')}` : '';
+  }
+
+  function fieldReplacementReset(frame, event) {
+    const target = (event?.targets || []).find(item => item.role === 'target');
+    const cell = fieldCellKey(frame, target);
+    if (!cell || displayEventFieldValue(event.payload?.before, frame, target.variableId) === ''
+      || displayEventFieldValue(event.payload?.after, frame, target.variableId) !== '') return false;
+    const events = orderedEvents(frame), index = events.findIndex(item => item.id === event.id);
+    for (let i = index - 1; i >= 0; i--) {
+      const previous = events[i];
+      if (['read', 'fixed', 'condition'].includes(previous.type)) continue;
+      const incoming = (previous.targets || []).find(item => item.role === 'target');
+      return ['assign', 'input-assign', 'write'].includes(previous.type) && incoming?.variableId !== target.variableId
+        && fieldCellKey(frame, incoming) === cell
+        && displayEventFieldValue(previous.payload?.before, frame, incoming.variableId) === ''
+        && displayEventFieldValue(previous.payload?.after, frame, incoming.variableId) !== '';
+    }
+    return false;
+  }
+
+  function fieldExitKindFor(frame, event) {
+    const target = (event.targets || []).find(item => item.role === 'target');
+    if (!fieldCellKey(frame, target) || displayEventFieldValue(event.payload?.before, frame, target.variableId) === ''
+      || displayEventFieldValue(event.payload?.after, frame, target.variableId) !== '' || fieldReplacementReset(frame, event)) return '';
+    return Number(displayEventValue(event.payload?.after)) === 0 ? 'zero' : 'remove';
   }
 
   function eventTargetKey(traceDocument, eventFrame, target) {
@@ -1964,10 +2225,7 @@
       const target = (slot.event?.targets || []).find(item => item.role === 'target')
         || slot.event?.targets?.[0];
       const key = eventTargetKey(traceDocument, eventFrame, target);
-      const commitAt = slot.bitwiseAnimation ? Number(slot.end) : (Number(slot.effectStart) || Number(slot.start) || 0)
-        + ASSIGN_TIMING.frame
-        + (slot.markerAssignment ? ASSIGN_TIMING.valueHold : 0)
-        + ASSIGN_TIMING.drop;
+      const commitAt = forwardReplayCommitTime(slot);
       remember(key, slot, commitAt);
       remember(`${key}:index`, slot, commitAt);
     });
@@ -1983,13 +2241,31 @@
       before,
       after
     });
-    if ((event?.type === 'assign'
+    if ((['assign', 'input-assign'].includes(event?.type)
       || (event?.type === 'write' && (event?.update === true || event?.compound === true)))
       && Object.prototype.hasOwnProperty.call(event?.payload || {}, 'after')) {
       const target = targets.find(item => item?.role === 'target') || targets[0];
-      return target ? [targetMutation(
-        target, event.payload?.before, event.payload?.after
-      )] : [];
+      const mutations = [];
+      const appendValueMutations = (descriptor, before, after, path = []) => {
+        if (Array.isArray(before?.items) || Array.isArray(after?.items)) {
+          const left = before?.items || [], right = after?.items || [];
+          for (let i = 0; i < Math.max(left.length, right.length); i++) {
+            appendValueMutations(descriptor, left[i], right[i], [...path, i]);
+          }
+          return;
+        }
+        const item = path.length ? { ...descriptor, indexExpression: path.join(','),
+          ...(path.length === 1 ? { resolvedIndex: path[0] } : { resolvedIndices: path }) } : descriptor;
+        if (path.length && (before === undefined || after === undefined)) mutations.push(
+          targetMutation(item, before !== undefined, after !== undefined, 'presence'));
+        mutations.push(targetMutation(item, before ?? null, after ?? null));
+      };
+      if (target) appendValueMutations(target, event.payload?.before, event.payload?.after);
+      if (event.move && Object.prototype.hasOwnProperty.call(event.payload || {}, 'sourceAfter')) {
+        const source = targets.find(item => String(item.role || '').startsWith('source') && item.variableId);
+        if (source) appendValueMutations(source, event.payload.source, event.payload.sourceAfter);
+      }
+      return mutations;
     }
     if (event?.type === 'swap' && targets.length >= 2) {
       return [
@@ -1998,6 +2274,12 @@
       ];
     }
     if (event?.type === 'sequence-operation' && targets[0]?.variableId) {
+      const states = sequenceDataStates(traceDocument, eventFrame, event);
+      if (states) {
+        return forwardReplayMutations(traceDocument, eventFrame, { type: 'assign',
+          targets: [targets[0]], payload: { before: states.before, after: states.after } });
+      }
+      if (sequenceEdge(event)==='index') return [];
       const before = Number(event.payload?.beforeSize);
       const after = Number(event.payload?.afterSize);
       if (!Number.isInteger(before) || !Number.isInteger(after)
@@ -2023,6 +2305,7 @@
       const initializedLater = target && orderedEvents(eventFrame).some(candidate => {
         if (Number(candidate?.order) <= Number(event?.order)
           || candidate?.type !== 'assign'
+          || candidate?.enabled === false
           || candidate?.payload?.before != null) return false;
         const assigned = (candidate.targets || []).find(item => item?.role === 'target')
           || candidate.targets?.[0];
@@ -2036,8 +2319,9 @@
         targetMutation(target, false, true, 'presence'),
         // Runtime capture happens after a C++ declaration initializer has
         // evaluated, so the declaration payload already contains the final
-        // value.  When instrumentation also emitted the paired assignment,
-        // keep the entering object blank until that assignment commits.
+        // value. When the paired assignment animates, keep the entering
+        // object blank until that assignment commits. A disabled initializer
+        // instead enters with its captured value, including pointer position.
         targetMutation(target, null, initializedLater ? null : event.payload?.value, 'value')
       ] : [];
     }
@@ -2054,6 +2338,7 @@
 
   function forwardReplayCommitTime(slot) {
     if (!slot) return 0;
+    if (slot.declarationInitializerDirect) return Number(slot.start) || 0;
     if (slot.bitwiseAnimation) return Number(slot.end) || 0;
     if (slot.animation === 'declare' && slot.declarationInitializerTransfer) {
       return Number(slot.declarationInitializerCommitMs)
@@ -2061,11 +2346,10 @@
     }
     if (slot.animation === 'assign') {
       return (Number(slot.effectStart) || Number(slot.start) || 0)
-        + ASSIGN_TIMING.frame
-        + (slot.markerAssignment ? ASSIGN_TIMING.valueHold : 0)
-        + ASSIGN_TIMING.drop;
+        + (slot.actionPlan?.commitMs ?? selectionDuration(slot.event) + ASSIGN_TIMING.drop);
     }
-    if (slot.animation === 'sequence') return Number(slot.start) || 0;
+    if (slot.animation === 'sequence') return Number(slot.end) || Number(slot.start) || 0;
+    if (slot.animation === 'position') return Number(slot.start) || 0;
     return Number(slot.end) || Number(slot.start) || 0;
   }
 
@@ -2080,7 +2364,7 @@
       [slot.event, ...(slot.replayMemberEvents || [])].filter(Boolean)
         .forEach(event => timelineSlotByEvent.set(event, slot));
     });
-    const events = orderedEvents(eventFrame);
+    const events = presentationEvents(traceDocument, eventFrame);
     const initialState = new Map();
     const currentState = new Map();
     const valueTracks = new Map();
@@ -2092,7 +2376,10 @@
         || event?.type === 'condition';
       const slot = ignored ? null : timelineSlotByEvent.get(event) || null;
       const mutations = ignored ? [] : forwardReplayMutations(traceDocument, eventFrame, event)
-        .filter(mutation => mutation.key);
+        .filter(mutation => mutation.key).map(mutation => (
+          slot?.declarationInitializerDirect && event.type === 'declare' && mutation.kind === 'value'
+            ? { ...mutation, after: slot.initializerEvent.payload.after } : mutation
+        ));
       const mode = ignored ? 'ignored' : slot ? 'animated' : 'instant';
       const commitMs = slot ? forwardReplayCommitTime(slot) : logicalTime;
       mutations.forEach(mutation => {
@@ -2101,6 +2388,29 @@
       });
       if (slot) logicalTime = Math.max(logicalTime, Number(slot.end) || commitMs);
       return { event, slot, mode, commitMs, mutations };
+    });
+
+    // Adjacent writes may replace one visible field with another in the same
+    // cell. The hidden reset has no animation of its own: let it commit with
+    // the incoming field, while retaining the original logical event order.
+    descriptors.forEach((descriptor, index) => {
+      const { event, slot } = descriptor;
+      if (slot?.animation !== 'assign') return;
+      const target = (event.targets || []).find(item => item.role === 'target');
+      const cell = fieldCellKey(eventFrame, target);
+      if (!cell || displayEventFieldValue(event.payload?.before, eventFrame, target.variableId) !== ''
+        || displayEventFieldValue(event.payload?.after, eventFrame, target.variableId) === '') return;
+      for (const following of descriptors.slice(index + 1)) {
+        if (!following.mutations.length && ['read', 'fixed', 'condition'].includes(following.event.type)) continue;
+        const reset = following.event, outgoing = (reset.targets || []).find(item => item.role === 'target');
+        if (following.mode !== 'instant' || !['assign', 'input-assign', 'write'].includes(reset.type)
+          || outgoing?.variableId === target.variableId || fieldCellKey(eventFrame, outgoing) !== cell
+          || displayEventFieldValue(reset.payload?.before, eventFrame, outgoing?.variableId) === ''
+          || displayEventFieldValue(reset.payload?.after, eventFrame, outgoing?.variableId) !== '') break;
+        following.commitMs = descriptor.commitMs;
+        following.mutations.forEach(mutation => { mutation.commitMs = descriptor.commitMs; });
+        (slot.fieldReplacements ||= []).push(outgoing.variableId);
+      }
     });
 
     descriptors.forEach(({ mode, slot, mutations }) => {
@@ -2317,6 +2627,27 @@
   // ---------------------------------------------------------------------------
   // 區段：比較與賦值操作數定位
   // ---------------------------------------------------------------------------
+  const matrixLabelOperandIndexes = new WeakMap();
+  function matrixLabelOperand(elements, logicalKey, target, document) {
+    if(!elements)return null;
+    if(target && !target.indexExpression && !Number.isInteger(target.resolvedIndex)
+      && !Array.isArray(target.resolvedIndices)
+      && ['string','sequence','matrix','set'].includes(document?.variables?.[target.variableId]?.kind))return null;
+    let cached=matrixLabelOperandIndexes.get(elements);
+    if(!cached||cached.size!==elements.size){
+      const index=new Map();
+      elements.forEach((element,key)=>{
+        const source=element?.dataset?.traceLabelSourceKey;if(!source)return;
+        if(!index.has(source))index.set(source,[]);
+        index.get(source).push({element,key});
+      });
+      cached={size:elements.size,index};matrixLabelOperandIndexes.set(elements,cached);
+    }
+    return cached.index.get(logicalKey)?.find(({element})=>
+      !retainedSnapshotVisual(element)&&element.dataset.traceAxisTarget!=='1'
+      &&!element.closest?.('[data-trace-visibility="hidden"]'))||null;
+  }
+
   function eventOperand(
     traceDocument, eventFrame, target, value, placements, elements, visualKeyForSource,
     event = null
@@ -2342,6 +2673,10 @@
         retainedPoint = retained.point;
       }
     }
+    if(!element){
+      const label=matrixLabelOperand(elements,logicalKey,target,traceDocument);
+      if(label){element=label.element;visualKey=label.key;}
+    }
     const point = retainedPoint || comparisonPoint(placements, visualKey) || comparisonPoint(placements, logicalKey);
     if (!element || !point) return null;
     const marker = Boolean(element.dataset?.traceSourceVariableId);
@@ -2356,7 +2691,9 @@
         ? { ...point, x: markerX, y: markerY }
         : point,
       value: displayEventValue(value),
-      numericValue: Number(displayEventValue(value)),
+      numericValue: Number.isFinite(Number(displayEventValue(value))) ? Number(displayEventValue(value))
+        : element.dataset?.traceLabelSourceVariable && String(displayEventValue(value)).length === 1
+          ? String(displayEventValue(value)).charCodeAt(0) : Number(displayEventValue(value)),
       marker
     };
   }
@@ -2471,6 +2808,7 @@
   }
 
   function eventGap(traceDocument) {
+    if (window.ASMTraceEvents?.eventGapMs) return window.ASMTraceEvents.eventGapMs(traceDocument);
     const value = Number(traceDocument?.studio?.eventSettings?.gapMs);
     return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 500;
   }
@@ -2531,6 +2869,9 @@
     const directlyAnimatedVisual = element => {
       if (!element || infrastructure(element)) return null;
       if (element.closest?.('.asm-trace-pointer-layer')) return null;
+      // Field tspans must remain children of their <text>. Moving one into a
+      // g wrapper makes it invalid SVG and also removes it from its siblings.
+      if (element.matches?.('tspan[data-trace-field-variable]')) return element.closest('g[data-trace-index]');
       const cell = element.matches?.('[data-trace-index]')
         ? element : element.closest?.('[data-trace-index]');
       if (cell && root.contains(cell)) return cell;
@@ -2614,6 +2955,13 @@
         [...promoted].forEach(([node, record]) => {
           if (!desired.has(node) || !node.isConnected) restore(node, record);
         });
+        // A cell can enter this layer after a transfer has already started.
+        // Keep transient digits above those later cell hosts on every sync;
+        // insertion order alone otherwise lets an opaque cell hide the digit
+        // before it reaches its destination.
+        promoted.forEach((record, node) => {
+          if (record.runtime && node.parentNode === layer) layer.append(node);
+        });
       },
       clear() {
         [...promoted].forEach(([node, record]) => restore(node, record));
@@ -2658,6 +3006,38 @@
     } catch {
       return null;
     }
+  }
+
+  // Every detached assignment glyph keeps the live value's text baseline.
+  // A tspan inherits these settings; reading only parent attributes loses
+  // inherited/default baselines and makes computed operands land too low.
+  function assignmentTextTypography(element) {
+    const style = getComputedStyle(element);
+    return {
+      'dominant-baseline': style.dominantBaseline,
+      'alignment-baseline': style.alignmentBaseline,
+      'baseline-shift': style.baselineShift,
+      'font-family': style.fontFamily,
+      'font-size': style.fontSize,
+      'font-weight': style.fontWeight,
+      'font-style': style.fontStyle,
+      'letter-spacing': style.letterSpacing,
+      fill: style.fill
+    };
+  }
+
+  function assignmentValueTextInRoot(root, element, value, anchorX = null) {
+    const anchor = elementTextAnchorInRoot(element, root);
+    if (!anchor) return null;
+    const owner = element.matches('tspan') ? element.parentElement : element;
+    const matrix = root.getScreenCTM().inverse().multiply(owner.getScreenCTM());
+    const local = new DOMPoint(anchorX ?? anchor.x, anchor.y).matrixTransform(matrix.inverse());
+    return createSvg('text', {
+      ...assignmentTextTypography(element),
+      x: local.x, y: local.y,
+      transform: `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`,
+      'text-anchor': 'middle', 'pointer-events': 'none'
+    }, value);
   }
 
   function markerCellElement(operand) {
@@ -2776,6 +3156,91 @@
     return highlight;
   }
 
+  function createReadEmphasis(root, event, traceDocument, frame, placements, elements,
+    visualKeyForSource = key => key, appearingKeys = null, previousObjects = null) {
+    const settings = traceDocument?.studio?.eventSettings || {};
+    if (settings.readHighlightEnabled !== true) return { update() {}, remove() {} };
+    const configuredColor = settings.readHighlightColor || 'red';
+    const color = configuredColor === 'AV_red'
+      ? 'rgba(239, 154, 154, 0.6)' : configuredColor;
+    const targets = event?.semantics?.reads || (event?.targets || []).filter(target => (
+      String(target.role || '').startsWith('source') || event?.type === 'compare'
+    ));
+    const seen = new Set();
+    const highlights = [];
+    const sourceGhosts = [];
+    const highlightReads = [];
+    for (const target of targets) {
+      if (target.literal || !target.variableId) continue;
+      let operand = eventOperand(traceDocument, frame, target, null,
+        placements, elements, visualKeyForSource, event);
+      if (!operand) {
+        // At a function boundary the destination scene has already rendered.
+        // Match the old presentation by variable/cell identity, never by value.
+        const suffix = '#' + (target.resolvedIndex ?? 0);
+        for (const [key, element] of elements || []) {
+          if (!(String(key).endsWith(target.variableId + suffix) || String(key) === target.variableId)
+            && !(String(key).endsWith(suffix) && variableOwnerId(element) === target.variableId)) continue;
+          const point = comparisonPoint(placements, key);
+          if (point) { operand = { target, logicalKey: key, visualKey: key, element, point, marker: false }; break; }
+        }
+      }
+      if (!operand || operand.marker || seen.has(operand.visualKey)
+        || operand.element.closest?.('[data-trace-visibility="hidden"]')) continue;
+      if (sourcePresentationWasHidden(traceDocument, frame, target, operand)) continue;
+      if (appearingKeys?.has?.(operand.visualKey) && !previousVisualElement(previousObjects, operand.visualKey)) continue;
+      seen.add(operand.visualKey);
+      if (!operand.element.isConnected) {
+        const host = createSvg('g', { class: 'asm-trace-read-source-ghost', 'pointer-events': 'none' });
+        const clone = operand.element.cloneNode(true);
+        clone.removeAttribute('transform'); removeAnimationNodes(clone); host.append(clone); appendBelowTextLayer(root, host);
+        const box = clone.getBBox();
+        host.setAttribute('transform', `translate(${operand.point.x - box.x - box.width / 2},${operand.point.y - box.y})`);
+        operand = { ...operand, element: clone }; sourceGhosts.push(host);
+      }
+      const highlight = addHighlight(operand.element, color);
+      if (!highlight) continue;
+      highlight.classList.add('asm-trace-read-highlight');
+      highlight.dataset.traceReadOwner = String(event.id || '');
+      highlight.dataset.traceReadSource = operand.logicalKey || operand.visualKey;
+      highlight.style.animation = 'none';
+      highlight.style.transition = 'none';
+      highlights.push(highlight);
+      highlightReads.push({ highlight, target });
+    }
+    return {
+      update(elapsed) {
+        if (!selectionDuration(event) || elapsed < selectionDuration(event)) return;
+        const consumed = (event.targets || []).filter(target => String(target.role || '').startsWith('source')
+          && (event.selectionSteps?.length || target.role === event.selectedSourceRole));
+        highlightReads.forEach(({highlight,target}) => {
+          const kept = consumed.some(source => source.variableId === target.variableId
+            && String(source.indexExpression || '') === String(target.indexExpression || ''));
+          highlight.style.display = kept ? '' : 'none';
+        });
+      },
+      remove() { highlights.forEach(element => element.remove()); sourceGhosts.forEach(element => element.remove()); }
+    };
+  }
+
+  function sourceDeclaredBeforeEvent(frame, event, target) {
+    return Boolean(event && target?.variableId && orderedEvents(frame).some(candidate => (
+      candidate.type === 'declare' && Number(candidate.order) < Number(event.order)
+      && (candidate.targets || []).some(item => item.role === 'target' && item.variableId === target.variableId)
+    )));
+  }
+
+  function sourcePresentationWasHidden(traceDocument, frame, target, operand, event = null) {
+    if (retainedSnapshotVisual(operand?.element)) return false;
+    // A capture-only variable can still have an explicitly visible label
+    // projection. Its authored source identity, not its text, proves visibility.
+    if (operand?.element?.dataset?.traceLabelSourceVariable === target?.variableId) return false;
+    if (sourceDeclaredBeforeEvent(frame, event, target)) return false;
+    const index = (traceDocument?.frames || []).findIndex(item => item.id === frame?.id);
+    const before = traceDocument?.frames?.[index - 1];
+    return Boolean(before?.captureOnlyVariableIds?.includes(target.variableId) && !operand?.marker);
+  }
+
   function displayOperator(operation) {
     return ({ '!=': '≠', '==': '=', '<=': '≤', '>=': '≥' })[operation] || String(operation || '?');
   }
@@ -2797,6 +3262,7 @@
       transform: `translate(${centerX}, ${top})`,
       'pointer-events': 'none'
     });
+    group.dataset.traceConditionResult = String(event.result === true);
     const textAttributes = {
       y: 0, 'dominant-baseline': 'middle', 'font-family': 'Arial',
       'font-size': fontSize, 'font-weight': 'bold', fill: color
@@ -2860,11 +3326,16 @@
     }, operand.value);
     group.append(rect, text);
     appendBelowTextLayer(root, group);
-    return { group, rect, text, width, height };
+    const textSizes = [preserveCellTextSize(text, true)];
+    return { group, rect, text, width, height,
+      trackText(text) { textSizes.push(preserveCellTextSize(text, true)); },
+      updateScale(scale) { textSizes.forEach(size => size?.update(scale)); },
+      remove() { textSizes.forEach(size => size?.remove()); group.remove(); }
+    };
   }
 
   function assignableValueText(element, variableId = '') {
-    const text = element?.matches?.('text')
+    const text = element?.matches?.('text, tspan[data-trace-field-variable]')
       ? element
       : element?.querySelector?.('text');
     if (!text || text.dataset?.traceContentRole === 'index'
@@ -2893,13 +3364,21 @@
     // Transferring a clone of it would animate the index instead of the value.
     if (!valueOnly
       && sourceOperand.element.querySelector?.('text[data-trace-content-role="index"]')) return null;
-    if (sourceOperand.visualKey === targetOperand.visualKey) return null;
+    if (sourceOperand.visualKey === targetOperand.visualKey && options.allowSameTarget !== true) return null;
     if (sourceOperand.element.closest?.('[data-trace-visibility="hidden"]')
       || (!options.allowPendingTarget && targetOperand.element.closest?.('[data-trace-visibility="hidden"]'))) return null;
 
+    // A historical clone is only a fallback for a departed source. A live
+    // source already has its currently presented paint (including a new
+    // recursive view's styles); copying the previous frame would mismatch it.
+    let liveSourceVisible = sourceOperand.element.isConnected;
+    for (let node = sourceOperand.element; liveSourceVisible && node?.nodeType === 1; node = node.parentElement) {
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) liveSourceVisible = false;
+    }
     const sourceElement = valueOnly
       ? assignableTargetText(sourceOperand)
-      : (sourceVisual || sourceOperand.element);
+      : (liveSourceVisible ? sourceOperand.element : sourceVisual || sourceOperand.element);
     const targetElement = valueOnly ? assignableTargetText(targetOperand) : null;
     if (!sourceElement || (valueOnly && !targetElement)) return null;
 
@@ -2917,20 +3396,18 @@
 
     const sourceIsField = sourceElement.matches?.('tspan[data-trace-field-variable]');
     const sourceText = sourceIsField ? sourceElement.parentElement : null;
-    const computedSource = sourceIsField ? window.getComputedStyle(sourceElement) : null;
     const clone = sourceIsField
       ? createSvg('text', {
         x: box.x + box.width / 2,
         y: sourceText?.getAttribute?.('y') ?? box.y + box.height / 2,
         'text-anchor': 'middle',
-        'dominant-baseline': sourceText?.getAttribute?.('dominant-baseline') || 'middle',
-        'font-family': sourceText?.getAttribute?.('font-family') || computedSource?.fontFamily || 'Arial',
-        'font-size': sourceText?.getAttribute?.('font-size') || computedSource?.fontSize || 14,
-        'font-weight': sourceText?.getAttribute?.('font-weight') || computedSource?.fontWeight || 'normal',
-        fill: sourceElement.getAttribute('fill') || sourceText?.getAttribute?.('fill')
-          || computedSource?.fill || '#1f282d'
+        ...assignmentTextTypography(sourceElement)
       }, sourceElement.textContent)
-      : sourceElement.cloneNode(true);
+      : cloneWithoutCellTextScale(sourceElement);
+    if (valueOnly && clone.matches('text')) {
+      Object.entries(assignmentTextTypography(sourceElement)).forEach(([key, value]) => clone.setAttribute(key, value));
+    }
+    if (!valueOnly) window.ASMTraceRenderers?.copyCellStyles?.(sourceElement, clone);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
       node.removeAttribute?.('data-trace-object-key');
@@ -2938,7 +3415,20 @@
     clone.removeAttribute('transform');
     clone.classList.remove('selected', 'draggable-object', 'asm-trace-selectable');
     removeAnimationNodes(clone);
-    const cloneText = clone.matches?.('text') ? clone : clone.querySelector?.('text');
+    let cloneText = clone.matches?.('text') ? clone : clone.querySelector?.('text');
+    // LOD may defer the source glyph until after the previous scene was
+    // captured. The event still carries the exact value: a moving cell must
+    // not become an empty rectangle merely because that glyph was lazy.
+    if (!cloneText && !valueOnly && value != null) {
+      cloneText = createSvg('text', {
+        x: box.x + box.width / 2, y: box.y + box.height / 2,
+        'text-anchor': 'middle', 'dominant-baseline': 'middle',
+        'font-family': 'Arial', 'font-size': Math.max(10, Math.min(24, box.height * 0.48)),
+        fill: sourceElement.getAttribute?.('color') || '#1f282d',
+        'data-trace-content-role': 'value'
+      });
+      clone.append(cloneText);
+    }
     if (cloneText && value != null) cloneText.textContent = displayEventValue(value);
     if (cloneText && options.operatorPrefix) {
       cloneText.textContent = formatAssignmentTransferValue(
@@ -2948,7 +3438,10 @@
     }
 
     const sourceBounds = valueOnly ? elementBoundsInRoot(sourceElement, root) : null;
-    const targetBounds = valueOnly ? elementBoundsInRoot(targetElement, root) : null;
+    const fieldPoint = targetOperand.fieldAssignmentPoint;
+    const targetBounds = valueOnly ? fieldPoint ? { x: fieldPoint.x - fieldPoint.width / 2,
+      y: fieldPoint.y, width: fieldPoint.width, height: fieldPoint.height }
+      : elementBoundsInRoot(targetElement, root) : null;
     if (valueOnly && (!sourceBounds || !targetBounds)) return null;
     const extraClass = String(options.className || '').trim();
     const group = createSvg('g', {
@@ -2963,6 +3456,7 @@
     group.dataset.traceTransferSourceSnapshot = sourceOperand.element.closest?.('[data-trace-snapshot]')?.dataset.traceSnapshot || '';
     group.append(clone);
     appendBelowTextLayer(root, group);
+    if (!valueOnly && cloneText) window.fitSvgCellValueText?.(cloneText);
     const sourceCenter = valueOnly ? {
       x: sourceBounds.x + sourceBounds.width / 2,
       y: sourceBounds.y + sourceBounds.height / 2
@@ -2998,7 +3492,13 @@
       targetCenter.x - sourceCenter.x,
       targetCenter.y - sourceCenter.y
     );
-    const arcHeight = Math.min(32, Math.max(10, distance * 0.14));
+    const arcHeight = options.linear === true ? 0 : Math.min(32, Math.max(10, distance * 0.14));
+    const textSize = valueOnly ? null : preserveCellTextSize(clone, true);
+    let sourceGlyphScale = sourceScale;
+    if (textSize && sourceElement.isConnected) {
+      const matrix = root.getScreenCTM()?.inverse().multiply(sourceElement.getScreenCTM());
+      if (matrix) sourceGlyphScale = { x: Math.hypot(matrix.a,matrix.b), y: Math.hypot(matrix.c,matrix.d) };
+    }
 
     return {
       group,
@@ -3013,15 +3513,24 @@
           `translate(${x}, ${y}) scale(${scaleX}, ${scaleY}) translate(${-boxCenter.x}, ${-boxCenter.y})`
         );
         group.setAttribute('opacity', String(opacity));
+        textSize?.update(scaleX / sourceGlyphScale.x, scaleY / sourceGlyphScale.y);
       },
       remove() {
+        textSize?.remove();
         group.remove();
       }
     };
   }
 
+  function assignmentSourceIsLiteral(source) {
+    // Saved scalar events predate literal=true; identify their numeric token
+    // without treating hidden variables or arbitrary expressions as constants.
+    return source?.literal === true || (!source?.variableId
+      && /^[+-]?(?:0[xX][\da-fA-F]+|0[bB][01]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)[uUlLfF]*$/.test(String(source?.expression || '').trim()));
+  }
+
   function createLiteralAssignmentTransfer(
-    root, source, targetOperand, literalIndex, literalCount, operatorPrefix = ''
+    root, source, targetOperand, literalIndex, literalCount, operatorPrefix = '', presentation = {}
   ) {
     const targetElement = assignableTargetText(targetOperand);
     const targetBounds = elementBoundsInRoot(targetElement, root);
@@ -3030,40 +3539,48 @@
       x: targetBounds.x + targetBounds.width / 2,
       y: targetBounds.y + targetBounds.height / 2
     };
-    const fontSize = Math.max(10, Number(targetElement.getAttribute?.('font-size')) || 14);
-    const laneGap = Math.max(18, fontSize * 1.4);
+    if (targetOperand.fieldAssignmentPoint) targetAnchor.x = targetOperand.fieldAssignmentPoint.x;
+    const computed = getComputedStyle(targetElement);
+    const fontSize = Math.max(10, parseFloat(computed.fontSize) || 14);
+    const laneGap = Math.max(18, fontSize * (presentation.stationary
+      ? Math.max(1.4, (presentation.laneCharacters || 0) * .65 + .4) : 1.4));
     const desiredLaneOffset = (literalIndex - (literalCount - 1) / 2) * laneGap;
     const targetWidth = Math.max(targetBounds.width, Number(targetOperand?.point?.width) || 0);
     const maximumLaneOffset = Math.max(0, targetWidth / 2 - fontSize * 0.55);
-    const laneOffset = Math.max(
+    const laneOffset = presentation.stationary ? desiredLaneOffset : Math.max(
       -maximumLaneOffset,
       Math.min(maximumLaneOffset, desiredLaneOffset)
     );
-    const value = displayEventValue(source?.literalValue ?? source?.expression ?? '');
-    const displayed = formatAssignmentTransferValue(value, operatorPrefix);
+    const rawValue = source?.literalValue ?? source?.expression ?? '';
+    const value = targetOperand.formatTransferValue?.(rawValue) || displayEventValue(rawValue);
+    const prefix = presentation.defaultSign && /^[=+-]/.test(String(value)) ? '' : operatorPrefix;
+    const displayed = presentation.operatorSuffix
+      ? `${value} ${presentation.operatorSuffix}`
+      : formatAssignmentTransferValue(value, prefix);
     if (!displayed) return null;
     const group = createSvg('g', {
       class: 'asm-trace-assign-transfer asm-trace-assign-transfer-value asm-trace-assign-literal-value',
       opacity: 1,
+      'data-trace-literal-motion': presentation.stationary ? 'stationary' : 'drop',
       'pointer-events': 'none'
     });
-    const text = createSvg('text', {
-      x: targetAnchor.x + laneOffset,
-      y: targetAnchor.y,
-      'text-anchor': 'middle',
-      'dominant-baseline': 'middle',
-      'font-family': targetElement.getAttribute?.('font-family') || 'Arial',
-      'font-size': fontSize,
-      'font-weight': targetElement.getAttribute?.('font-weight') || 'normal',
-      fill: targetElement.getAttribute?.('fill') || '#1f282d',
-      'pointer-events': 'none'
-    }, displayed);
+    const text = assignmentValueTextInRoot(root, targetElement, displayed, targetAnchor.x + laneOffset);
+    if (!text) return null;
     group.append(text);
     appendBelowTextLayer(root, group);
+    const dropDistance = Math.max(24, Number(targetOperand.point?.height || targetBounds.height) * .8);
+    // Stationary operands occupy the destination value's actual text anchor,
+    // including formatted fields; they are not captions above the cell.
+    const stationaryOffset = 0;
+    group.setAttribute('transform', `translate(0, ${presentation.stationary ? stationaryOffset : -dropDistance})`);
+    group.setAttribute('opacity', '0');
     return {
       group,
-      update(_progress, opacity = 1) {
-        group.setAttribute('opacity', String(opacity));
+      coversTarget: true,
+      update(progress, opacity = 1) {
+        const position = clamp01(progress);
+        group.setAttribute('transform', `translate(0, ${presentation.stationary ? stationaryOffset : -dropDistance * (1 - position)})`);
+        group.setAttribute('opacity', String(opacity * clamp01(position * 4)));
       },
       remove() {
         group.remove();
@@ -3129,11 +3646,13 @@
         typeof value === 'object'
         && !Object.prototype.hasOwnProperty.call(value, 'value')
       ))) return;
-      const element = options.currentElements?.get?.(track.key);
+      const element = options.currentElements?.get?.(track.key)
+        || matrixLabelOperand(options.currentElements,track.key,track.target,options.document)?.element;
       if (!element || element.dataset?.traceSourceVariableId) return;
-      const cell = element.closest?.('[data-trace-index]') || element;
+      const cell = element.matches?.('tspan[data-trace-field-variable]')
+        ? element.closest('g[data-trace-index]') : element.closest?.('[data-trace-index]') || element;
       const variableId = variableOwnerId(cell);
-      const targetText = assignableValueText(element, variableId);
+      const targetText = assignableValueText(element, track.target?.variableId || variableId);
       const fixedIndex = !targetText
         && Boolean(element.querySelector?.('text[data-trace-content-role="index"]'));
       if (!targetText && !fixedIndex) return;
@@ -3151,7 +3670,7 @@
         const local = Number(cell.getAttribute(attribute));
         if (Number.isFinite(local)) displayLocals[name] = local;
       }
-      const styleRect = conditionalStyleVariables.has(variableId)
+      const styleRect = fieldVariableId === variableId && conditionalStyleVariables.has(variableId)
         && Number.isInteger(index)
         ? cell.querySelector?.(':scope > rect') || null
         : null;
@@ -3221,7 +3740,7 @@
               column: indices.at(-1), index: indices.at(-1) }, fallback)
           : fallback;
         const text = cell.querySelector(':scope > text');
-        if (text) text.textContent = display;
+        if (text) { text.textContent = display; window.fitSvgCellValueText?.(text); }
         const lod = cell.closest('[data-asm-lod]')?._asmLod;
         const record = lod?.records.find(item => item.cell === cell);
         if (record) record.value = display;
@@ -3357,7 +3876,7 @@
         .map(item => item.visualKey || item.key);
       if (event?.type === 'swap' || event?.bitwise || event?.bitShift) {
         keys.forEach(key => excludedPaintKeys.add(key));
-      } else if (['assign', 'write'].includes(event?.type)) {
+      } else if (['assign', 'input-assign', 'write'].includes(event?.type)) {
         const target = event.targets?.find(item => item.role === 'target') || event.targets?.[0];
         if (Number.isInteger(target?.resolvedIndex)) keys.forEach(key => assignmentPaintKeys.add(key));
       }
@@ -3458,10 +3977,21 @@
       track.applied = displayed;
       if (styleTargets.length || indexTracks.length) stylesDirty = true;
       if (track.targetCell) track.targetCell.dataset.traceDataValue = displayed;
-      else track.targetText.textContent = displayed;
+      else {
+        track.targetText.textContent = displayed;
+        if (track.targetText.matches?.('tspan[data-trace-field-variable]')) {
+          track.targetText.setAttribute('display', displayed === '' ? 'none' : 'inline');
+          refreshFieldSeparators(track.targetText.parentElement);
+        } else window.fitSvgCellValueText?.(track.targetText);
+      }
     };
     const update = elapsed => {
       styleElapsed = Number(elapsed) || 0;
+      const followedStyleFrame = options.directiveFollowPlan?.styleFrameAt(elapsed);
+      if (followedStyleFrame && followedStyleFrame !== styleFrame) {
+        styleFrame = followedStyleFrame;
+        stylesDirty = true;
+      }
       bitRows.forEach(entry => {
         let value = entry.track.initial;
         entry.track.steps.forEach(step => {
@@ -3672,7 +4202,10 @@
     // destination frame. Reuse that row's previous binding, not an unrelated
     // hidden variable or retained snapshot. Captured left bits supply its data.
     if (!left && target) {
-      const previousFrame = document.frames?.[document.frames.indexOf(frame) - 1];
+      // Event replay supplies a state snapshot, not the canonical frame object.
+      // Match its stable ID so alias handoffs can still find the prior row.
+      const frameIndex = document.frames?.findIndex(candidate => candidate.id === frame.id) ?? -1;
+      const previousFrame = document.frames?.[frameIndex - 1];
       const previousLeft = previousFrame && bitwiseRow(document, previousFrame, leftOperand, elements);
       if (previousLeft?.element === target.element
         && (previousFrame.rendererOptions?.[previousLeft.variableId]
@@ -3960,17 +4493,172 @@
     };
   }
 
+  function refreshFieldSeparators(parent) {
+    let visible = false;
+    for (const child of parent.children) {
+      if (child.hasAttribute('data-trace-field-separator')) {
+        child.setAttribute('display', visible && child.nextElementSibling?.getAttribute('display') !== 'none' ? 'inline' : 'none');
+      } else if (child.hasAttribute('data-trace-field-variable') && child.getAttribute('display') !== 'none') visible = true;
+    }
+    window.fitSvgCellValueText?.(parent);
+  }
+
+  function createFieldAssignmentLayout(root, target, afterValue, replacementIds = []) {
+    if (!target?.matches?.('tspan[data-trace-field-variable]')) return null;
+    const parent = target.parentElement;
+    const parts = [...parent.children].filter(node => node.matches('tspan'));
+    const box = node => {
+      if (node.getAttribute('display') === 'none') return null;
+      const bounds = node.getBBox();
+      return bounds.width > 0 ? { x: bounds.x + bounds.width / 2, width: bounds.width } : null;
+    };
+    const placeCenter = (node, center) => {
+      node.setAttribute('x', String(center));
+      // SVG anchors use advance widths, while getBBox measures glyph ink.
+      // Preserve the measured center when splitting a row into text chunks.
+      const actual = box(node);
+      if (actual && Math.abs(actual.x - center) > .001) node.setAttribute('x', String(center + center - actual.x));
+    };
+    // Fit the complete upcoming row before measuring transfer anchors, but
+    // retain each old center. Shrinking typography must not make siblings
+    // move before the incoming number lands. The cap lasts for this effect.
+    const initialCenters = new Map(parts.map(node => [node, box(node)]));
+    const previousCap = parent.dataset.asmReplayFontCap;
+    const savedParts = parts.map(node => ({ node, value: node.textContent, display: node.getAttribute('display') }));
+    target.textContent = afterValue;
+    target.setAttribute('display', afterValue === '' ? 'none' : 'inline');
+    parts.filter(node => replacementIds.includes(node.dataset.traceFieldVariable)).forEach(node => node.setAttribute('display', 'none'));
+    refreshFieldSeparators(parent);
+    const plannedFont = Number(parent.getAttribute('font-size')) || 16;
+    savedParts.forEach(({node,value,display}) => { node.textContent = value; if (display == null) node.removeAttribute('display'); else node.setAttribute('display',display); });
+    refreshFieldSeparators(parent);
+    parent.dataset.asmReplayFontCap = String(Math.min(plannedFont, Number(parent.getAttribute('font-size')) || plannedFont));
+    window.fitSvgCellValueText?.(parent);
+    const original = parts.map(node => {
+      const before = box(node), initial = initialCenters.get(node);
+      return { node, x: node.getAttribute('x'), display: node.getAttribute('display'),
+        before: before && initial ? { ...before, x: initial.x } : before };
+    });
+    const beforeText = target.textContent;
+    const previousBounds = elementBoundsInRoot(target, root);
+    const initialTarget = initialCenters.get(target);
+    if (previousBounds && initialTarget) {
+      const local = target.getBBox();
+      const center = new DOMPoint(initialTarget.x, local.y).matrixTransform(root.getScreenCTM().inverse().multiply(parent.getScreenCTM()));
+      previousBounds.x = center.x - previousBounds.width / 2;
+    }
+    const replacements = parts.filter(node => replacementIds.includes(node.dataset.traceFieldVariable));
+    // Measure the row after this operation, not after the entire frame. Each
+    // tspan will own an anchored chunk, so changing its digits cannot re-center
+    // all its siblings. The prepare phase makes room before the value travels.
+    parts.forEach(node => node.removeAttribute('x'));
+    target.textContent = afterValue;
+    target.setAttribute('display', afterValue === '' ? 'none' : 'inline');
+    replacements.forEach(node => node.setAttribute('display', 'none'));
+    refreshFieldSeparators(parent);
+    // Format signs belong to the moving value. Measure the complete formatted
+    // field so its prefix and digits arrive together at their final anchor.
+    const destination = elementBoundsInRoot(target, root);
+    const planned = original.map(record => ({ ...record, after: box(record.node) }));
+    const targetPlan = planned.find(record => record.node === target);
+    const deferReflow = Boolean(targetPlan?.before && targetPlan.after && !replacementIds.length
+      && Math.abs(targetPlan.before.width - targetPlan.after.width) > .1);
+    const separator = target.previousElementSibling?.hasAttribute('data-trace-field-separator')
+      ? planned.find(record => record.node === target.previousElementSibling) : null;
+    const reusedSeparator = replacements.length && separator?.after
+      ? planned.find(record => record.node.hasAttribute('data-trace-field-separator')
+        && record.display !== 'none' && replacements.includes(record.node.nextElementSibling)) : null;
+    if (reusedSeparator) reusedSeparator.after = separator.after;
+    target.textContent = beforeText;
+    original.forEach(({ node, x, display }) => {
+      if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x);
+      if (display == null) node.removeAttribute('display'); else node.setAttribute('display', display);
+    });
+    const adornments = [];
+    const adorn = (text, center, kind) => {
+      const node = createSvg('tspan', { x: center, display: 'none', 'data-trace-field-adornment': kind }, text);
+      parent.append(node); adornments.push(node);
+    };
+    if (separator?.after && separator.display === 'none' && !reusedSeparator) adorn(separator.node.textContent, separator.after.x, 'separator');
+    let committed = false, closing = null;
+    return {
+      point: destination && destination.width > 0 ? { x: deferReflow && previousBounds
+        ? previousBounds.x + previousBounds.width / 2 : destination.x + destination.width / 2,
+        y: destination.y, width: destination.width, height: destination.height } : null,
+      update(progress, covering = false, separatorProgress = progress, postLandProgress = 0) {
+        if (closing) return;
+        const reflowProgress = deferReflow ? postLandProgress : progress;
+        planned.forEach(({ node, before, after }) => {
+          const from = before || after, to = after || before;
+          if (from && to) placeCenter(node, from.x + (to.x - from.x) * reflowProgress);
+        });
+        const empty = target.getAttribute('display') === 'none' || beforeText === '';
+        adornments.forEach(node => {
+          node.setAttribute('display', !committed && (empty ? separatorProgress > 0 : covering && progress >= 1) ? 'inline' : 'none');
+          node.setAttribute('opacity', String(easeOutCubic(clamp01(separatorProgress))));
+        });
+      },
+      closeGap(progress) {
+        if (!closing) {
+          adornments.forEach(node => node.remove());
+          target.textContent = ''; target.setAttribute('display', 'none'); refreshFieldSeparators(parent);
+          closing = parts.map(node => ({ node, from: box(node), x: node.getAttribute('x') }));
+          parts.forEach(node => node.removeAttribute('x'));
+          closing.forEach(record => { record.to = box(record.node); });
+          closing.forEach(({ node, x }) => { if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x); });
+        }
+        closing.forEach(({ node, from, to }) => {
+          if (from && to) placeCenter(node, from.x + (to.x - from.x) * easeOutCubic(clamp01(progress)));
+        });
+      },
+      commit() { committed = true; adornments.forEach(node => node.remove()); },
+      remove() {
+        adornments.forEach(node => node.remove());
+        original.forEach(({ node, x }) => { if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x); });
+        if (previousCap == null) delete parent.dataset.asmReplayFontCap; else parent.dataset.asmReplayFontCap = previousCap;
+        window.fitSvgCellValueText?.(parent);
+      }
+    };
+  }
+
+  function createFieldRemovalEffect(root, operand, beforeValue) {
+    const target = assignableTargetText(operand), originalOpacity = target.getAttribute('opacity');
+    const layout = createFieldAssignmentLayout(root, target, beforeValue);
+    const separator = [target.previousElementSibling, target.nextElementSibling].find(node =>
+      node?.hasAttribute('data-trace-field-separator') && node.getAttribute('display') !== 'none');
+    const originalSeparatorOpacity = separator?.getAttribute('opacity');
+    let opacity = 1;
+    return {
+      get opacities() { return new Map([[operand.visualKey, opacity]]); },
+      update(elapsed) {
+        layout.update(0);
+        opacity = 1 - easeOutCubic(clamp01(elapsed / ASSIGN_TIMING.exit));
+        separator?.setAttribute('opacity', String(opacity));
+        if (elapsed >= ASSIGN_TIMING.exit) layout.closeGap((elapsed - ASSIGN_TIMING.exit) / ASSIGN_TIMING.frame);
+      },
+      remove() {
+        layout.closeGap(1); layout.remove();
+        if (originalOpacity == null) target.removeAttribute('opacity'); else target.setAttribute('opacity', originalOpacity);
+        if (separator) {
+          if (originalSeparatorOpacity == null) separator.removeAttribute('opacity'); else separator.setAttribute('opacity', originalSeparatorOpacity);
+        }
+      }
+    };
+  }
+
   function createAssignEffect(
     root, event, traceDocument, eventFrame, placements, elements,
-    rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements
+    rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements, fieldReplacements = []
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
     const availableSources = (event?.targets || []).filter(item => item.role === 'source'
       || String(item.role || '').startsWith('source-'));
     const selectionOperation = ['max', 'min'].includes(event?.selectionOperation)
       && availableSources.length === 2;
+    if (selectionOperation && !selectionDuration(event)) window.ASMCompileWarnings?.report?.('舊版選值',
+      '此舊 Trace 只保存 min/max 選中的結果，將播放結果複製；重新 RUN 後可顯示完整比較與選值動畫。');
     const selectedSourceRole = String(event?.selectedSourceRole || '');
-    const sources = selectionOperation
+    const sources = selectionOperation || event?.conditionalSelection
       ? availableSources.filter(item => item.role === selectedSourceRole)
       : availableSources;
     const source = sources[0];
@@ -4049,10 +4737,15 @@
       ? null
       : displayEventFieldValue(sourceValue, eventFrame, target.variableId);
     const sourceLabel = String(source?.expression || afterValue || '').trim();
-    const sourceOperands = sources.map(item => eventOperand(
-      traceDocument, eventFrame, item, sourceValue,
-      placements, elements, visualKeyForSource, event
-    ));
+    const sourceOperands = sources.map(item => {
+      const operand = eventOperand(traceDocument, eventFrame, item, sourceValue,
+        placements, elements, visualKeyForSource, event);
+      if (sourcePresentationWasHidden(traceDocument, eventFrame, item, operand, event)) return null;
+      // A newly introduced presentation was not a visible source when the
+      // preceding statement executed. Use its captured numeric value instead.
+      return operand && !sourceDeclaredBeforeEvent(eventFrame, event, item) && appearingKeys?.has?.(operand.visualKey)
+        && !previousVisualElement(previousObjects, operand.visualKey) ? null : operand;
+    });
     const arithmeticTransfer = binaryOperation || multiSourceArithmetic;
     // A scalar initialized from one visible array cell copies its frame too.
     // Keep the declaration's timing separate from the transfer's appearance:
@@ -4065,12 +4758,7 @@
       && Boolean(sourceOperands[0]?.element?.querySelector?.('rect'))
       && (Boolean(source?.indexExpression) || Number.isInteger(source?.resolvedIndex)
         || Array.isArray(source?.resolvedIndices));
-    const valueOnlyTransfer = (event?.declarationValueOnlyTransfer === true && !declarationCellTransfer)
-      || event?.compound === true || arithmeticTransfer || selectionOperation;
-    const allDataSourcesVisible = !(arithmeticTransfer || selectionOperation)
-      || sources.every((item, index) => (
-        item?.literal === true || Boolean(sourceOperands[index])
-      ));
+    const valueOnlyTransfer = operationKind(event) === 'compute';
     let popup = null;
     let markerIncomingText = null;
     let fallingText = null;
@@ -4078,9 +4766,21 @@
     let targetText = null;
     let finalText = '';
     let originalOpacity = null;
+    let fieldLayout = null;
     let literalCoversTarget = false;
+    let stationaryCoversTarget = false;
+    let hiddenFieldExit = false;
+    let hiddenExitOpacity = 1;
+    let exitSeparator = null;
+    let separatorOpacity = null;
+    let closingField = false;
     let landed = false;
     let popupScale = 1;
+    const conditionHint = event.conditionalSelection ? createSvg('text', {
+      class: 'asm-trace-condition-label', x, y: y - 20, 'text-anchor': 'middle',
+      'font-size': 14, fill: '#333333', 'pointer-events': 'none'
+    }, String(event.conditionResult === true)) : null;
+    if (conditionHint) appendBelowTextLayer(root, conditionHint);
 
     if (operand.marker) {
       popup = createMarkerPopup(
@@ -4102,12 +4802,40 @@
         'pointer-events': 'none'
       }, sourceLabel);
       popup.group.append(markerIncomingText);
+      popup.trackText(markerIncomingText);
+      const incoming = sourceOperands[0];
+      if (incoming && !incoming.marker) {
+        const transfer = createAssignmentTransfer(root, incoming,
+          { ...operand, marker: false, element: popup.group }, formattedSourceValue,
+          previousVisualElement(previousObjects, incoming.visualKey), { valueOnly: true });
+        if (transfer) { transfers.push(transfer); markerIncomingText.setAttribute('visibility', 'hidden'); }
+      }
     } else {
       targetText = assignableTargetText(operand);
+      hiddenFieldExit = targetText?.matches?.('tspan[data-trace-field-variable]') && afterValue === '';
+      if (hiddenFieldExit && beforeValue === '') return null;
+      if (hiddenFieldExit && Number(displayEventValue(event.payload?.after)) !== 0) return createFieldRemovalEffect(root, operand, beforeValue);
+      if (hiddenFieldExit) {
+        exitSeparator = [targetText.previousElementSibling, targetText.nextElementSibling].find(node =>
+          node?.hasAttribute('data-trace-field-separator') && node.getAttribute('display') !== 'none') || null;
+        separatorOpacity = exitSeparator?.getAttribute('opacity');
+      }
+      fieldLayout = createFieldAssignmentLayout(root, targetText, hiddenFieldExit
+        ? displayEventFieldValue(event.payload?.after, eventFrame, target.variableId, true) : afterValue, fieldReplacements);
+      operand.formatTransferValue = value => displayEventFieldValue(value, eventFrame, target.variableId, hiddenFieldExit);
+      if (fieldLayout?.point) {
+        operand.point = fieldLayout.point;
+        operand.fieldAssignmentPoint = fieldLayout.point;
+        x = operand.point.x; y = operand.point.y;
+      }
+      fieldLayout?.update(0);
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
       const targetTemplate = operand.element.getAttribute?.('data-trace-display-template');
       const formatTargetValue = (value, fallback) => {
+        if (targetText?.matches?.('tspan[data-trace-field-variable]')) {
+          return displayEventFieldValue(value, eventFrame, targetText.dataset.traceFieldVariable, hiddenFieldExit);
+        }
         if (typeof targetTemplate !== 'string') return fallback;
         const locals = {};
         for (const name of ['index', 'row', 'column']) {
@@ -4120,21 +4848,53 @@
       };
       finalText = formatTargetValue(event?.payload?.after, afterValue);
       if (targetText) targetText.textContent = formatTargetValue(event?.payload?.before, beforeValue);
-      if (allDataSourcesVisible) {
-        const literalCount = sources.filter(item => item?.literal === true).length;
+      {
+        // Missing visual sources use their captured value, with the same
+        // destination lanes as literal operands. Count only those numeric
+        // operands so one hidden value is centered beside a visible transfer.
+        const literalSources = sources.filter((item, index) =>
+          assignmentSourceIsLiteral(item) || !sourceOperands[index]);
+        const literalCount = literalSources.length;
+        const laneCharacters = Math.max(0, ...literalSources.map(item =>
+          String(item.literalValue ?? item.expression ?? '').length + 2));
         let literalIndex = 0;
         const candidates = sources.map((sourceItem, index) => {
-          const operatorPrefix = multiSourceArithmetic
-            ? sourceItem?.arithmeticOperator
-            : transferOperator;
-          if (sourceItem?.literal === true) {
+          // Compound assignment carries its operation with the incoming value;
+          // a plain copy keeps the original value without an added operator.
+          const operatorPrefix = event.compound === true ? transferOperator : '';
+          if (assignmentSourceIsLiteral(sourceItem)) {
             const transfer = createLiteralAssignmentTransfer(
-              root, sourceItem, operand, literalIndex, literalCount, operatorPrefix
+              root, { ...sourceItem, literalValue: sourceItem.value?.value ?? sourceItem.literalValue
+                ?? (sources.length === 1 ? event.payload?.source?.value ?? event.payload?.source : undefined) },
+              operand, literalIndex, literalCount,
+              // Keep operand order for noncommutative expressions such as 2-b.
+              index === 0 && binaryOperation && ['-', '/'].includes(transferOperator)
+                ? '' : sourceItem.arithmeticOperator || transferOperator || (event.type === 'input-assign' ? '' : '+'),
+              { stationary: sources.length > 1, laneCharacters,
+                defaultSign: !sourceItem.arithmeticOperator && !transferOperator,
+                operatorSuffix: index === 0 && binaryOperation && ['-', '/'].includes(transferOperator)
+                  ? transferOperator : '' }
             );
             literalIndex += 1;
             return transfer;
           }
           const item = sourceOperands[index];
+          if (!item) {
+            const raw = sourceItem.value ?? sourceItem.literalValue
+              ?? event.payload?.sources?.[index]
+              ?? (sourceItem.role === 'source-right' ? event.payload?.right
+                : sourceItem.role === 'source-left' ? event.payload?.left
+                  : sources.length === 1 ? event.payload?.source : index === 0 ? event.payload?.left : event.payload?.right);
+            const before = markerExpressionValue(event.payload?.before);
+            const after = markerExpressionValue(event.payload?.after);
+            const increment = event.compound === true && transferOperator === '+' && sources.length === 1
+              && typeof before === 'number' && typeof after === 'number'
+              && Number.isFinite(before) && Number.isFinite(after) ? after - before : null;
+            return createLiteralAssignmentTransfer(root, { ...sourceItem,
+              literalValue: raw?.value ?? raw ?? event.payload?.source ?? increment ?? event.payload?.after }, operand,
+              literalIndex++, Math.max(1, literalCount), operatorPrefix,
+              { stationary: sources.length > 1, laneCharacters });
+          }
           return createAssignmentTransfer(
             root,
             item,
@@ -4143,32 +4903,38 @@
             item ? previousVisualElement(previousObjects, item.visualKey) : null,
             {
               valueOnly: valueOnlyTransfer,
+              // 自我賦值仍建立正常複本；複合賦值保留原本「舊目標不搬移」的規則。
+              allowSameTarget: event.compound !== true,
               operatorPrefix
             }
           );
         });
         if (candidates.every(Boolean)) {
           transfers = candidates;
-          literalCoversTarget = literalCount > 0;
-          if (literalCoversTarget && targetText) targetText.setAttribute('opacity', '0');
+          literalCoversTarget = candidates.some(item => item?.coversTarget === true);
+          stationaryCoversTarget = candidates.some(item => item?.group?.dataset.traceLiteralMotion === 'stationary');
         }
         else candidates.filter(Boolean).forEach(item => item.remove());
       }
       if (!transfers.length) {
         const targetY = y + operand.point.height / 2;
-        fallingText = createSvg('text', {
-          class: 'asm-trace-assign-falling-value',
-          x,
-          y: targetY - Math.max(24, operand.point.height * 0.8),
-          'text-anchor': 'middle',
-          'dominant-baseline': 'middle',
-          'font-family': targetText?.getAttribute?.('font-family') || 'Arial',
-          'font-size': targetText?.getAttribute?.('font-size') || Math.max(12, operand.point.height * 0.48),
-          'font-weight': targetText?.getAttribute?.('font-weight') || 'normal',
-          fill: targetText?.getAttribute?.('fill') || '#1f282d',
-          opacity: 0,
-          'pointer-events': 'none'
-        }, afterValue);
+        fallingText = targetText && assignmentValueTextInRoot(root, targetText, afterValue,
+          operand.fieldAssignmentPoint?.x ?? null);
+        if (fallingText) {
+          fallingText.classList.add('asm-trace-assign-falling-value');
+          fallingText.setAttribute('opacity', '0');
+          fallingText.dataset.baselineTransform = fallingText.getAttribute('transform');
+        } else {
+          // With no measurable text there is no baseline to copy. Keep the
+          // geometry-only fallback for old/LOD views instead of throwing.
+          fallingText = createSvg('text', {
+            class: 'asm-trace-assign-falling-value', x,
+            y: targetY - Math.max(24, operand.point.height * 0.8),
+            'text-anchor': 'middle', 'dominant-baseline': 'middle',
+            'font-family': 'Arial', 'font-size': Math.max(12, operand.point.height * 0.48),
+            fill: '#1f282d', opacity: 0, 'pointer-events': 'none'
+          }, afterValue);
+        }
         fallingText.dataset.targetY = String(targetY);
         appendBelowTextLayer(root, fallingText);
       }
@@ -4177,8 +4943,15 @@
     function landValue() {
       if (landed) return;
       landed = true;
+      fieldLayout?.commit();
       if (targetText) {
         targetText.textContent = finalText;
+        window.fitSvgCellValueText?.(targetText.matches('tspan') ? targetText.parentElement : targetText);
+        if (hiddenFieldExit) {
+          targetText.setAttribute('display', 'inline');
+          refreshFieldSeparators(targetText.parentElement);
+          exitSeparator?.setAttribute('opacity', String(hiddenExitOpacity));
+        }
         if (literalCoversTarget) {
           if (originalOpacity == null) targetText.removeAttribute('opacity');
           else targetText.setAttribute('opacity', originalOpacity);
@@ -4187,9 +4960,26 @@
       if (popup) popup.text.textContent = afterValue;
       markerIncomingText?.setAttribute('opacity', '0');
       fallingText?.setAttribute('opacity', '0');
+      conditionHint?.remove();
     }
 
     return {
+      get opacities() { return hiddenFieldExit ? new Map([[operand.visualKey, hiddenExitOpacity]]) : new Map(); },
+      afterReplay() {
+        if (stationaryCoversTarget && !landed
+          && transfers.some(item => item.group?.dataset.traceLiteralMotion === 'stationary'
+            && Number(item.group.getAttribute('opacity')) > .01)) {
+          targetText?.setAttribute('opacity', '0');
+        }
+        // The logical zero is already committed and hide(...) removes its
+        // normal glyph. Keep this temporary result through hold/exit only.
+        if (hiddenFieldExit && landed && !closingField) {
+          targetText.textContent = finalText;
+          targetText.setAttribute('display', 'inline');
+          refreshFieldSeparators(targetText.parentElement);
+          exitSeparator?.setAttribute('opacity', String(hiddenExitOpacity));
+        }
+      },
       syncPosition() {
         if (!popup || !liveMarker) return;
         const visibleBounds = elementBoundsInRoot(markerPopupAnchorElement(operand), root);
@@ -4199,17 +4989,21 @@
         popup.group.setAttribute('transform', `translate(${x}, ${y}) scale(${popupScale})`);
       },
       update(elapsed) {
-        const frameProgress = easeOutCubic(clamp01(elapsed / ASSIGN_TIMING.frame));
+        const frameProgress = easeOutCubic(timedProgress(elapsed, ASSIGN_TIMING.frame));
+        // Preserve the previous value throughout flight. The destination is
+        // replaced only in landValue(), in the same tick that removes the copy.
         // The transfer must land at the same commit time used by replay and
         // conditional styles, including the initial frame phase for scalars.
-        const dropStart = (event?.declarationValueOnlyTransfer === true ? 0 : ASSIGN_TIMING.frame)
+        const dropStart = ASSIGN_TIMING.frame
           + (operand.marker ? ASSIGN_TIMING.valueHold : 0);
         const dropProgress = easeOutCubic(clamp01((elapsed - dropStart) / ASSIGN_TIMING.drop));
+        fieldLayout?.update(frameProgress, literalCoversTarget, clamp01((elapsed - 60) / 100),
+          easeOutCubic(clamp01((elapsed - dropStart - ASSIGN_TIMING.drop) / ASSIGN_TIMING.frame)));
         const exitStart = ASSIGN_TIMING.frame
           + (operand.marker ? ASSIGN_TIMING.valueHold : 0)
           + ASSIGN_TIMING.drop + ASSIGN_TIMING.hold;
         const exit = elapsed > exitStart
-          ? easeOutCubic(clamp01((elapsed - exitStart) / ASSIGN_TIMING.exit))
+          ? easeOutCubic(timedProgress(elapsed - exitStart, ASSIGN_TIMING.exit))
           : 0;
         if (popup) {
           popupScale = 0.82 + 0.18 * frameProgress;
@@ -4227,20 +5021,33 @@
             markerIncomingText.setAttribute('y', String(sourceY));
             markerIncomingText.setAttribute('opacity', String(sourceOpacity));
           }
+          popup.updateScale(popupScale);
         }
         if (fallingText) {
           const targetY = Number(fallingText.dataset.targetY) || y;
           const startY = targetY - Math.max(24, operand.point.height * 0.8);
-          fallingText.setAttribute('y', String(startY + (targetY - startY) * dropProgress));
+          if (fallingText.dataset.baselineTransform) {
+            fallingText.setAttribute('transform', `translate(0,${-(targetY - startY) * (1 - dropProgress)}) ${fallingText.dataset.baselineTransform}`);
+          } else {
+            fallingText.setAttribute('y', String(startY + (targetY - startY) * dropProgress));
+          }
           fallingText.setAttribute('opacity', String(dropProgress < 1 ? clamp01(dropProgress * 4) : 0));
         }
-        transfers.forEach(item => item.update(dropProgress, 1 - exit));
+        transfers.forEach(item => item.update(dropProgress, fieldLayout && frameProgress < 1 ? 0 : 1 - exit));
         if (dropProgress >= 1) {
           landValue();
+          if (hiddenFieldExit) {
+            hiddenExitOpacity = 1 - exit;
+            targetText.setAttribute('opacity', String(hiddenExitOpacity));
+            if (elapsed >= exitStart + ASSIGN_TIMING.exit) {
+              closingField = true;
+              fieldLayout.closeGap((elapsed - exitStart - ASSIGN_TIMING.exit) / ASSIGN_TIMING.frame);
+            }
+          }
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
           // duplicate numbers over the target during the generic hold phase.
-          if (valueOnlyTransfer || declarationCellTransfer) {
+          if (transfers.length) {
             transfers.forEach(item => item.remove());
             transfers = [];
           }
@@ -4248,11 +5055,22 @@
       },
       remove() {
         landValue();
+        if (hiddenFieldExit) {
+          targetText.textContent = '';
+          targetText.setAttribute('display', 'none');
+          refreshFieldSeparators(targetText.parentElement);
+          if (exitSeparator) {
+            if (separatorOpacity == null) exitSeparator.removeAttribute('opacity');
+            else exitSeparator.setAttribute('opacity', separatorOpacity);
+          }
+        }
+        fieldLayout?.remove();
         if (targetText) {
           if (originalOpacity == null) targetText.removeAttribute('opacity');
           else targetText.setAttribute('opacity', originalOpacity);
         }
-        popup?.group.remove();
+        popup?.remove();
+        conditionHint?.remove();
         fallingText?.remove();
         transfers.forEach(item => item.remove());
         transfers = [];
@@ -4261,6 +5079,9 @@
   }
 
   function forwardReplayMutationCommitTime(slot, mutation) {
+    if (slot?.animation === 'declare' && slot.initializerEvent && mutation?.kind === 'presence') {
+      return Number(slot.start) || 0;
+    }
     if (slot?.animation === 'sequence' && slot.sequenceSourceTransfer) {
       if (mutation?.kind === 'presence') return Number(slot.end) || Number(slot.start) || 0;
       if (mutation?.kind === 'value') return Number(slot.end) || Number(slot.start) || 0;
@@ -4275,7 +5096,6 @@
     const visibleSources = visibleInitializerSources(
       traceDocument, eventFrame, event, placements, elements, visualKeyForSource
     );
-    if (!visibleSources.length) return null;
     const target = (event?.targets || []).find(item => item?.role === 'target')
       || event?.targets?.[0];
     if (!target) return null;
@@ -4283,7 +5103,11 @@
       traceDocument, eventFrame, target, event?.payload?.after,
       placements, elements, visualKeyForSource, event
     );
-    if (!targetOperand || targetOperand.marker) return null;
+    if (!targetOperand) return null;
+    if (targetOperand.marker) return createAssignEffect(
+      root, event, traceDocument, eventFrame, placements, elements,
+      rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements
+    );
     const container = targetOperand.element?.querySelector?.('.outerframe-bg');
     if (!container) {
       return createAssignEffect(
@@ -4293,13 +5117,15 @@
       );
     }
 
-    const source = visibleSources[0];
+    const source = visibleSources[0] || null;
     const sourceValue = event?.payload?.source ?? event?.payload?.after;
     const leaves = [];
     const collectLeaves = (value, sourceItem, path = []) => {
       const items = Array.isArray(value?.items) ? value.items : null;
       if (!items) {
-        leaves.push({ value, source: sourceItem ?? value, path });
+        let before = event?.payload?.before;
+        for (const index of path) before = before?.items?.[index];
+        leaves.push({ value, before: before ?? null, source: sourceItem ?? value, path });
         return;
       }
       const sourceItems = Array.isArray(sourceItem?.items) ? sourceItem.items : [];
@@ -4319,8 +5145,11 @@
       const childEvent = {
         ...event,
         declarationValueOnlyTransfer: true,
-        payload: { before: null, after: leaf.value, source: leaf.source },
-        targets: [indexed({ ...target, role: 'target' }), indexed({ ...source, role: 'source' })]
+        payload: { before: leaf.before, after: leaf.value, source: leaf.source },
+        targets: [indexed({ ...target, role: 'target' }), source
+          ? indexed({ ...source, role: 'source' })
+          : { role: 'source', literal: true, expression: displayEventValue(leaf.value),
+            literalValue: leaf.value?.value ?? leaf.value }]
       };
       return createAssignEffect(
         root, childEvent, traceDocument, eventFrame, placements, elements,
@@ -4348,7 +5177,8 @@
         opacity: 0,
         'pointer-events': 'none'
       });
-      const clone = original.cloneNode(true);
+      const clone = cloneWithoutCellTextScale(original);
+      window.ASMTraceRenderers?.copyCellStyles?.(original, clone);
       [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
         node.removeAttribute?.('id');
         node.removeAttribute?.('data-trace-object-key');
@@ -4386,7 +5216,8 @@
     operands.forEach(operand => {
       const element = operand?.element;
       const parent = element?.parentNode;
-      if (operand?.marker || !element || !parent || seen.has(element)) return;
+      if (operand?.marker || !element || !parent || seen.has(element)
+        || element.matches?.('tspan[data-trace-field-variable]')) return;
       seen.add(element);
       const placeholder = document.createComment('asm-trace-compare-order');
       parent.insertBefore(placeholder, element);
@@ -4407,35 +5238,318 @@
   }
 
   function markerTargetAtCheckpoint(traceDocument, eventFrame, element, checkpoint) {
-    const target = String(element?.dataset?.traceBindingTarget || '');
-    const parts = markerTargetParts(target);
-    const expression = String(element?.dataset?.traceMarkerIndexExpression || '');
-    if (!parts || !expression || !checkpoint?.beforeState) return target;
-    const locals = {};
-    markerSourceVariableIds(element).forEach(variableId => {
-      const key = eventTargetKey(traceDocument, eventFrame, { variableId });
-      const stateKey = `value:${key}`;
-      if (!Object.prototype.hasOwnProperty.call(checkpoint.beforeState, stateKey)) return;
-      const name = traceDocument?.variables?.[variableId]?.name;
-      if (name) locals[name] = markerExpressionValue(checkpoint.beforeState[stateKey]);
+    // Compatibility adapter for callers that kept a checkpoint. Resolution
+    // still goes through the common full-state evaluator, not partial locals.
+    const mutations = Object.entries(checkpoint?.beforeState || {}).map(([key, value]) => {
+      const split = key.indexOf(':');
+      return { kind: key.slice(0, split), key: key.slice(split + 1), before: value, after: value };
     });
-    // Indexed reads carry the exact index captured at execution. In
-    // particular postfix increments can already affect the captured frame
-    // state; never use that later value to aim a pointer during the read.
-    if (checkpoint.event?.type === 'compare') {
-      (checkpoint.event.targets || []).forEach(read => {
-        const indexName = String(read.expression || '').match(/\[\s*([A-Za-z_]\w*)\s*\]$/)?.[1];
-        if (indexName && read.resolvedIndex != null && Number.isInteger(Number(read.resolvedIndex))) locals[indexName] = Number(read.resolvedIndex);
+    const event = checkpoint?.event || {};
+    return createExecutionContext(traceDocument, eventFrame, { checkpoints: [{ event, mutations }] })
+      .pointerTarget(element, event);
+  }
+
+  // One chronological state source for every effect. Presentation baselines
+  // may reveal disabled initializers immediately, but must never supply the
+  // logical values used by an earlier event.
+  function createExecutionContext(traceDocument, eventFrame, replayPlan) {
+    eventFrame ||= { state: {}, events: [] };
+    const clone = value => JSON.parse(JSON.stringify(value));
+    const checkpoints = replayPlan?.checkpoints || [];
+    // @exit changes a view's visibility, not the C++ variable's lifetime.
+    const logicalMutations = checkpoint => (checkpoint.mutations || []).filter(mutation =>
+      !(checkpoint.event?.type === 'visual-exit' && mutation.kind === 'presence'));
+    const values = new Map();
+    checkpoints.forEach(checkpoint => logicalMutations(checkpoint).forEach(mutation => {
+      const key = `${mutation.kind}:${mutation.key}`;
+      if (!values.has(key)) values.set(key, mutation.before);
+    }));
+    const byEvent = new Map();
+    const snapshots = new WeakMap();
+    checkpoints.forEach(checkpoint => {
+      const before = new Map(values);
+      logicalMutations(checkpoint).forEach(mutation => values.set(`${mutation.kind}:${mutation.key}`, mutation.after));
+      byEvent.set(checkpoint.event, { checkpoint, before, after: new Map(values) });
+    });
+    const asData = value => value && typeof value === 'object'
+      ? clone(value) : { kind: 'scalar', value: value ?? null };
+    function materialize(state) {
+      if (snapshots.has(state)) return snapshots.get(state);
+      const frame = { ...eventFrame, state: { ...eventFrame.state } };
+      Object.keys(traceDocument?.variables || {}).forEach(id => {
+        const key = objectKeyForVariable(eventFrame, id);
+        if (!frame.state[id] && (state.has(`value:${key}`) || state.has(`value:${key}#0`))) {
+          frame.state[id] = { name: traceDocument.variables[id].name, data: { kind: 'scalar', value: null } };
+        }
       });
+      const cloned = new Set();
+      const ensure = id => {
+        if (!cloned.has(id)) {
+          const entry = frame.state[id] || { name: traceDocument?.variables?.[id]?.name || id };
+          frame.state[id] = { ...entry, data: clone(entry.data || { kind: 'scalar', value: null }) };
+          cloned.add(id);
+        }
+        return frame.state[id];
+      };
+      // Only values untouched by every event may use the captured baseline.
+      // Changed values are always replaced by this event's chronological state.
+      state.forEach((value, trackKey) => {
+        if (!trackKey.startsWith('value:')) return;
+        const key = trackKey.slice(6);
+        const ownerId = Object.keys(frame.state).find(id => {
+          const prefix = objectKeyForVariable(eventFrame, id);
+          return key === prefix || key.startsWith(prefix + '#');
+        });
+        const owner = frame.state[ownerId];
+        for (const id of Object.keys(frame.state)) {
+          const ownKey = objectKeyForVariable(eventFrame, id);
+          const alias = value != null && owner?.identity && frame.state[id]?.identity === owner.identity
+            && frame.state[id]?.lifetime === owner.lifetime;
+          if (key !== ownKey && !key.startsWith(ownKey + '#') && !alias) continue;
+          const objectKey = alias ? objectKeyForVariable(eventFrame, ownerId) : ownKey;
+          const entry = ensure(id);
+          const indexText = key === objectKey ? '' : key.slice(objectKey.length + 1);
+          if (indexText && traceDocument?.variables?.[id]?.kind === 'string'
+              && typeof entry.data?.value === 'string') {
+            const index = Number(indexText), characters = Array.from(entry.data.value);
+            if (Number.isInteger(index) && index >= 0) {
+              characters[index] = displayEventValue(value);
+              entry.data = { ...entry.data, value: characters.join('') };
+            }
+            continue;
+          }
+          if (!indexText || (!Array.isArray(entry.data?.items) && indexText === '0'
+              && traceDocument?.variables?.[id]?.kind !== 'sequence')) {
+            entry.data = asData(value);
+          } else {
+            const indices = indexText.split(',').map(Number);
+            if (indices.some(index => !Number.isInteger(index) || index < 0)) continue;
+            let data = entry.data;
+            indices.forEach((index, depth) => {
+              data.kind = 'sequence'; data.items ||= [];
+              if (depth === indices.length - 1) data.items[index] = asData(value);
+              else data = data.items[index] ||= { kind: 'sequence', items: [] };
+            });
+          }
+        }
+      });
+      // Presence also belongs to the logical snapshot: a future appended cell
+      // must not affect size()/empty() or nested indexing before its event.
+      state.forEach((present, trackKey) => {
+        if (!trackKey.startsWith('presence:') || present !== false) return;
+        const key = trackKey.slice(9);
+        const ownerId = Object.keys(frame.state).find(id => {
+          const prefix = objectKeyForVariable(eventFrame, id);
+          return key === prefix || key.startsWith(prefix + '#');
+        });
+        const owner = frame.state[ownerId], ownerKey = objectKeyForVariable(eventFrame, ownerId);
+        for (const id of Object.keys(frame.state)) {
+          const ownKey = objectKeyForVariable(eventFrame, id);
+          const alias = key !== ownerKey && owner?.identity && frame.state[id]?.identity === owner.identity
+            && frame.state[id]?.lifetime === owner.lifetime;
+          if (key !== ownKey && !key.startsWith(ownKey + '#') && !alias) continue;
+          const prefix = alias ? ownerKey : ownKey;
+          const entry = ensure(id), indexText = key === prefix ? '' : key.slice(prefix.length + 1);
+          if (!indexText || (indexText === '0' && !Array.isArray(entry.data?.items))) {
+            entry.data = { kind: 'scalar', value: null }; continue;
+          }
+          const indices = indexText.split(',').map(Number);
+          let data = entry.data;
+          for (let depth = 0; depth < indices.length; depth++) {
+            if (!Array.isArray(data?.items)) break;
+            const index = indices[depth];
+            if (depth === indices.length - 1) {
+              data.items[index] = undefined;
+              while (data.items.length && data.items.at(-1) === undefined) data.items.pop();
+            } else data = data.items[index];
+          }
+        }
+      });
+      snapshots.set(state, frame);
+      return frame;
     }
-    const raw = window.ASMTraceRules?.resolveExpression?.(traceDocument, eventFrame, expression, locals);
-    const index = raw == null || raw === '' ? NaN : Number(raw);
-    return Number.isInteger(index) ? `${parts.prefix}#${index}` : `unresolved:${parts.prefix}`;
+    const initial = checkpoints.length ? byEvent.get(checkpoints[0].event).before : new Map();
+    return {
+      frame(event, phase = 'before') {
+        const entry = byEvent.get(event);
+        return materialize(entry?.[phase] || initial);
+      },
+      checkpoint(event) { return byEvent.get(event)?.checkpoint; },
+      visualKey(event, key) {
+        return byEvent.get(event)?.checkpoint?.visualBindingsBefore?.[key] || key;
+      },
+      cellIdentity(key, event) {
+        const split = String(key).lastIndexOf('#');
+        if (split < 0) return key;
+        const prefix = key.slice(0, split), index = key.slice(split + 1);
+        const frame = this.frame(event);
+        const id = Object.keys(frame.state).find(id => objectKeyForVariable(eventFrame, id) === prefix);
+        const entry = frame.state[id];
+        return entry?.identity ? `${entry.identity}:${entry.lifetime || ''}#${index}` : key;
+      },
+      pointerTarget(element, event, phase = 'before') {
+        const target = String(element?.dataset?.traceBindingTarget || '');
+        const axis = target.match(/^(.*:(?:row|column)-label:)-?\d+$/);
+        const matrix = target.match(/^(.*#)-?\d+,-?\d+$/);
+        const parts = markerTargetParts(target) || ((axis || matrix) && { prefix: (axis || matrix)[1] });
+        const expression = String(element?.dataset?.traceMarkerIndexExpression || '');
+        if (!parts || !expression) return target;
+        const state = byEvent.get(event)?.[phase] || initial;
+        if (markerSourceVariableIds(element).some(id =>
+          state.get(`presence:${eventTargetKey(traceDocument, eventFrame, { variableId: id })}`) === false)) {
+          return `unresolved:${parts.prefix}`;
+        }
+        const frame = this.frame(event, phase);
+        const locals = {};
+        Object.entries(frame.state).forEach(([id, entry]) => {
+          if (!Array.isArray(entry.data?.items)) locals[entry.name || traceDocument?.variables?.[id]?.name || id] = markerExpressionValue(entry.data);
+        });
+        // Pointer expressions are bound to declaration IDs, not the last
+        // same-named local encountered in a snapshot. A helper's exited
+        // parameter must not shadow the recursive caller's live parameter.
+        markerSourceVariableIds(element).forEach(id => {
+          const entry = frame.state[id];
+          if (entry && !Array.isArray(entry.data?.items)) {
+            locals[entry.name || traceDocument?.variables?.[id]?.name || id] = markerExpressionValue(entry.data);
+          }
+        });
+        let expressions;
+        try { expressions = JSON.parse(element?.dataset?.traceMarkerIndexExpressions || 'null'); } catch {}
+        const selected = Array.isArray(expressions) ? expressions : [expression];
+        const indices = selected.map(expression => window.ASMTraceRules?.resolveExpression?.(traceDocument, frame, expression, locals));
+        return indices.every(raw => raw != null && raw !== '' && Number.isInteger(Number(raw)))
+          ? `${axis?.[1] || matrix?.[1] || parts.prefix + '#'}${indices.map(Number).join(',')}`
+          : `unresolved:${parts.prefix}`;
+      },
+      pointersByCell(elements, event, phase = 'before') {
+        const bindings = new Map();
+        elements?.forEach?.((element, key) => {
+          if (!element?.dataset?.traceSourceVariableId || !markerLifetimeActiveAtEvent(eventFrame, event, element)) return;
+          const target = this.pointerTarget(element, event, phase);
+          if (!target || target.startsWith('unresolved:')) return;
+          if (!bindings.has(target)) bindings.set(target, []);
+          bindings.get(target).push(key);
+        });
+        return bindings;
+      }
+    };
+  }
+
+  // Author expressions follow the same chronological checkpoints as values
+  // and pointers. Dependency discovery is shared by text, arrows and C2 styles;
+  // it is performed once per playback, never by polling final DOM values.
+  function createDirectiveFollowPlan(trace, frame, replay, timeline, direction = 1) {
+    const execution = createExecutionContext(trace, frame, replay);
+    const byEvent = new Map(timeline.flatMap(slot => [slot.event, ...(slot.replayMemberEvents || [])]
+      .filter(Boolean).map(event => [event, slot])));
+    const lets = new Map((frame.lets || []).map(binding => [binding.name, binding.expression]));
+    const variableId = name => Object.keys(frame.state || {}).find(id =>
+      trace.variables?.[id]?.name === name && trace.variables[id].functionName === frame.source?.function)
+      || Object.keys(frame.state || {}).find(id => (frame.state[id]?.name || trace.variables?.[id]?.name) === name);
+    const identifiers = (input, seen = new Set()) => {
+      const result = new Set();
+      const visit = value => {
+        if (typeof value === 'string') {
+          const source = value.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '');
+          for (const name of source.match(/[A-Za-z_]\w*/g) || []) {
+            if (lets.has(name) && !seen.has(name)) {
+              seen.add(name); identifiers(lets.get(name), seen).forEach(id => result.add(id));
+            }
+            const id = variableId(name); if (id) result.add(id);
+          }
+        } else if (Array.isArray(value)) value.forEach(visit);
+        else if (value && typeof value === 'object') Object.values(value).forEach(visit);
+      };
+      visit(input); return result;
+    };
+    const boundFrame = (snapshot, ids) => {
+      // Resolve same-named recursive/helper locals by their declaration ID.
+      const state = {};
+      ids.forEach(id => { if (snapshot.state[id]) state[id] = snapshot.state[id]; });
+      Object.entries(snapshot.state).forEach(([id, entry]) => { if (!state[id]) state[id] = entry; });
+      return { ...snapshot, state };
+    };
+    const records = [];
+    let warned = false;
+    for (const kind of ['texts', 'arrows', 'styles']) {
+      for (const descriptor of window.ASMTraceModel?.drawingDirectives?.(trace, frame, kind) || frame[kind] || []) {
+        const selector = descriptor.selector || descriptor.selection || {};
+        const expressions = kind === 'texts'
+          ? [(descriptor.segments || []).flatMap(segment => segment.kind === 'expression' ? [segment.expression]
+            : [...String(segment.text || '').matchAll(/\$\{([^{}]+)\}/g)].map(match => match[1])), descriptor.when,
+            descriptor.binding?.indexExpressions, descriptor.binding?.indexExpression, descriptor.binding?.selection]
+          : kind === 'arrows' ? [descriptor.from?.indexExpressions, descriptor.from?.indexExpression,
+            descriptor.from?.selection, descriptor.to?.indexExpressions, descriptor.to?.indexExpression,
+            descriptor.to?.selection, descriptor.when || descriptor.condition]
+            : selector;
+        const ids = identifiers(expressions);
+        Object.keys(descriptor.drawLocals || {}).forEach(name => { const id = variableId(name); if (id) ids.delete(id); });
+        // C2 follows indices/ranges only. Fixed selectors retain frame semantics.
+        if (!ids.size || Number(direction) < 0) continue;
+        const unknown = replay.checkpoints.some(checkpoint => ['assign', 'input-assign', 'write', 'swap', 'sequence-operation'].includes(checkpoint.event.type)
+          && (checkpoint.event.targets || []).some(target => ids.has(target.variableId) && target.role !== 'source')
+          && (!checkpoint.mutations.length || ['assign', 'input-assign', 'write'].includes(checkpoint.event.type)
+            && (!Object.hasOwn(checkpoint.event.payload || {}, 'before') || !Object.hasOwn(checkpoint.event.payload || {}, 'after'))));
+        if (unknown) {
+          if (!warned) window.ASMCompileWarnings?.report?.('繪圖事件跟隨', '舊動畫缺少完整事件前後值，依賴文字／箭頭／樣式暫用幀末畫面；請重新 RUN。');
+          warned = true; continue;
+        }
+        const changes = replay.checkpoints.filter(checkpoint => checkpoint.mode !== 'ignored'
+          && (checkpoint.event.targets || []).some(target => ids.has(target.variableId) && target.role !== 'source')
+          && checkpoint.mutations.some(mutation => mutation.kind === 'value' || mutation.kind === 'presence'));
+        if (!changes.length) continue;
+        const missing = changes.some(checkpoint => checkpoint.mutations.some(mutation => mutation.kind === 'value'
+          && (mutation.before === undefined || mutation.after === undefined)));
+        if (missing) {
+          window.ASMCompileWarnings?.report?.('繪圖事件跟隨', '繪圖依賴缺少事件前後值，暫用幀末畫面；請重新 RUN。');
+          continue;
+        }
+        const initial = boundFrame(execution.frame(changes[0].event, 'before'), ids);
+        const steps = changes.map(checkpoint => {
+          const slot = byEvent.get(checkpoint.event);
+          const animated = checkpoint.mode === 'animated';
+          const start = kind === 'arrows' && animated
+            ? Number(slot?.motionStart ?? slot?.start ?? checkpoint.commitMs) : Number(checkpoint.commitMs);
+          return { eventId: checkpoint.eventId, start, end: start + (kind === 'arrows' && animated ? MOTION_TIME.move : 0),
+            commit: Number(checkpoint.commitMs), before: boundFrame(execution.frame(checkpoint.event, 'before'), ids),
+            after: boundFrame(execution.frame(checkpoint.event, 'after'), ids) };
+        });
+        records.push({ kind, descriptor, ids: [...ids], initial, steps });
+      }
+    }
+    const styleRecords = new Map(records.filter(record => record.kind === 'styles').map(record => [record.descriptor.id, record]));
+    const at = (record, elapsed) => record.steps.filter(step => elapsed >= step.commit).at(-1)?.after || record.initial;
+    let lastSignature = '', styleFrame = frame;
+    return {
+      records,
+      styleFrameAt(elapsed) {
+        const signature = [...styleRecords.values()].map(record => record.steps.filter(step => elapsed >= step.commit).length).join(',');
+        if (!styleRecords.size || signature === lastSignature && styleFrame !== frame) return styleFrame;
+        lastSignature = signature;
+        styleFrame = { ...frame, styles: (window.ASMTraceModel?.drawingDirectives?.(trace, frame, 'styles') || frame.styles || []).map(style => {
+          const record = styleRecords.get(style.id); if (!record) return style;
+          const snapshot = at(record, elapsed);
+          const resolveSelector = value => {
+            if (Array.isArray(value)) return value.map(resolveSelector);
+            if (!value || typeof value !== 'object') return value;
+            return Object.fromEntries(Object.entries(value).map(([key, field]) => {
+              if (key.endsWith('Expression') && typeof field === 'string') {
+                const resolved = window.ASMTraceRules.resolveExpression(trace, snapshot, field, style.drawLocals);
+                return [key, resolved == null ? field : String(resolved)];
+              }
+              return [key, resolveSelector(field)];
+            }));
+          };
+          return { ...style, selector: resolveSelector(style.selector) };
+        }) };
+        return styleFrame;
+      }
+    };
   }
 
   function createCompareEffect(
     root, event, traceDocument, eventFrame, placements, elements,
-    visualKeyForSource, positionAdjustments, bindingTargetForMarker
+    visualKeyForSource, positionAdjustments, bindingTargetForMarker, cellIdentity = key => key
   ) {
     const color = COMPARE_COLORS[String(event?.result === true)];
     const values = [event?.payload?.left, event?.payload?.right];
@@ -4458,9 +5572,19 @@
       return { ...operand, point };
     });
     const equalValues = compareValuesEqual(operands);
-    const equalityComparison = ['==', '!='].includes(String(event?.operation || ''));
+    const selection = event.selectionPresentation;
+    // Source-backed matrix headers share the cell effect lifecycle, but keep
+    // their axis positions: matching values grow together, different values shrink.
+    const labelComparison = !selection && operands.some(operand =>
+      operand.element?.dataset?.traceLabelSourceVariable);
+    const equalityComparison = !selection && !labelComparison && ['==', '!='].includes(String(event?.operation || ''));
     let contactTargets = equalityComparison ? compareContactTargets(operands, equalValues) : [];
-    const scaleTargets = equalityComparison ? operands.map(() => 1) : compareScaleTargets(operands);
+    const selectedKey = selection && operands.find(operand => operand.target?.role === selection.selectedSourceRole)?.visualKey;
+    const baseScales = operands.map(operand => selection?.baseScale?.(operand.visualKey) || 1);
+    const scaleTargets = selection
+      ? operands.map((operand, index) => operand.visualKey === selectedKey ? selection.operation === 'min' ? .8 : 1.25 : baseScales[index])
+      : labelComparison ? operands.map(() => equalValues ? 1.25 : .8)
+        : equalityComparison ? operands.map(() => 1) : compareScaleTargets(operands);
     const selfCompare = operands.length >= 2 && operands[0].visualKey === operands[1].visualKey;
     const selfSplitDistance = selfCompare
       ? Math.max(8, operands[0].point.width / 2)
@@ -4468,21 +5592,20 @@
     // Resolve bindings to the actual visual cell, including snapshot-local
     // anchor proxies. Static C++ IDs alone cannot distinguish recursive keeps.
     const comparedOperandForBinding = targetKey => {
-      const anchor = elements?.get?.(targetKey);
       // A captured frame can already contain the result of a later swap.
       // Replay maps logical indices to the physical value-carrying SVG nodes.
       // Prefer the execution-time logical index before looking at those nodes;
       // otherwise arr[j]'s marker follows arr[j+1]'s comparison scale.
-      const logicalOperand = operands.find(operand => operand.logicalKey === targetKey
+      const logicalOperand = operands.find(operand => cellIdentity(operand.logicalKey) === cellIdentity(targetKey)
         && !retainedSnapshotVisual(operand.element));
       if (logicalOperand) return logicalOperand;
       return operands.find(operand => {
         const cell = operand.element;
         const snapshot = cell.dataset.traceCompareSnapshot
           || cell.closest('[data-trace-snapshot]')?.dataset.traceSnapshot;
-        if (snapshot) return targetKey === `${snapshot}:pointer-target#${cell.dataset.traceIndex}`
-          || anchor === cell || cell.contains(anchor);
-        return anchor ? anchor === cell || cell.contains(anchor) : operand.logicalKey === targetKey;
+        // A retained view has an explicit snapshot-local semantic cell key.
+        // Node equality/containment never decides pointer ownership.
+        return snapshot && targetKey === `${snapshot}:pointer-target#${cell.dataset.traceIndex}`;
       });
     };
     const highlights = [];
@@ -4499,6 +5622,7 @@
       const originalTransform = element.getAttribute('transform');
       const base = element.transform?.baseVal?.consolidate?.()?.matrix;
       retainedMotions.set(element, {
+        textSize: preserveCellTextSize(element, true),
         parent: element.parentElement,
         transform: originalTransform,
         base: base ? new DOMMatrix([base.a,base.b,base.c,base.d,base.e,base.f]) : new DOMMatrix(),
@@ -4521,8 +5645,9 @@
         .translate(-record.center.x,-record.center.y);
       const local = parentToRoot.inverse().multiply(motion).multiply(parentToRoot).multiply(record.base);
       operand.element.setAttribute('transform', `matrix(${local.a} ${local.b} ${local.c} ${local.d} ${local.e} ${local.f})`);
+      record.textSize?.update(adjustment.scale);
     };
-    const selfSplit = selfCompare && !operands[0].marker
+    const selfSplit = !selection && !labelComparison && selfCompare && !operands[0].marker
       ? createSelfCompareSplit(operands[0], selfSplitDistance, equalValues ? 0 : 5)
       : null;
     let expression = null;
@@ -4644,6 +5769,7 @@
             'transform',
             `translate(${operand.point.x + contact.x * contactProgress}, ${operand.point.y + contact.alignY * alignProgress + contact.splitY * contactProgress}) scale(${0.82 + 0.18 * popupReveal})`
           );
+          popup.updateScale(0.82 + 0.18 * popupReveal);
         });
         if (compareElapsed >= waitEnd) popupStartsLocked = true;
       },
@@ -4671,7 +5797,7 @@
           ? 0
           : easeOutCubic(clamp01((elapsed - resultEnd) / COMPARE_TIMING.reset));
         ensurePopups();
-        if (elapsed >= waitEnd) {
+        if (!selection && !labelComparison && elapsed >= waitEnd) {
           showResult();
           setResultOpacity(size * (1 - reset));
         }
@@ -4683,12 +5809,13 @@
           const contact = contactTargets[index] || { x: 0, alignY: 0, splitY: 0 };
           const adjustment = {
             x: operand.marker ? 0 : contact.x * contactProgress * stay,
-            y: operand.marker ? 0 : (equalityComparison
-              ? (contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
+            y: operand.marker || labelComparison ? 0 : (equalityComparison
+              ? (-15 * lift + contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
               : (-15 * lift) * stay),
             scale: operand.marker
               ? 1
-              : 1 + ((scaleTargets[index] || 1) - 1) * size * stay
+              : selection ? baseScales[index] + ((scaleTargets[index] || 1) - baseScales[index]) * size
+                : 1 + ((scaleTargets[index] || 1) - 1) * size * stay
           };
           this.adjustments.set(operand.visualKey, adjustment);
           this.logicalAdjustments.set(operand.logicalKey, adjustment);
@@ -4701,12 +5828,15 @@
             const contactY = equalityComparison
               ? (contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
               : 0;
-            const compareScale = 1 + ((scaleTargets[index] || 1) - 1) * size * stay;
+            const compareScale = selection
+              ? baseScales[index] + ((scaleTargets[index] || 1) - baseScales[index]) * size
+              : 1 + ((scaleTargets[index] || 1) - 1) * size * stay;
             popup.group.setAttribute('opacity', String(popupOpacity));
             popup.group.setAttribute(
               'transform',
               `translate(${operand.point.x + splitX}, ${operand.point.y + contactY}) scale(${popupScale * compareScale})`
             );
+            popup.updateScale(popupScale * compareScale);
           }
         });
         selfSplit?.update(lift, equalityComparison ? contactProgress : size, stay);
@@ -4724,12 +5854,12 @@
             x: target.x, y: labelY, targetX: target.x, targetY: target.y
           });
         });
-        if (elapsed >= resetEnd) this.remove();
+        if (elapsed >= resetEnd && !selection) this.remove();
       },
       remove() {
         highlights.forEach(highlight => highlight.remove());
         expression?.remove();
-        popups.forEach(popup => popup.group.remove());
+        popups.forEach(popup => popup.remove());
         selfSplit?.remove();
         retainedMotions.forEach((record, element) => {
           // Restore ownership before the following event resolves its source;
@@ -4737,6 +5867,7 @@
           if (record.parent?.isConnected && element.parentElement !== record.parent) record.parent.append(element);
           if (record.transform == null) element.removeAttribute('transform');
           else element.setAttribute('transform',record.transform);
+          record.textSize?.remove();
           delete element.dataset.traceCompareMotion;
           delete element.dataset.traceCompareSnapshot;
         });
@@ -4816,6 +5947,11 @@
       .map(item => item.event);
   }
 
+  function presentationEvents(document, frame) {
+    return window.ASMTraceEvents?.presentationOrdered?.(frame?.events || [], document)
+      || orderedEvents(frame);
+  }
+
   function isForInitializerAssignment(event) {
     if (event?.type !== 'assign') return false;
     if (event.forInitializer === true) return true;
@@ -4834,6 +5970,7 @@
   function isDeclarationInitializerAssignment(event) {
     return event?.type === 'assign' && (
       event.declarationInitializer === true
+      || event.source?.declarationInitializer === true
       || event.forInitializer === true
       || (event.parameterInitializer !== true
         && event?.payload?.before == null
@@ -4842,21 +5979,14 @@
   }
 
   function updateTargetsMarker(event, elements, eventFrame = null, previousObjects = null) {
-    // A declaration initializer in a for header is a pointer-position event,
-    // just like ++/--. Use semantic trace/AST metadata instead of matching the
-    // source spelling, so old saved traces and all three playback surfaces
-    // select the same position-only animation without an assignment value box.
-    // A declaration initializer already determines the marker's first real
-    // position. Enter there directly instead of showing an assignment box or
-    // briefly parking the new marker beside the array first.
-    if (isForInitializerAssignment(event)) return true;
-    if (isDeclarationInitializerAssignment(event)) {
-      return Boolean(assignmentTargetMarker(event, elements, eventFrame, previousObjects));
-    }
+    // Initialization is a real assignment step, including for-loop headers.
+    // The marker enters at its initial target; its value still needs playback.
+    if (isDeclarationInitializerAssignment(event) || isForInitializerAssignment(event)) return false;
     if (event?.type !== 'write'
       || (event.update !== true && event.compound !== true)) return false;
-    for (const [, element] of markerCandidates(elements)) {
-      if (!(event.targets || []).some(target => markerMatchesEventTarget(element, target))) continue;
+    for (const domain of [elements, previousObjects]) for (const [, element] of markerCandidates(domain)) {
+      if (!(event.targets || []).some(target => markerMatchesEventTarget(element, target)
+        && markerLifetimeActiveAtEvent(eventFrame, event, element))) continue;
       return true;
     }
     return false;
@@ -4917,7 +6047,7 @@
   }
 
   function assignmentTargetMarker(event, elements, eventFrame = null, previousObjects = null) {
-    if (event?.type !== 'assign') return null;
+    if (!['assign', 'input-assign'].includes(event?.type)) return null;
     const target = (event.targets || []).find(item => item.role === 'target') || event.targets?.[0];
     if (!target?.variableId) return null;
     const domains = previousObjects ? [elements, previousObjects] : [elements];
@@ -4931,17 +6061,17 @@
   }
 
   function eventMutatesVariable(event, variableId) {
-    if (!variableId || !['assign', 'write'].includes(event?.type)) return false;
+    if (!variableId || !['assign', 'input-assign', 'write'].includes(event?.type)) return false;
     const targets = event?.targets || [];
-    if (event.type === 'assign') {
+    if (['assign', 'input-assign'].includes(event.type)) {
       const target = targets.find(item => item.role === 'target') || targets[0];
       return target?.variableId === variableId;
     }
     return targets.some(target => target?.variableId === variableId && target.role !== 'source');
   }
 
-  function variableChangedBeforeEvent(eventFrame, currentEvent, variableId) {
-    const events = orderedEvents(eventFrame);
+  function variableChangedBeforeEvent(eventFrame, currentEvent, variableId, document) {
+    const events = presentationEvents(document, eventFrame);
     const currentIndex = events.indexOf(currentEvent);
     if (currentIndex <= 0) return false;
     return events.slice(0, currentIndex)
@@ -4965,10 +6095,12 @@
 
   function markerTargetParts(targetKey) {
     const source = String(targetKey || '');
+    const axis = source.match(/^(.*:(?:row|column)-label:)(-?\d+)$/);
+    if (axis) return { prefix: axis[1], index: Number(axis[2]), axis: true };
     const separator = source.lastIndexOf('#');
-    const index = Number(source.slice(separator + 1));
-    return separator >= 0 && Number.isInteger(index)
-      ? { prefix: source.slice(0, separator), index }
+    const indices = source.slice(separator + 1).split(',').map(Number);
+    return separator >= 0 && indices.length <= 2 && indices.every(Number.isInteger)
+      ? { prefix: source.slice(0, separator), index: indices.at(-1), indices }
       : null;
   }
 
@@ -4981,6 +6113,8 @@
       };
     }
     const requested = markerTargetParts(targetKey);
+    // Missing matrix cells must not be extrapolated as a one-dimensional row.
+    if (requested?.indices?.length > 1) return null;
     if (!requested) return null;
     const siblings = [];
     placements?.forEach?.((placement, key) => {
@@ -5052,16 +6186,26 @@
     const labelTop = Number(entry.markerLabelBox?.getAttribute?.('y')) || -40;
     const labelHeight = Number(entry.markerLabelBox?.getAttribute?.('height')) || 18;
     const arrowTop = labelTop + labelHeight;
-    const directionX = (Number(state.targetX) || 0) - (Number(state.x) || 0);
-    const directionY = (Number(state.targetY) || 0) - (Number(state.y) || 0) - arrowTop;
+    // Preserve the renderer's attachment edge: top pointers start below the
+    // label, matrix row pointers start to its right. Only the endpoint moves.
+    const move = String(entry.markerPointPath.getAttribute('d') || '')
+      .match(/^\s*M\s*([-+\d.eE]+)[,\s]+([-+\d.eE]+)/);
+    const startX = move && Number.isFinite(Number(move[1])) ? Number(move[1]) : 0;
+    const startY = move && Number.isFinite(Number(move[2])) ? Number(move[2]) : arrowTop;
+    // Virtual index placements support travel outside the current array, but
+    // are not cells to aim at. Keep a missing target's arrow straight down.
+    const directionX = state.targetMissing ? 0
+      : (Number(state.targetX) || 0) - (Number(state.x) || 0) - startX;
+    const directionY = state.targetMissing ? 1
+      : (Number(state.targetY) || 0) - (Number(state.y) || 0) - startY;
     const directionLength = Math.max(0.001, Math.hypot(directionX, directionY));
     const unitX = directionX / directionLength;
     const unitY = directionY / directionLength;
     const perpendicularX = -unitY;
     const perpendicularY = unitX;
     const arrowLength = 20;
-    const pointerX = unitX * arrowLength;
-    const pointerY = arrowTop + unitY * arrowLength;
+    const pointerX = startX + unitX * arrowLength;
+    const pointerY = startY + unitY * arrowLength;
     const headLength = 6;
     const headHalfWidth = 3;
     const headBaseX = pointerX - unitX * headLength;
@@ -5070,11 +6214,7 @@
     const headLeftY = headBaseY + perpendicularY * headHalfWidth;
     const headRightX = headBaseX - perpendicularX * headHalfWidth;
     const headRightY = headBaseY - perpendicularY * headHalfWidth;
-    return `M 0 ${arrowTop} L ${pointerX} ${pointerY} M ${headLeftX} ${headLeftY} L ${pointerX} ${pointerY} L ${headRightX} ${headRightY}`;
-  }
-
-  function markerForMotionSlot(slot, elements) {
-    return markersForMotionSlot(slot, elements)[0] || null;
+    return `M ${startX} ${startY} L ${pointerX} ${pointerY} M ${headLeftX} ${headLeftY} L ${pointerX} ${pointerY} L ${headRightX} ${headRightY}`;
   }
 
   function markersForMotionSlot(slot, elements, eventFrame = null) {
@@ -5097,7 +6237,7 @@
   }
 
   function markersForLogicalEvent(event, elements, eventFrame = null) {
-    if (!['assign', 'write'].includes(event?.type)) return [];
+    if (!['assign', 'input-assign', 'write'].includes(event?.type)) return [];
     const targets = event?.targets || [];
     const markers = [];
     for (const [key, element] of markerCandidates(elements)) {
@@ -5112,10 +6252,38 @@
     return markers;
   }
 
+  function pointerEventReflowKeys(traceDocument, eventFrame, events, execution, entries) {
+    const owned = new Set();
+    for (const event of events) {
+      const lifecycle = ['declare', 'visual-enter', 'scope-exit', 'visual-exit'].includes(event?.type);
+      if (!lifecycle && !['assign', 'input-assign', 'write'].includes(event?.type)) continue;
+      const affected = new Set();
+      entries.forEach(item => {
+        if (!(event.targets || []).some(target => target.role !== 'source'
+          && markerMatchesEventTarget(item.element, target))) return;
+        if (!lifecycle && !markerLifetimeActiveAtEvent(eventFrame, event, item.element)) return;
+        const before = execution.pointerTarget(item.element, event);
+        const after = execution.pointerTarget(item.element, event, 'after');
+        if (!lifecycle && before === after) return;
+        for (const key of [before, after, item.previousTarget]) {
+          if (key && !key.startsWith('unresolved:')) affected.add(key);
+        }
+        owned.add(item.key);
+      });
+      entries.forEach(item => {
+        if (affected.has(execution.pointerTarget(item.element, event))
+          || affected.has(item.previousTarget)) owned.add(item.key);
+      });
+    }
+    return owned;
+  }
+
   function markerAssignmentMotion(
     traceDocument, eventFrame, eventTimeline, placements, elements, markerEntries = [],
     frameReflow = {}
   ) {
+    const execution = frameReflow.execution || createExecutionContext(traceDocument, eventFrame,
+      frameReflow.replayPlan || createForwardReplayPlan(traceDocument, eventFrame, eventTimeline));
     const metadata = new Map();
     markerEntries.forEach(entry => {
       if (!entry.markerPointPath) return;
@@ -5128,6 +6296,18 @@
       metadata.set(entry.key, {
         key: entry.key,
         element: entry.element,
+        outgoing: entry.outgoing === true,
+        exitStart: Number.isFinite(Number(entry.exitStart ?? entry.scopeExitSlot?.start))
+          ? Number(entry.exitStart ?? entry.scopeExitSlot?.start) : Infinity,
+        arrowAnchorMode: entry.element.dataset.tracePointerArrowAnchorMode || 'target',
+        renderedTarget: entry.element.hasAttribute('data-trace-marker-target-x')
+          && entry.element.hasAttribute('data-trace-marker-target-y') ? {
+            x: Number(entry.element.dataset.traceMarkerTargetX),
+            y: Number(entry.element.dataset.traceMarkerTargetY)
+          } : null,
+        targetBias: { x: 0, y: 0 },
+        topologyExitSlot: entry.topologyExitSlot,
+        topologyEnterSlot: entry.topologyEnterSlot,
         variableId: String(entry.element.dataset.traceSourceVariableId || ''),
         variableIds: markerSourceVariableIds(entry.element),
         indexExpression: String(entry.element.dataset.traceMarkerIndexExpression || ''),
@@ -5169,20 +6349,24 @@
       };
     }
 
+    const motionElements = new Map([...elements]);
+    metadata.forEach(item => motionElements.set(item.key, item.element));
     const timelineSlotByEvent = new Map(eventTimeline.map(slot => [slot.event, slot]));
     const initializerPairs = declarationInitializerPairs(eventFrame);
     const replayEvents = frameReflow.replayPlan?.checkpoints
       ?.filter(checkpoint => checkpoint.mode !== 'ignored')
       .map(checkpoint => checkpoint.event)
       .filter(event => event && !initializerPairs.declarationByInitializer.has(event));
-    const logicalEvents = replayEvents || orderedEvents(eventFrame)
+    const logicalEvents = replayEvents || presentationEvents(traceDocument, eventFrame)
       .filter(event => !initializerPairs.declarationByInitializer.has(event))
       .filter(event => event?.loopBoundarySuppressed !== true);
     eventTimeline.forEach(slot => {
       if (slot.event && !logicalEvents.includes(slot.event)) logicalEvents.push(slot.event);
     });
+    const presentationRank = new Map(presentationEvents(traceDocument, eventFrame).map((event, index) => [event, index]));
+    logicalEvents.sort((left, right) => (presentationRank.get(left) ?? Infinity) - (presentationRank.get(right) ?? Infinity));
     let logicalCursor = 0;
-    const logicalMotionSlots = logicalEvents.map(event => {
+    const logicalMotionSlots = logicalEvents.flatMap(event => {
       const visibleSlot = timelineSlotByEvent.get(event);
       const slot = visibleSlot || {
         event,
@@ -5192,43 +6376,51 @@
         end: logicalCursor,
         logicalOnly: true
       };
-      const markers = visibleSlot
-        ? markersForMotionSlot(slot, elements, eventFrame)
-        : markersForLogicalEvent(event, elements, eventFrame);
+      const exits = ['scope-exit', 'visual-exit'].includes(event?.type);
+      const markers = exits
+        ? [...metadata.values()].filter(item => (event.targets || []).some(target =>
+          markerMatchesEventTarget(item.element, target))
+          && (event.type !== 'visual-exit' || item.outgoing))
+          .map(item => ({ key: item.key, element: item.element }))
+        : visibleSlot ? markersForMotionSlot(slot, motionElements, eventFrame)
+          : markersForLogicalEvent(event, motionElements, eventFrame);
       if (visibleSlot) logicalCursor = Math.max(logicalCursor, Number(visibleSlot.end) || 0);
-      return {
+      const item = {
         slot,
         markers: markers.filter(marker => metadata.has(marker.key))
       };
+      // A joined declaration still owns a later pointer movement phase. Do
+      // not discard that phase when its initializer is absent as a solo slot.
+      return slot.declarationInitializerTransfer && slot.declarationInitializerMarker
+        ? [item, { ...item, slot: { ...slot, event: slot.initializerEvent, animation: 'assign' } }]
+        : [item];
     }).filter(item => item.markers.length);
+    metadata.forEach(item => {
+      for (const slot of [item.topologyEnterSlot, item.topologyExitSlot].filter(Boolean)) {
+        logicalMotionSlots.push({ slot, markers: [{ key: item.key, element: item.element }] });
+      }
+    });
+    logicalMotionSlots.sort((left, right) => Number(left.slot.visualStart ?? left.slot.start)
+      - Number(right.slot.visualStart ?? right.slot.start));
 
-    const finalState = new Map([...metadata].map(([key, item]) => [key, item.currentTarget]));
+    const finalState = new Map([...metadata].filter(([,item]) => !item.outgoing)
+      .map(([key, item]) => [key, item.currentTarget]));
     const initialState = new Map(finalState);
     metadata.forEach((item, key) => {
+      if (item.outgoing) initialState.set(key, item.currentTarget);
       if (item.previousUnresolvedTarget && item.previousBase) initialState.set(key, `unresolved:${key}`);
       else if (markerTargetParts(item.previousTarget)) initialState.set(key, item.previousTarget);
     });
     const markerTargetForEvent = (item, slot, phase) => {
-      const parts = markerTargetParts(item.currentTarget);
-      if (!parts) return '';
-      const target = (slot.event?.targets || []).find(candidate => (
-        candidate?.role !== 'source' && item.variableIds.includes(candidate?.variableId)
-      ));
-      const variableName = traceDocument?.variables?.[target?.variableId]?.name;
-      const value = displayEventValue(slot.event?.payload?.[phase]);
-      // A missing before/after snapshot is not permission to fall back to the
-      // frame's final value. That made a newly-entering marker start from the
-      // last assignment in the frame and visually skip earlier movements.
-      if (value === '') return phase === 'before'
-        ? `unresolved:${parts.prefix}`
-        : '';
-      const locals = variableName ? { [variableName]: markerExpressionValue(slot.event?.payload?.[phase]) } : {};
-      const rawResolved = window.ASMTraceRules?.resolveExpression?.(
-        traceDocument, eventFrame, item.indexExpression || item.sortKey, locals
-      );
-      const resolved = rawResolved == null ? NaN : Number(rawResolved);
-      return Number.isInteger(resolved) ? `${parts.prefix}#${resolved}` : '';
+      if (slot.event?.type === 'visual-enter') {
+        return execution.pointerTarget(item.element, slot.anchorEvent, slot.anchorEvent ? 'after' : 'before');
+      }
+      return execution.pointerTarget(item.element, slot.event, phase);
     };
+    // Group membership changes belong to the event that causes them. Peers
+    // must not consume the destination frame's REFLOW at time zero.
+    const eventReflowKeys = pointerEventReflowKeys(traceDocument,eventFrame,
+      logicalMotionSlots.map(item=>item.slot.event),execution,[...metadata.values()]);
     const initializedMarkers = new Set();
     logicalMotionSlots.forEach(({ slot, markers }) => {
       if (slot.animation === 'declare') return;
@@ -5321,15 +6513,21 @@
         const unresolved = pointer.status === 'unresolved';
         const x = anchorX + pointer.offsetX + (unresolved ? 0 : item.bias.x);
         const y = markerPlacement.y + (unresolved ? 0 : item.bias.y);
-        const keepArrowsVertical = target.width > item.baseCellWidth + 0.5;
+        // Live peers and exit copies share the renderer's anchor mode.
+        // A label-anchored arrow moves with its own label during reflow.
+        const labelAnchored = item.arrowAnchorMode === 'label';
+        const keepArrowsVertical = labelAnchored || target.width > item.baseCellWidth + 0.5;
         positions.set(pointer.key, {
           x,
           y,
           offsetX: pointer.offsetX,
           slot: pointer.slot,
           groupSize: pointer.groupSize,
-          targetX: unresolved || keepArrowsVertical ? x : anchorX,
-          targetY: target.y + target.height / 2
+          targetX: unresolved || keepArrowsVertical
+            ? x + (labelAnchored && item.outgoing && item.renderedTarget && item.previousBase
+              ? item.renderedTarget.x - item.previousBase.x : 0)
+            : anchorX + item.targetBias.x,
+          targetY: target.y + target.height / 2 + item.targetBias.y
         });
       });
       return positions;
@@ -5385,13 +6583,22 @@
     );
 
     const unbiasedFinal = positionsForState(finalState);
+    const unbiasedInitial = positionsForState(initialState);
     metadata.forEach(item => {
-      const expected = unbiasedFinal.get(item.key);
+      const expected = (item.outgoing ? unbiasedInitial : unbiasedFinal).get(item.key);
       if (!expected) return;
+      const base = item.outgoing && item.previousBase ? item.previousBase : item.finalBase;
       item.bias = {
-        x: item.finalBase.x - expected.x,
-        y: item.finalBase.y - expected.y
+        x: base.x - expected.x,
+        y: base.y - expected.y
       };
+      if (item.outgoing && item.renderedTarget
+        && Number.isFinite(item.renderedTarget.x) && Number.isFinite(item.renderedTarget.y)) {
+        item.targetBias = {
+          x: item.renderedTarget.x - expected.targetX,
+          y: item.renderedTarget.y - expected.targetY
+        };
+      }
     });
 
     const state = new Map(initialState);
@@ -5427,6 +6634,10 @@
         start, end, from: { ...from }, to: { ...to }, fromTarget, toTarget, instant
       });
     };
+    metadata.forEach((item,key) => {
+      if (item.outgoing || Number.isFinite(item.exitStart)) addStep(key,0,0,initialPositions.get(key),initialPositions.get(key),
+        initialState.get(key),initialState.get(key),true,true);
+    });
 
     const frameReflowKeys = frameReflow.keys instanceof Set
       ? frameReflow.keys
@@ -5434,6 +6645,7 @@
     const frameReflowDuration = Math.max(0, Number(frameReflow.duration) || 0);
     if (frameReflowDuration > 0) {
       frameReflowKeys.forEach(key => {
+        if (eventReflowKeys.has(key)) return;
         const from = initialPositions.get(key);
         const to = settledFramePositions.get(key);
         if (!from || !to) return;
@@ -5446,9 +6658,12 @@
     const declarationHolds = new Map();
     const checkpointTimeline = [];
     logicalMotionSlots.forEach(({ slot, markers }, slotIndex) => {
+      const exiting = ['scope-exit','visual-exit'].includes(slot.event?.type);
       let beforeStateChanged = false;
       markers.forEach(marker => {
-        if (slot.animation === 'declare') return;
+        if (slot.animation === 'declare' || exiting) return;
+        const waiting=metadata.get(marker.key)?.topologyEnterSlot;
+        if(waiting&&Number(slot.start)<Number(waiting.start))return;
         if (initializedAtDeclaration.has(marker.key)
           && displayEventValue(slot.event?.payload?.before) === '') return;
         const item = metadata.get(marker.key);
@@ -5461,11 +6676,15 @@
       if (slotIndex > 0 && beforeStateChanged) currentPositions = positionsForState(state);
       const nextState = new Map(state);
       markers.forEach(marker => {
+        if (exiting) { nextState.delete(marker.key); return; }
         const item = metadata.get(marker.key);
+        if(item.topologyEnterSlot&&slot!==item.topologyEnterSlot&&Number(slot.start)<Number(item.topologyEnterSlot.start))return;
         const afterTarget = slot.animation === 'declare'
           ? slot.initializerEvent
-            ? markerTargetForEvent(item, { ...slot, event: slot.initializerEvent }, 'after')
-            : markerTargetBeforeFrameEvents(traceDocument, eventFrame, elements.get(marker.key))
+            ? slot.declarationInitializerTransfer
+              ? `unresolved:${markerTargetParts(item.currentTarget)?.prefix}`
+              : markerTargetForEvent(item, { ...slot, event: slot.initializerEvent }, 'after')
+            : markerTargetForEvent(item,slot,'after')
           : markerTargetForEvent(item, slot, 'after');
         if (afterTarget) nextState.set(marker.key, afterTarget);
       });
@@ -5527,7 +6746,7 @@
         if (type === window.ASMTracePointerModel.transitions.EXIT) return;
         const stepStart = start;
         const stepEnd = type === window.ASMTracePointerModel.transitions.REFLOW
-          ? Math.min(end, start + MARKER_REFLOW_TIMING.duration)
+          ? Math.min(end, start + (exiting ? Number(slot.exitDuration) || APPEAR_TIMING.duration : MARKER_REFLOW_TIMING.duration))
           : end;
         const declarationHold = declarationHolds.get(key);
         if (declarationHold && stepStart > declarationHold.start) {
@@ -5619,15 +6838,20 @@
         // zero adjustment here used to cancel both same-cell make-room
         // motion and the entering marker's vertical entrance offset.
         if (!track.length) return;
+        // Once this pointer starts leaving, its whole label/arrow follows its
+        // own vertical exit. A parallel peer exit must not recenter it midway.
+        const motionTime = Math.min(elapsed, item.exitStart);
         let point = initialPositions.get(key) || item?.finalBase;
+        let targetKey = initialState.get(key);
         for (const step of track) {
-          if (elapsed < step.start) break;
+          if (motionTime < step.start) break;
           if (step.instant) {
             point = step.to;
+            targetKey = step.toTarget;
             continue;
           }
-          if (elapsed < step.end) {
-            const progress = easeOutCubic(clamp01((elapsed - step.start) / (step.end - step.start)));
+          if (motionTime < step.end) {
+            const progress = easeOutCubic(clamp01((motionTime - step.start) / (step.end - step.start)));
             const x = step.from.x + (step.to.x - step.from.x) * progress;
             const y = step.from.y + (step.to.y - step.from.y) * progress;
             const changingTarget = step.fromTarget && step.toTarget
@@ -5649,19 +6873,33 @@
                     - (step.from.targetY - step.from.y)) * progress
                 : step.from.targetY + (step.to.targetY - step.from.targetY) * progress
             };
+            targetKey = step.fromTarget || step.toTarget;
             break;
           }
           point = step.to;
+          targetKey = step.toTarget;
         }
         if (!item) return;
         if (point) {
+          const axisTarget = markerTargetParts(targetKey)?.axis;
+          const axisOwner = axisTarget ? String(targetKey).replace(/:(?:row|column)-label:-?\d+$/, '') : '';
+          // Matrix row/column anchors are real geometry on their live matrix,
+          // although their keys need not have a separate SVG element.
+          const hasTarget = axisTarget
+            ? placements.has(targetKey) && elements.get(axisOwner)?.isConnected
+            : elements.get(targetKey)?.isConnected;
           adjustments.set(key, {
             x: point.x - item.finalBase.x,
             y: point.y - item.finalBase.y,
             scale: 1,
             absolute: true
           });
-          arrowStates.set(key, point);
+          arrowStates.set(key, { ...point,
+            // Target identity comes from the chronological motion track;
+            // SVG presence only distinguishes a real cell from an extrapolated
+            // position. Never choose a different target from final-frame DOM.
+            targetMissing: !hasTarget
+          });
         }
       });
     };
@@ -5670,6 +6908,8 @@
       arrowStates,
       committedTargets,
       checkpointTimeline,
+      duration:Math.max(0,...[...tracks.values()].flatMap(steps=>steps.map(step=>step.end))),
+      outgoingKeys: new Set([...metadata].filter(([,item])=>item.outgoing).map(([key])=>key)),
       update: publishPosition,
       // The rendered frame is the state at @frame time, but trailing events
       // (for example the final j++ before @keep last) can move a marker after
@@ -5890,6 +7130,13 @@
       return false;
     };
     if (!ancestor(beforeId, afterId) && !ancestor(afterId, beforeId)) return matches;
+    // A muted by-value parameter declaration keeps its authored visual role
+    // across recursive scenes. The runtime lifetime is new, but its complete
+    // container (not only same-index children) owns the frame relocation.
+    const mutedParameters = new Set((traceDocument.frames || []).flatMap(item => item.events || [])
+      .filter(event => event.parameterDeclaration === true && event.enabled === false
+        && event.recursionActivationId === afterId)
+      .flatMap(event => (event.targets || []).map(target => target.variableId)));
     elements?.forEach?.((element, key) => {
       if (retainedSnapshotVisual(element)) return;
       const variableId = String(element.dataset?.traceSourceVariableId
@@ -5921,7 +7168,11 @@
       } else {
         const previous = previousVisualElement(previousObjects, key);
         if (previous?.dataset?.traceVariable === variableId
-          && sameSceneGeneration(element, previous)) match = { key, element: previous };
+          && !retainedVisualOwner(previous)
+          && (sameSceneGeneration(element, previous)
+            || (element.matches?.('.asm-trace-object') && mutedParameters.has(variableId)))) {
+          match = { key, element: previous };
+        }
       }
       if (!match || match.element.getAttribute?.('opacity') === '0'
         || match.element.getAttribute?.('display') === 'none') return;
@@ -5931,6 +7182,44 @@
           visualMatchesScopeExitTarget(match.element, target)
         )))) return;
       matches.set(key, match);
+    });
+    return matches;
+  }
+
+  function referenceContainerContinuations(traceDocument, previousFrame, frame, previousObjects, elements) {
+    const matches = new Map();
+    const alias = (sourceFrame, id) => {
+      const value = objectKeyForVariable(sourceFrame, id);
+      return value === id ? '' : value;
+    };
+    const isReference = id => /&/.test(String(traceDocument?.variables?.[id]?.cppType || ''));
+    elements?.forEach?.((element, key) => {
+      if (!element.matches?.('.asm-trace-object') || retainedSnapshotVisual(element)
+        || element.dataset?.traceSourceVariableId) return;
+      const id = element.dataset?.traceVariable;
+      const identity = element.dataset?.traceRuntimeIdentity;
+      if (!id || !identity || traceDocument?.variables?.[id]?.kind === 'scalar') return;
+      for (const [previousKey, previous] of previousObjects || []) {
+        const previousId = previous?.dataset?.traceVariable;
+        if (!previous?.matches?.('.asm-trace-object') || retainedSnapshotVisual(previous)
+          || previous.dataset?.traceSourceVariableId
+          || (element.dataset.traceLayoutId || '') !== (previous.dataset.traceLayoutId || '')
+          || (element.dataset.traceLayoutNode || '') !== (previous.dataset.traceLayoutNode || '')
+          || (element.dataset.traceLayoutActivation || '') !== (previous.dataset.traceLayoutActivation || '')
+          || previous.dataset?.traceRuntimeIdentity !== identity
+          || !sameSceneGeneration(element, previous)
+          || (!isReference(id) && !isReference(previousId))
+          || alias(frame, id) !== alias(previousFrame, previousId)
+          || previous.getAttribute('opacity') === '0' || previous.getAttribute('display') === 'none') continue;
+        // Explicit authored lifetimes and layout nodes remain separate, even
+        // when they refer to the same C++ container.
+        if (orderedEvents(frame).some(event => (event.targets || []).some(target => (
+          ['visual-enter', 'visual-exit'].includes(event.type) && [id, previousId].includes(target.variableId)
+        ) || (event.type === 'scope-exit' && target.variableId === previousId
+          && !naturalReferenceContainerExitTarget(traceDocument, event, target))))) continue;
+        matches.set(key, { key: previousKey, element: previous });
+        break;
+      }
     });
     return matches;
   }
@@ -5957,6 +7246,29 @@
       });
     });
     return { declaredKeys, slotsByKey };
+  }
+
+  // 遞迴排版提供幾何，該次呼叫的宣告提供時鐘；不能只按變數名稱
+  // 把父呼叫或另一層遞迴的宣告接過來。舊 Trace 可用 lifetime 核實同一對象。
+  function recursionDeclarationClock(element, growth, frame, eventTimeline) {
+    if (!growth) return null;
+    const snapshot = growth.childSnapshot;
+    const variableId = element?.dataset?.traceLayoutPreferredVariable
+      || snapshot?.frame?.source?.primaryVariableId || frame?.source?.primaryVariableId;
+    const activation = element?.dataset?.traceLayoutActivation
+      || snapshot?.recursionActivationId || frame?.source?.recursionActivationId;
+    const lifetime = (snapshot?.frame || frame)?.state?.[variableId]?.lifetime;
+    const declaration = orderedEvents(frame).find(event => event.type === 'declare'
+      && (event.targets || []).some(target => target.variableId === variableId
+        && (event.recursionActivationId ? event.recursionActivationId === activation
+          : lifetime && target.lifetimeIdentity === lifetime)));
+    if (!declaration) return null; // 純繪圖快照無 runtime 宣告，保留既有生長行為。
+    const slot = (eventTimeline || []).find(slot => slot.animation === 'declare'
+      && (slot.event?.id === declaration.id || slot.memberEvents?.some(event => event.id === declaration.id)));
+    if (!slot) return { eventId: declaration.id, start: 0, duration: 0, instant: true };
+    return { eventId: declaration.id,
+      start: (Number(slot.visualStart ?? slot.start) || 0) + (Number(slot.declarationEntranceDelay) || 0),
+      duration: Math.min(APPEAR_TIMING.duration, Math.max(1, Number(slot.duration) || APPEAR_TIMING.duration)), instant: false };
   }
 
   function markerReflowPeerKeys({
@@ -6191,6 +7503,8 @@
       || ''
     );
     if (!expression) return [];
+    const execution = createExecutionContext(traceDocument, eventFrame,
+      createForwardReplayPlan(traceDocument, eventFrame, eventTimeline));
     const resolveTarget = (slot, phase) => {
       const target = (slot.event?.targets || []).find(candidate => (
         candidate?.role !== 'source'
@@ -6199,14 +7513,7 @@
         && markerLifetimeActiveAtEvent(eventFrame, slot.event, visual)
       ));
       if (!target) return '';
-      const value = displayEventValue(slot.event?.payload?.[phase]);
-      if (value === '') return '';
-      const variableName = traceDocument?.variables?.[target.variableId]?.name;
-      const locals = variableName ? { [variableName]: markerExpressionValue(slot.event?.payload?.[phase]) } : {};
-      const resolved = Number(window.ASMTraceRules?.resolveExpression?.(
-        traceDocument, eventFrame, expression, locals
-      ));
-      return Number.isInteger(resolved) ? `${binding.prefix}#${resolved}` : '';
+      return execution.pointerTarget(visual, slot.event, phase);
     };
     let offset = { x: 0, y: 0 };
     const steps = [];
@@ -6430,11 +7737,16 @@
         const candidateTarget = targetOf(candidate);
         if (!candidateTarget || candidateTarget.variableId !== target?.variableId) return false;
         const candidateId = String(candidate?.source?.declaratorId || '');
-        if (declaratorId && candidateId) return declaratorId === candidateId;
         const candidateLifetime = String(
           candidateTarget.lifetimeIdentity || candidate?.lifetimeIdentity || ''
         );
-        return !lifetime || !candidateLifetime || lifetime === candidateLifetime;
+        if (lifetime && candidateLifetime && lifetime !== candidateLifetime) return false;
+        if (declaratorId && candidateId) return declaratorId === candidateId;
+        // Legacy traces need a real declaration initializer, not just the next
+        // assignment to an uninitialized variable in the same frame.
+        return (initializer.declarationInitializer === true || initializer.forInitializer === true
+          || initializer.source?.declarationInitializer === true || isForInitializerAssignment(initializer))
+          && Number(candidate.line) === Number(initializer.line);
       });
       if (!declaration) return;
       initializerByDeclaration.set(declaration, initializer);
@@ -6449,20 +7761,36 @@
     const sources = (initializer?.targets || []).filter(target => (
       target?.role === 'source' || String(target?.role || '').startsWith('source-')
     ));
-    return sources.filter(source => (
-      source?.literal !== true
-      && Boolean(source?.variableId)
-      && Boolean(eventOperand(
+    return sources.filter(source => {
+      if (source?.literal === true || !source?.variableId) return false;
+      const operand = eventOperand(
         traceDocument,
         eventFrame,
         source,
-        initializer?.payload?.source ?? initializer?.payload?.after ?? initializer?.payload?.insertedValue,
+        // push/insert 的 after 是整個容器，來源匹配必須用本次插入的單格值。
+        initializer?.payload?.source ?? initializer?.payload?.insertedValue ?? initializer?.payload?.after,
         placements,
         elements,
         visualKeyForSource,
         initializer
-      ))
-    ));
+      );
+      return Boolean(operand) && !sourcePresentationWasHidden(traceDocument, eventFrame, source, operand, initializer);
+    });
+  }
+
+  function initializerPresentation(traceDocument, eventFrame, initializer, placements, elements) {
+    if (!initializer) return 'none';
+    const source = (initializer.targets || []).find(target => target.role === 'source');
+    // Count/fill construction is not value copying: n in vector(n, 0) is a
+    // dimension, not a value that should fly into every cell. This fallback
+    // uses saved constructor syntax for old traces without adding required data.
+    const countConstruction = Array.isArray(initializer.payload?.after?.items)
+      && (initializer.semantics?.kind || initializer.source?.operationKind) === 'unknown'
+      && String(source?.expression || '').trim().startsWith('(')
+      && traceDocument?.variables?.[source?.variableId]?.kind === 'scalar';
+    if (countConstruction) return 'direct';
+    return visibleInitializerSources(traceDocument, eventFrame, initializer, placements, elements).length
+      ? 'transfer' : 'direct';
   }
 
   function previousMarkerLayoutState(schedule, elapsed, initial = null) {
@@ -6492,8 +7820,15 @@
         traceDocument, eventFrame, event, placements, elements
       )].some(key => placements?.has?.(key) && elements?.has?.(key));
     }
-    if (animation === 'position') return Boolean(markerForMotionSlot({ animation, event }, elements));
+    if (animation === 'position') return Boolean(
+      markersForMotionSlot({ animation, event }, elements, eventFrame).length
+      || markersForMotionSlot({ animation, event }, previousObjects, eventFrame).length
+    );
     if (animation === 'sequence') {
+      if (sequenceEdge(event)==='index' && !sequenceDataStates(traceDocument,eventFrame,event)) {
+        window.ASMCompileWarnings?.report?.('舊版事件', '此舊 Trace 的區段插入／刪除缺少中間狀態，已直接顯示保存結果；重新 RUN 後可使用完整事件動畫。');
+        return false;
+      }
       const target = targets.find(item => item.role === 'target') || targets[0];
       const key = target ? eventTargetKey(traceDocument, eventFrame, target) : '';
       if (!key || !placements?.has?.(key) || !elements?.has?.(key)
@@ -6536,14 +7871,24 @@
       if (!targetOperand) {
         return Boolean(assignmentTargetMarker(event, new Map(), eventFrame, previousObjects));
       }
+      // A retained tspan is a replay address, not proof of visibility. An
+      // already-hidden field stays silent; a visible zero-clear owns its
+      // transfer/hold/exit unless another field takes over that same slot.
+      if (targetOperand.element.matches?.('tspan[data-trace-field-variable]')
+        && displayEventFieldValue(event?.payload?.after, eventFrame, target?.variableId) === '') {
+        return Boolean(fieldExitKindFor(eventFrame, event));
+      }
       // An index marker assignment (for example largest = l) is fully
       // determined by the captured before/after/source values. The source
       // scalar does not need its own box or pointer on the canvas.
       if (targetOperand.marker && Number.isFinite(Number(displayEventValue(event?.payload?.after)))) {
         return true;
       }
-      return variableTargets.every(target => visible(target));
+      // A hidden source still has a captured value and can enter numerically
+      // above the destination. Only the destination must be drawable.
+      return true;
     }
+    if (animation === 'select') return targets.length >= 2 && event.payload?.left != null && event.payload?.right != null;
     if (animation === 'compare' && event?.comparisonKind === 'truthy') {
       return targets.length === 1 && visible(targets[0]);
     }
@@ -6572,7 +7917,7 @@
   }
 
   function eventAnimationIsRenderable(animation) {
-    return ['declare', 'exit', 'position', 'assign', 'compare', 'swap', 'fixed', 'sequence'].includes(animation)
+    return ['declare', 'exit', 'position', 'assign', 'input-assign', 'select', 'compare', 'swap', 'fixed', 'sequence'].includes(animation)
       || Boolean(GENERIC_EVENT_DURATION[animation]);
   }
 
@@ -6586,7 +7931,7 @@
       return Number.isFinite(Number(event?.source?.from))
         && Number.isFinite(Number(event?.source?.to));
     }
-    if (!['assign', 'compare'].includes(event?.type)) return false;
+    if (!['assign', 'input-assign', 'compare'].includes(event?.type)) return false;
     const source = event?.source;
     if (!Number.isFinite(Number(source?.from)) || !Number.isFinite(Number(source?.to))) return false;
     return (source?.contexts || []).some(context => {
@@ -6612,6 +7957,7 @@
       const target = targets.find(item => item?.role === 'target') || targets[0];
       return Boolean(target?.variableId);
     }
+    if (animation === 'select') return targets.length >= 2 && event.payload?.left != null && event.payload?.right != null;
     if (animation === 'compare' && event?.comparisonKind === 'truthy') {
       return targets.length === 1 && Boolean(targets[0]?.variableId);
     }
@@ -6731,8 +8077,19 @@
       String(target?.lifetimeIdentity || ''),
       String(target?.sceneGeneration ?? '')
     ].join('|');
-    const ordered = orderedEvents(eventFrame);
+    const ordered = presentationEvents(traceDocument, eventFrame);
+    // Preserve both runtime facts, but combine enabled declaration/initializer
+    // pairs into one presentation slot. Explicitly disabled events stay separate.
     const initializerPairs = declarationInitializerPairs(eventFrame);
+    for (const [declaration, initializer] of initializerPairs.initializerByDeclaration) {
+      const playable = event => event.enabled !== false
+        && (timelineOptions.ignoreAutoDisabled === true || event.autoAnimationDisabled !== true)
+        && (!eventFilter || eventFilter(event));
+      if (!playable(declaration) || !playable(initializer)) {
+        initializerPairs.initializerByDeclaration.delete(declaration);
+        initializerPairs.declarationByInitializer.delete(initializer);
+      }
+    }
     const manualPreKeepExitIdentities = new Set(ordered.filter(event => (
       event?.type === 'visual-exit'
       && event?.manualVisualExit === true
@@ -6765,19 +8122,29 @@
       let declarationMarkerMotionDuration = 0;
       let declarationInitializerTransfer = false;
       let declarationInitializerMarker = false;
+      let initializationEffectDuration = 0;
       let sequenceSourceTransfer = false;
+      // Initial position is established by declaration entry, not a second
+      // invisible movement after the pointer has already arrived.
       if (positionOnly) duration = swapDuration;
       let declarationEntranceDelay = 0;
+      let fieldExitKind = '';
       if (animation === 'declare') {
         if (initializerEvent) {
           declarationInitializerMarker = Boolean(assignmentTargetMarker(
             initializerEvent, elements, eventFrame, previousObjects
           ));
-          declarationInitializerTransfer = !declarationInitializerMarker
-            && visibleInitializerSources(
-              traceDocument, eventFrame, initializerEvent,
-              currentPlacements, elements
-            ).length > 0;
+          // A newly declared pointer enters at its initialized target. A
+          // visible source does not require an unresolved entry followed by
+          // a second trip; ordinary value objects still copy that source.
+          declarationInitializerTransfer = !declarationInitializerMarker && initializerPresentation(
+            traceDocument, eventFrame, initializerEvent, currentPlacements, elements
+          ) === 'transfer';
+          if (declarationInitializerTransfer) {
+            bitwiseAnimation = Boolean(bitwisePlan(traceDocument, eventFrame, initializerEvent, elements));
+            initializationEffectDuration = bitwiseAnimation ? BIT_SHIFT_DURATION
+              : selectionDuration(initializerEvent) + assignmentEffectDuration(declarationInitializerMarker);
+          }
         }
         const declarationKeys = [...eventTargetVisualKeys(
           traceDocument, eventFrame, event, currentPlacements, elements
@@ -6810,7 +8177,8 @@
         duration = Math.max(
           APPEAR_TIMING.duration + declarationEntranceDelay,
           movingContinuation ? swapDuration : 0,
-          declarationInitializerTransfer ? assignmentEffectDuration(false) : 0
+          declarationInitializerTransfer ? APPEAR_TIMING.duration + initializationEffectDuration
+            + (declarationInitializerMarker ? swapDuration : 0) : 0
         );
         declarationMarkerMotionDuration = movingContinuation
           ? swapDuration : MARKER_REFLOW_TIMING.duration;
@@ -6842,13 +8210,19 @@
           : null;
         const markerMovesWithinFrame = Boolean(markerAssignment && (
           seenMarkerAssignments.has(markerAssignment.key)
+          || isDeclarationInitializerAssignment(event)
           || (event?.payload?.before != null && event?.payload?.after != null
             && displayEventValue(event.payload.before) !== displayEventValue(event.payload.after))
           || Math.abs(Number(markerDelta?.x) || 0) > 0.1
           || Math.abs(Number(markerDelta?.y) || 0) > 0.1
         ));
         if (markerAssignment) seenMarkerAssignments.add(markerAssignment.key);
-        effectDuration = assignmentEffectDuration(Boolean(markerAssignment));
+        effectDuration = selectionDuration(event) + assignmentEffectDuration(Boolean(markerAssignment));
+        if (operand?.element.matches?.('tspan[data-trace-field-variable]')) {
+          fieldExitKind = fieldExitKindFor(eventFrame, event);
+          if (fieldExitKind) effectDuration = fieldExitKind === 'remove'
+            ? ASSIGN_TIMING.exit + ASSIGN_TIMING.frame : effectDuration + ASSIGN_TIMING.frame;
+        }
         const bitwise = bitwisePlan(traceDocument, eventFrame, event, elements);
         bitwiseAnimation = Boolean(bitwise);
         if (bitwise) {
@@ -6857,12 +8231,17 @@
           effectDuration = Math.max(effectDuration, BIT_SHIFT_DURATION);
         }
         duration = effectDuration
-          + (!bitwise && !standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
+          + (!bitwise && !standaloneUpdate && !fieldExitKind && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
       }
-      if (event.type === 'compare' && animation === 'compare') {
+      if (animation === 'select' || event.type === 'compare' && animation === 'compare') {
         duration = COMPARE_DURATION;
       }
-      if (event.type === 'swap' && animation === 'swap') duration = swapDuration;
+      if (event.type === 'swap' && animation === 'swap') {
+        const pair = event.targets || [];
+        const sameCell = pair.length >= 2 && eventTargetKey(traceDocument, eventFrame, pair[0])
+          === eventTargetKey(traceDocument, eventFrame, pair[1]);
+        duration = sameCell ? MOTION_TIME.emphasize : swapDuration;
+      }
       if (animation === 'sequence') {
         const beforeSize = Number(event?.payload?.beforeSize);
         const afterSize = Number(event?.payload?.afterSize);
@@ -6870,8 +8249,9 @@
           && visibleInitializerSources(
             traceDocument, eventFrame, event, currentPlacements, elements
           ).length > 0;
-        duration = sequenceSourceTransfer
-          ? Math.max(SEQUENCE_TIMING.duration, ASSIGN_TIMING.drop)
+        duration = /clear/.test(event.operation) ? MOTION_TIME.exit
+          : /resize/.test(event.operation) ? MOTION_TIME.enter
+          : /assign/.test(event.operation) ? MOTION_TIME.move
           : SEQUENCE_TIMING.duration;
       }
       if (event.type === 'return' && animation === 'code') duration = 260;
@@ -6905,28 +8285,55 @@
       // The declaration slot is itself responsible for introducing a new
       // object. Other events still wait for the ordinary pre-event entrance.
       if (targetsEntering && animation !== 'declare') {
-        cursor = Math.max(cursor, APPEAR_TIMING.duration + 1);
+        cursor = Math.max(cursor, APPEAR_TIMING.duration);
       }
       const promptStart = parallelWithPrevious
         ? Number(previousSlot.promptStart) || 0
         : cursor;
-      // Code highlighting and scrolling are presentation, not a serial
-      // pre-animation wait. The code presenter owns its independent clock.
-      const codePromptDuration = 0;
+      // 先顯示黃色程式碼提示，再開始畫布動作；純反白事件已有自己的停留時間。
+      // 捲動仍使用獨立時鐘，這裡不累加整段程式碼捲動時間。
+      const hasCodeRange = Number.isFinite(event.source?.from)
+        && Number.isFinite(event.source?.to) && event.source.to > event.source.from;
+      const codePromptDuration = animation !== 'code' && hasCodeRange ? MOTION_TIME.codePrompt : 0;
       const visualStart = promptStart + codePromptDuration;
-      const effectStart = visualStart;
-      const motionStart = visualStart + (animation === 'assign' ? effectDuration : 0);
+      const effectStart = visualStart + (declarationInitializerTransfer ? APPEAR_TIMING.duration : 0);
+      const motionStart = declarationInitializerTransfer && declarationInitializerMarker
+        ? effectStart + initializationEffectDuration
+        : visualStart + (animation === 'assign' ? effectDuration : 0);
+      let actionPlan = positionOnly
+        ? { ...eventActionPlan(event), commitMs: 0 }
+        : eventActionPlan(event, { marker: Boolean(markerAssignment), fieldExitKind,
+          motionMs: markerAssignment ? Math.max(0, duration - effectDuration)
+            : event.type === 'swap' ? duration : swapDuration });
+      if (declarationInitializerTransfer) {
+        const assignmentPlan = eventActionPlan(initializerEvent, {
+          marker: declarationInitializerMarker, motionMs: declarationInitializerMarker ? swapDuration : 0
+        });
+        actionPlan = { ...assignmentPlan, kind: 'initialize',
+          stages: [...eventActionPlan(event).stages, ...assignmentPlan.stages.map(stage => ({
+            ...stage, startMs: stage.startMs + APPEAR_TIMING.duration,
+            endMs: stage.endMs + APPEAR_TIMING.duration
+          }))],
+          commitMs: assignmentPlan.commitMs + APPEAR_TIMING.duration,
+          durationMs: assignmentPlan.durationMs + APPEAR_TIMING.duration };
+        if (bitwiseAnimation) actionPlan = { ...actionPlan,
+          stages: [...eventActionPlan(event).stages, { id: 'bitwise', startMs: APPEAR_TIMING.duration,
+            endMs: duration, durationMs: initializationEffectDuration, actions: ['move'] }],
+          commitMs: duration, durationMs: duration };
+      }
       slots.push({
-        event, type: event.type, animation,
+        event, type: event.type, animation, fieldExitKind,
+        actionPlan,
         initializerEvent,
         memberEvents: initializerEvent ? [initializerEvent] : [],
-        replayMemberEvents: declarationInitializerTransfer && initializerEvent
-          ? [initializerEvent] : [],
+        replayMemberEvents: initializerEvent ? [initializerEvent] : [],
         declarationInitializerTransfer,
         declarationInitializerMarker,
         sequenceSourceTransfer,
+        declarationInitializerDirect: Boolean(initializerEvent && !declarationInitializerTransfer),
         declarationInitializerCommitMs: declarationInitializerTransfer
-          ? visualStart + ASSIGN_TIMING.drop : 0,
+          ? effectStart + selectionDuration(initializerEvent) + ASSIGN_TIMING.frame
+            + (declarationInitializerMarker ? ASSIGN_TIMING.valueHold : 0) + ASSIGN_TIMING.drop : 0,
         promptStart, codePromptDuration, visualStart, start: visualStart,
         effectStart, motionStart, effectDuration, bitwiseAnimation,
         declarationEntranceDelay,
@@ -7089,9 +8496,10 @@
 
   function createSequenceOperationEffect(
     root, slot, traceDocument, eventFrame, placements, elements, previousObjects,
-    visualKeyForSource = key => key, reverse = false
+    visualKeyForSource = key => key, reverse = false, previousPlacements = placements
   ) {
     const event = slot.event;
+    const sequenceStates = sequenceDataStates(traceDocument, eventFrame, event);
     const target = (event?.targets || []).find(item => item.role === 'target')
       || event?.targets?.[0];
     const topKey = target ? eventTargetKey(traceDocument, eventFrame, target) : '';
@@ -7110,6 +8518,27 @@
     const opacities = new Map();
     const ghosts = [];
     let transfer = null;
+    const shifts = [];
+    const shiftKeys = [];
+    const changeIndex = sequenceInsertedIndex(event, after > before);
+    const hasShift = !reverse && sequenceEdge(event) !== 'back' && changeIndex < Math.min(before, after);
+    if (hasShift) {
+      const inserting = after > before, delta = Math.abs(after - before);
+      for (let oldIndex = changeIndex + (inserting ? 0 : delta); oldIndex < before; oldIndex++) {
+        const nextIndex = oldIndex + (inserting ? delta : -delta);
+        const source = { ...target, role: 'source', resolvedIndex: oldIndex, indexExpression: String(oldIndex) };
+        const destination = { ...target, role: 'target', resolvedIndex: nextIndex, indexExpression: String(nextIndex) };
+        const sourceOperand = eventOperand(traceDocument, eventFrame, source, sequenceStates?.before?.items?.[oldIndex],
+          previousPlacements, previousObjects, key=>key, event);
+        const targetOperand = eventOperand(traceDocument, eventFrame, destination, sequenceStates?.after?.items?.[nextIndex],
+          placements, elements, key=>key, event);
+        if (!sourceOperand || !targetOperand) continue;
+        const shift = createAssignmentTransfer(root, sourceOperand, targetOperand,
+          sequenceStates?.before?.items?.[oldIndex], sourceOperand.element,
+          { linear: true, allowPendingTarget: true, className: 'asm-trace-sequence-shift' });
+        if (shift) { shifts.push(shift); shiftKeys.push(targetOperand.visualKey); }
+      }
+    }
 
     if (!reverse && slot.sequenceSourceTransfer && inserted.length) {
       const source = (event?.targets || []).find(item => item?.role === 'source'
@@ -7133,6 +8562,50 @@
     }
     const usesSourceCellTransfer = Boolean(transfer);
 
+    // 入場外觀與正式資料提交分開：常數／隱藏來源也先顯示完整格子及數字。
+    // 正式目標仍由 replay 在完成時提交，不能提早改動後續事件讀到的值。
+    const enteringCells = [];
+    if (!reverse && !usesSourceCellTransfer && content) inserted.forEach(cellKey => {
+      const destination = elements?.get?.(cellKey);
+      if (!destination) return;
+      const index = Number(cellKey.slice(cellKey.lastIndexOf('#') + 1));
+      const value = sequenceStates?.after?.items?.[index] ?? event?.payload?.insertedValue;
+      if (value == null) return;
+      const wrapper = createSvg('g', { class: 'asm-trace-sequence-entry', 'pointer-events': 'none', opacity: 0 });
+      const clone = destination.cloneNode(true);
+      window.ASMTraceRenderers?.copyCellStyles?.(destination, clone);
+      removeAnimationNodes(clone);
+      [clone, ...clone.querySelectorAll('[id], [data-trace-object-key], [data-trace-index]')].forEach(node => {
+        ['id', 'data-trace-object-key', 'data-trace-index'].forEach(name => node.removeAttribute(name));
+      });
+      clone.removeAttribute('opacity');
+      clone.removeAttribute('display');
+      clone.style.removeProperty('opacity');
+      let text = clone.querySelector('text[data-trace-content-role="value"], text:not([data-trace-content-role="index"]):not(.outerframe-label)');
+      if (!text) {
+        const rect = destination.querySelector('rect');
+        const box = rect?.getBBox?.();
+        if (box) {
+          text = createSvg('text', { x: box.x + box.width / 2, y: box.y + box.height / 2,
+            'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial',
+            'font-size': Math.max(10, Math.min(24, box.height * 0.48)), fill: '#1f282d',
+            'data-trace-content-role': 'value' });
+          clone.append(text);
+        }
+      }
+      if (text) {
+        const fallback = displayEventValue(value);
+        const template = destination.getAttribute('data-trace-display-template');
+        text.textContent = template && window.ASMTraceRenderers?.renderDisplayTemplate
+          ? window.ASMTraceRenderers.renderDisplayTemplate(template, value, traceDocument, eventFrame,
+            { index, row: Number(destination.dataset.traceDisplayRow), column: Number(destination.dataset.traceDisplayColumn) }, fallback)
+          : fallback;
+      }
+      wrapper.append(clone);
+      content.append(wrapper);
+      enteringCells.push({ wrapper, cellKey });
+    });
+
     if (content && removed.length) {
       removed.forEach(cellKey => {
         const oldCell = previousVisualElement(previousObjects, cellKey);
@@ -7141,7 +8614,8 @@
           class: 'asm-trace-sequence-ghost', 'pointer-events': 'none', opacity: 1
         });
         const cell = oldCell.cloneNode(true);
-        const indexLabel = previousVisualElement(previousObjects, `${cellKey}:index`);
+        const oldIndex = Number(cellKey.slice(cellKey.lastIndexOf('#')+1));
+        const indexLabel = oldIndex >= after ? previousVisualElement(previousObjects, `${cellKey}:index`) : null;
         [cell, ...(indexLabel ? [indexLabel.cloneNode(true)] : [])].forEach(clone => {
           removeAnimationNodes(clone);
           [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')]
@@ -7160,6 +8634,11 @@
       adjustments, opacities,
       update(elapsed) {
         const progress = easeOutCubic(clamp01(elapsed / Math.max(1, slot.duration)));
+        const insertStart = after > before && !/resize|assign/.test(String(event.operation || ''))
+          ? MOTION_TIME.reflow : 0;
+        const insertProgress = easeOutCubic(timedProgress(elapsed - insertStart,
+          Math.max(1, slot.duration - insertStart)));
+        const shiftProgress = easeOutCubic(timedProgress(elapsed - (after < before ? MOTION_TIME.exit : 0), MOTION_TIME.reflow));
         adjustments.clear();
         opacities.clear();
         inserted.forEach(cellKey => {
@@ -7171,20 +8650,24 @@
               // its final tail/index slot and hidden until the clone lands;
               // do not also run the generic right-edge insertion motion.
               adjustments.set(key, { x: 0, y: 0, scale: 1 });
-              opacities.set(key, progress >= 1 ? 1 : 0);
+              opacities.set(key, insertProgress >= 1 ? 1 : 0);
             } else {
               adjustments.set(key, {
                 x: direction * SEQUENCE_TIMING.travel * (1 - progress), y: 0, scale: 1
               });
-              opacities.set(key, progress);
+              opacities.set(key, enteringCells.some(item => item.cellKey === key)
+                ? (insertProgress >= 1 ? 1 : 0) : insertProgress);
             }
           });
         });
+        enteringCells.forEach(({ wrapper }) => wrapper.setAttribute('opacity',
+          String(insertProgress >= 1 ? 0 : insertProgress)));
         ghosts.forEach(({ wrapper }) => {
-          wrapper.setAttribute('transform', `translate(${direction * SEQUENCE_TIMING.travel * progress}, 0)`);
-          wrapper.setAttribute('opacity', String(1 - progress));
+          wrapper.setAttribute('opacity', String(1 - easeOutCubic(timedProgress(elapsed, MOTION_TIME.exit))));
         });
-        transfer?.update(progress, 1);
+        shiftKeys.forEach(key=>opacities.set(key, progress >= 1 ? 1 : 0));
+        shifts.forEach(shift=>shift.update(shiftProgress));
+        transfer?.update(insertProgress, 1);
         if (!inserted.length && !removed.length && topKey) {
           adjustments.set(topKey, {
             x: 0, y: 0, scale: 1 + 0.035 * Math.sin(Math.PI * progress)
@@ -7195,21 +8678,34 @@
         adjustments.clear();
         opacities.clear();
         ghosts.forEach(({ wrapper }) => wrapper.remove());
+        enteringCells.forEach(({ wrapper }) => wrapper.remove());
         transfer?.remove();
+        shifts.forEach(shift=>shift.remove());
         transfer = null;
       }
     };
   }
 
   function eventSequence(options, eventFrame, eventTimeline) {
-    const logicalEvents = orderedEvents(eventFrame)
+    const logicalEvents = presentationEvents(options.document, eventFrame)
       .filter(event => event?.loopBoundarySuppressed !== true);
+    const logicalRank = new Map(logicalEvents.map((event, index) => [event, index]));
     // A frame can have no runtime event while its persisted objects still
     // move and change conditional style. Keep the replay/style controller
     // alive so paint can wait for that geometry transition.
     const replayPlan = options.forwardReplayPlan || createForwardReplayPlan(
       options.document, eventFrame, eventTimeline, options.direction
     );
+    const execution = createExecutionContext(options.document, eventFrame, replayPlan);
+    let presentationElapsed = 0;
+    const visibleFieldClears = eventTimeline.filter(slot => slot.animation === 'assign').flatMap(slot => {
+      const target = (slot.event.targets || []).find(item => item.role === 'target');
+      if (displayEventFieldValue(slot.event.payload?.after, eventFrame, target?.variableId) !== ''
+        || displayEventFieldValue(slot.event.payload?.before, eventFrame, target?.variableId) === '') return [];
+      const key = eventTargetKey(options.document, eventFrame, target);
+      const element = options.currentElements.get(key);
+      return element?.matches?.('tspan[data-trace-field-variable]') ? [{ key, slot }] : [];
+    });
     // A backward step uses the outgoing frame only to identify transition
     // events. Persistent styles belong to the destination frame; evaluating
     // them against the outgoing frame would recreate highlights that should
@@ -7218,15 +8714,28 @@
     const forwardValues = prepareForwardValues(options, replayPlan, eventFrame, styleFrame);
     const markerMotion = markerAssignmentMotion(
       options.document, eventFrame, eventTimeline,
-      options.currentPlacements, options.currentElements, options.markerEntries,
+      new Map([...(options.previousPlacements || new Map()),...options.currentPlacements]), options.currentElements,
+      [...(options.markerEntries || []).map(entry=>{
+        // Zero is a valid entrance time. Even an immediate view-only entry
+        // must add its peer slot through the common pointer event schedule.
+        if(!entry.markerPointPath||!entry.appearing||!Number.isFinite(Number(entry.appearanceStart))
+          ||markerDeclaredInFrame(eventFrame,entry.element))return entry;
+        const start=Number(entry.appearanceStart);
+        const anchorEvent=replayPlan.checkpoints.filter(checkpoint=>Number(checkpoint.commitMs)<=start).at(-1)?.event;
+        return{...entry,topologyEnterSlot:{event:{id:`pointer-view-enter:${entry.key}`,type:'visual-enter',presentationOnly:true,
+          targets:markerSourceVariableIds(entry.element).map(variableId=>({variableId,role:'target'}))},
+          animation:'declare',start,visualStart:start,motionStart:start,end:start+APPEAR_TIMING.duration,anchorEvent}};
+      }),...(options.outgoingPointerEntries || [])],
       {
         keys: options.markerReflowKeys,
         duration: options.markerReflowDuration,
         exitReflows: options.exitReflowSchedule,
-        replayPlan
+        replayPlan, execution
       }
     );
     const combinedAdjustments = new Map();
+    const selectionScales = new Map();
+    const selectionMarkerOffsets = new Map();
     const bitShiftEffects = new Map();
     const stagedShiftVariables = new Set();
     if (Number(options.direction) >= 0) {
@@ -7237,12 +8746,12 @@
         stagedShiftVariables.add(id);
         // Do not reveal the destination bits while the code highlight plays.
         // If an earlier write owns this variable, wait for that write instead.
-        if (logicalEvents.some(event => Number(event.order) < Number(slot.event.order)
-          && ['assign', 'write', 'swap', 'sequence', 'declare'].includes(event.type)
+        if (logicalEvents.some(event => logicalRank.get(event) < logicalRank.get(slot.event)
+          && ['assign', 'input-assign', 'write', 'swap', 'sequence', 'declare'].includes(event.type)
           && event.targets?.some(target => target.role === 'target' && target.variableId === id))) continue;
         const effect = slot.event.bitwise
-          ? createBitwiseEffect(slot.event, options.document, eventFrame, options.currentElements)
-          : createBitShiftEffect(slot.event, options.document, eventFrame,
+          ? createBitwiseEffect(slot.event, options.document, execution.frame(slot.event), options.currentElements)
+          : createBitShiftEffect(slot.event, options.document, execution.frame(slot.event),
             options.currentElements, options.previousObjects);
         if (effect) {
           if (effect.stage) effect.stage();
@@ -7252,6 +8761,40 @@
       }
     }
     const sequenceEffects = new Map();
+    // The destination SVG has already dropped deleted cells. Retain the old
+    // cell during the code prompt and earlier events; the sequence effect
+    // takes ownership at its own visual start, then fades it before reflow.
+    // This applies to every renderer, including heap nodes with an index
+    // outside the destination frame's displayed range.
+    const pendingSequenceRemovals = [];
+    eventTimeline.filter(slot => slot.animation === 'sequence').forEach(slot => {
+      const reverse = Number(options.direction) < 0;
+      const before = Number(slot.event?.payload?.beforeSize);
+      const after = Number(slot.event?.payload?.afterSize);
+      if (!(reverse ? after > before : before > after)) return;
+      const target = slot.event.targets?.find(item => item.role === 'target') || slot.event.targets?.[0];
+      const key = target && eventTargetKey(options.document, eventFrame, target);
+      const content = options.currentElements?.get(key)?.querySelector('.outerframe-bg')?.parentElement;
+      if (!content) return;
+      sequenceCellKeys(options.document, eventFrame, slot.event, reverse).forEach(cellKey => {
+        const oldCell = previousVisualElement(options.previousObjects, cellKey);
+        if (!oldCell) return;
+        const wrapper = createSvg('g', { class: 'asm-trace-sequence-pending-removal', 'pointer-events': 'none' });
+        const oldIndex = Number(cellKey.slice(cellKey.lastIndexOf('#') + 1));
+        const label = oldIndex >= (reverse ? before : after)
+          ? previousVisualElement(options.previousObjects, `${cellKey}:index`) : null;
+        [oldCell, ...(label ? [label] : [])].forEach(source => {
+          const clone = source.cloneNode(true);
+          removeAnimationNodes(clone);
+          [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
+            node.removeAttribute('id'); node.removeAttribute('data-trace-object-key');
+          });
+          wrapper.append(clone);
+        });
+        content.append(wrapper);
+        pendingSequenceRemovals.push({ wrapper, start: Number(slot.visualStart ?? slot.start) });
+      });
+    });
     // Destination visibility is event state, not temporary effect state.
     // Commit completed insertions even when RAF skips the exact final tick;
     // later pointer/write slots must not inherit a stale opacity of zero.
@@ -7259,6 +8802,7 @@
     const completedSequenceSlots = new Set();
     let activeSlot = null;
     let activeEffect = null;
+    let activeReadEmphasis = null;
     let activeEffectStarted = false;
     let activeAnimatedElements = [];
     let finished = false;
@@ -7286,9 +8830,10 @@
       }
       announceEvent(slot.event, phase, slot);
     }
-    function completeLogicalEventsBefore(order = Infinity) {
+    function completeLogicalEventsBefore(currentEvent = null) {
+      const cutoff = currentEvent ? logicalRank.get(currentEvent) ?? Infinity : Infinity;
       logicalEvents.forEach(event => {
-        if (!(Number(event?.order) < Number(order))) return;
+        if (!(logicalRank.get(event) < cutoff)) return;
         const id = String(event?.id || '');
         if (!id || completedLogicalEventIds.has(id)) return;
         completedLogicalEventIds.add(id);
@@ -7297,10 +8842,131 @@
     }
     function effectFor(slot) {
       if (!slot) return null;
-      const checkpoint = replayPlan.checkpoints.find(item => item.event === slot.event);
-      const visualKeyAtEvent = key => checkpoint?.visualBindingsBefore?.[key]
-        || options.visualKeyForSource?.(key)
-        || key;
+      // Share the ordinary assignment factory (selection, bitwise, array and
+      // scalar transfer). Joining initialization must not drop its sub-actions.
+      if (slot.animation === 'declare' && slot.declarationInitializerTransfer) {
+        return effectFor({ ...slot, event: slot.initializerEvent, type: 'assign', animation: 'assign',
+          initializerEvent: null, declarationInitializerTransfer: false });
+      }
+      const checkpoint = execution.checkpoint(slot.event);
+      const eventFrame = execution.frame(slot.event);
+      const visualKeyAtEvent = key => execution.visualKey(slot.event, key);
+      const markerPositionAtEvent = operand => {
+        const liveAdjustment = markerMotion.adjustments.get(operand.visualKey);
+        if (liveAdjustment) return liveAdjustment;
+        const variableId = String(operand.element?.dataset?.traceSourceVariableId || '');
+        const movedEarlier = variableChangedBeforeEvent(eventFrame, slot.event, variableId, options.document);
+        return movedEarlier ? null : options.rawDeltas?.get?.(operand.visualKey);
+      };
+      if (['assign', 'select'].includes(slot.animation) && selectionDuration(slot.event)) {
+        const event = slot.event;
+        const selections = event.selectionSteps?.length ? event.selectionSteps : [{
+          operation: event.selectionOperation, left: event.payload?.left, right: event.payload?.right,
+          targets: (event.targets || []).filter(t => String(t.role || '').startsWith('source')).slice(0, 2) }];
+        const comparisonElements = new Map(options.currentElements), comparisonPlacements = new Map(options.currentPlacements);
+        const valueHints = [];
+        const destination = (event.targets || []).find(t=>t.role==='target');
+        const destinationPoint = destination && eventOperand(options.document,eventFrame,destination,event.payload?.after,
+          options.currentPlacements,options.currentElements,visualKeyAtEvent,event)?.point
+          || { x: 160, y: 100, width: 40, height: 40 };
+        const displaySelections = selections.map((selection,step)=>({ ...selection,
+          targets: (selection.targets || []).map((target,side)=>{
+            const value = side===0 ? selection.left : selection.right;
+            if(eventOperand(options.document,eventFrame,target,value,comparisonPlacements,comparisonElements,visualKeyAtEvent,event))return target;
+            if(!destinationPoint)return target;
+            const displayTarget = target.variableId ? target : {...target,variableId:`selection-value:${event.id}:${step}:${side}`};
+            const key = eventTargetKey(options.document,eventFrame,displayTarget);
+            const x=destinationPoint.x+(side===0?-30:30),y=destinationPoint.y-60;
+            const group=createSvg('g',{class:'asm-trace-selection-value',transform:`translate(${x},${y})`,'pointer-events':'none'});
+            group.append(createSvg('text',{x:0,y:10,'text-anchor':'middle','dominant-baseline':'middle','font-size':14,fill:'#333333'},displayEventValue(value)));
+            options.root.append(group);comparisonElements.set(key,group);
+            comparisonPlacements.set(key,{x:x-10,y,width:20,height:20});valueHints.push({group,key,x,y});
+            return displayTarget;
+          }) }));
+        const comparisons = [];
+        const completedSelections = new Set();
+        const comparisonAt = index => {
+          if (comparisons[index]) return comparisons[index];
+          const selection = displaySelections[index];
+          return comparisons[index] = createCompareEffect(options.root, { ...event, type: 'compare',
+            operation: selection.operation === 'min' ? '<=' : '>=', result: true,
+            selectionPresentation: { operation: selection.operation,
+              selectedSourceRole: selection.selectedSourceRole || event.selectedSourceRole,
+              baseScale: key => selectionScales.get(key)?.scale || 1 },
+            targets: selection.targets, payload: { left: selection.left, right: selection.right } },
+            options.document, eventFrame, comparisonPlacements, comparisonElements, visualKeyAtEvent,
+            markerPositionAtEvent, element => execution.pointerTarget(element, slot.event),
+            key => execution.cellIdentity(key, slot.event));
+        };
+        const completeSelection = index => {
+          if (completedSelections.has(index)) return;
+          const comparison = comparisonAt(index);
+          comparison?.update(COMPARE_DURATION);
+          for (const target of displaySelections[index].targets || []) {
+            const operand = eventOperand(options.document, eventFrame, target, null,
+              comparisonPlacements, comparisonElements, visualKeyAtEvent, event);
+            if (!operand || operand.marker) continue;
+            const adjustment = comparison?.adjustments.get(operand.visualKey);
+            if (adjustment && Math.abs(adjustment.scale - 1) > .001) {
+              selectionScales.set(operand.visualKey, { scale: adjustment.scale, element: operand.element,
+                logicalKey: operand.logicalKey, height: operand.point.height, point: operand.point,
+                direct: selectionScales.get(operand.visualKey)?.direct });
+            }
+          }
+          comparison?.remove();
+          // Retained layout cells have no ordinary tween entry. Keep their
+          // selection presentation under the same frame-owned lifetime.
+          for (const record of selectionScales.values()) {
+            if (record.direct || !retainedSnapshotVisual(record.element)) continue;
+            const element = record.element;
+            const matrix = element.transform?.baseVal?.consolidate?.()?.matrix;
+            record.direct = { transform: element.getAttribute('transform'),
+              base: matrix ? new DOMMatrix([matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f]) : new DOMMatrix(),
+              center: { x: record.point.x, y: record.point.y + record.point.height / 2 },
+              textSize: preserveCellTextSize(element, true) };
+          }
+          completedSelections.add(index);
+        };
+        const hint = createSvg('text', { class: 'asm-trace-selection-label', x: 20, y: 24,
+          'font-size': 16, 'font-weight': 'bold', fill: '#333333', 'pointer-events': 'none' }, selections[0].operation);
+        options.root.append(hint);
+        let assignment = null;
+        return {
+          get adjustments() { return assignment?.adjustments || comparisons.find(c=>c?.adjustments?.size)?.adjustments || new Map(); },
+          get markerArrowOffsets() { return comparisons.find(c=>c?.markerArrowOffsets?.size)?.markerArrowOffsets || new Map(); },
+          syncPosition() { comparisons.forEach(comparison => comparison?.syncPosition?.()); assignment?.syncPosition?.(); },
+          update(elapsed) {
+            const selectionMs = selectionDuration(event);
+            if (elapsed < selectionMs) {
+              const index = Math.min(selections.length - 1, Math.floor(elapsed / COMPARE_DURATION));
+              for (let i = 0; i < index; i++) completeSelection(i);
+              hint.textContent = selections[index].operation;
+              comparisonAt(index)?.update(elapsed - index * COMPARE_DURATION);
+              valueHints.forEach(({group,key,x,y})=>{const delta=comparisons[index]?.adjustments?.get(key);group.setAttribute('transform',`translate(${x+(delta?.x||0)},${y+(delta?.y||0)})`);});
+            }
+            else {
+              for (let i = 0; i < selections.length; i++) completeSelection(i);
+              hint.remove();
+              valueHints.forEach(v=>v.group.remove());
+              if (slot.animation === 'select') return;
+              if (!assignment) {
+                const selected = (event.targets || []).find(t => t.role === event.selectedSourceRole);
+                const computing = Boolean(event.selectionSteps?.length);
+                assignment = createAssignEffect(options.root, { ...event,
+                  selectionOperation: null, selectionSteps: [], semantics: { ...event.semantics, kind: computing ? 'compute' : 'copy' },
+                  targets: computing ? event.targets : [...(event.targets || []).filter(t => t.role === 'target'), ...(selected ? [selected] : [])] },
+                  options.document, eventFrame, options.currentPlacements, options.currentElements,
+                  options.rawDeltas, options.appearingKeys, options.previousObjects, visualKeyAtEvent);
+              }
+              assignment?.update(elapsed - selectionMs);
+            }
+          },
+          remove() {
+            if (slot.animation === 'select') for (let i=0;i<selections.length;i++) completeSelection(i);
+            comparisons.forEach(c=>c?.remove()); assignment?.remove(); valueHints.forEach(v=>v.group.remove()); hint.remove();
+          }
+        };
+      }
       if (slot.type === 'compare') {
         if (slot.event?.comparisonKind === 'truthy') {
           return createTruthyCompareEffect(
@@ -7308,37 +8974,13 @@
             options.currentPlacements, options.currentElements, visualKeyAtEvent
           );
         }
-        const markerPositionAtCompare = operand => {
-          const liveAdjustment = markerMotion.adjustments.get(operand.visualKey);
-          if (liveAdjustment) return liveAdjustment;
-          const variableId = String(operand.element?.dataset?.traceSourceVariableId || '');
-          const movedEarlier = variableChangedBeforeEvent(eventFrame, slot.event, variableId);
-          return movedEarlier ? null : options.rawDeltas?.get?.(operand.visualKey);
-        };
         return createCompareEffect(
           options.root, slot.event, options.document, eventFrame,
           options.currentPlacements, new Map([...options.currentElements,
             ...(options.comparisonExitMarkers || new Map())]), visualKeyAtEvent,
-          markerPositionAtCompare,
-          element => markerTargetAtCheckpoint(options.document, eventFrame, element, checkpoint)
-        );
-      }
-      if (slot.animation === 'declare' && slot.declarationInitializerTransfer) {
-        const initializer = slot.initializerEvent;
-        if (!initializer) return null;
-        const assignmentElements = new Map([
-          ...(options.previousObjects || new Map()),
-          ...(options.currentElements || new Map())
-        ]);
-        const assignmentPlacements = new Map([
-          ...(options.previousPlacements || new Map()),
-          ...(options.currentPlacements || new Map())
-        ]);
-        return createDeclarationInitializerEffect(
-          options.root, initializer, options.document, eventFrame,
-          assignmentPlacements, assignmentElements, options.rawDeltas,
-          options.appearingKeys, options.previousObjects, visualKeyAtEvent,
-          options.currentElements
+          markerPositionAtEvent,
+          element => execution.pointerTarget(element, slot.event),
+          key => execution.cellIdentity(key, slot.event)
         );
       }
       if (slot.animation === 'assign') {
@@ -7358,11 +9000,16 @@
           ...(options.previousPlacements || new Map()),
           ...(options.currentPlacements || new Map())
         ]);
+        if (Array.isArray(slot.event?.payload?.after?.items)) {
+          return createDeclarationInitializerEffect(options.root, slot.event, options.document, eventFrame,
+            assignmentPlacements, assignmentElements, options.rawDeltas, options.appearingKeys,
+            options.previousObjects, visualKeyAtEvent, options.currentElements);
+        }
         const assignment = createAssignEffect(
           options.root, slot.event, options.document, eventFrame,
           assignmentPlacements, assignmentElements, options.rawDeltas,
           options.appearingKeys, options.previousObjects, visualKeyAtEvent,
-          options.currentElements
+          options.currentElements, slot.fieldReplacements || []
         );
         const shift = Number(options.direction) < 0 ? null : bitShiftEffects.get(slot) || createBitShiftEffect(
           slot.event, options.document, eventFrame, options.currentElements, options.previousObjects
@@ -7389,7 +9036,7 @@
           sequenceEffects.set(slot, createSequenceOperationEffect(
             options.root, slot, options.document, eventFrame,
             sequencePlacements, sequenceElements, options.previousObjects,
-            visualKeyAtEvent, Number(options.direction) < 0
+            visualKeyAtEvent, Number(options.direction) < 0, options.previousPlacements
           ));
         }
         return sequenceEffects.get(slot) || null;
@@ -7403,11 +9050,10 @@
       return null;
     }
     function animatedElementsFor(slot) {
-      const checkpoint = replayPlan.checkpoints.find(item => item.event === slot.event);
-      const visualKeyAtEvent = key => checkpoint?.visualBindingsBefore?.[key]
-        || options.visualKeyForSource?.(key) || key;
       const targetEvent = slot.declarationInitializerTransfer && slot.initializerEvent
         ? slot.initializerEvent : slot.event;
+      const eventFrame = execution.frame(targetEvent);
+      const visualKeyAtEvent = key => execution.visualKey(targetEvent, key);
       return (targetEvent?.targets || []).map((target,index) => eventOperand(
         options.document, eventFrame, target, targetEvent.type === 'compare'
           ? (index === 0 ? targetEvent.payload?.left : targetEvent.payload?.right) : null,
@@ -7417,10 +9063,15 @@
     return {
       get adjustments() { return combinedAdjustments; },
       get animatedElements() { return activeAnimatedElements; },
-      get markerArrowOffsets() { return activeEffect?.markerArrowOffsets || new Map(); },
+      get markerArrowOffsets() {
+        const offsets = new Map(activeEffect?.markerArrowOffsets || []);
+        selectionMarkerOffsets.forEach((extra,key)=>{ const previous=offsets.get(key)||{x:0,y:0,targetX:0,targetY:0};
+          offsets.set(key,{...previous,y:previous.y+extra.y}); });
+        return offsets;
+      },
       get markerArrowStates() {
         const states = new Map(markerMotion.arrowStates);
-        activeEffect?.markerArrowOffsets?.forEach((offset, key) => {
+        this.markerArrowOffsets.forEach((offset, key) => {
           const state = states.get(key);
           if (!state) return;
           states.set(key, { ...state,
@@ -7432,8 +9083,13 @@
         return states;
       },
       get markerTargets() { return markerMotion.committedTargets; },
+      get outgoingMarkerKeys() { return markerMotion.outgoingKeys; },
+      get pointerMotionDuration() { return markerMotion.duration || 0; },
       get opacities() {
         const states = new Map(committedSequenceOpacities);
+        visibleFieldClears.forEach(({ key, slot }) => {
+          if (presentationElapsed < slot.end) states.set(key, 1);
+        });
         activeEffect?.opacities?.forEach((value, key) => states.set(key, value));
         return states;
       },
@@ -7441,8 +9097,25 @@
       ownsPaint(rect) { return forwardValues.ownsPaint(rect); },
       syncPositions() { activeEffect?.syncPosition?.(); },
       update(elapsed) {
+        if (finished) return;
+        presentationElapsed = elapsed;
+        // Resolve each new operation against untransformed snapshot geometry;
+        // apply the composed presentation once, after all event adjustments.
+        selectionScales.forEach(record => {
+          if (!record.direct) return;
+          if (record.direct.transform == null) record.element.removeAttribute('transform');
+          else record.element.setAttribute('transform', record.direct.transform);
+          record.direct.textSize?.update(1);
+        });
         markerMotion.update(elapsed);
-        if (!announcementsReady) return;
+        if (!announcementsReady) {
+          // Publish the initial event-state positions before any nonzero
+          // entrance opacity can be painted. Announcements wait for callers
+          // to attach listeners; pointer geometry must not wait with them.
+          combinedAdjustments.clear();
+          markerMotion.adjustments.forEach((value, key) => combinedAdjustments.set(key, value));
+          return;
+        }
         eventTimeline.forEach(item => {
           if (item.animation !== 'sequence' || elapsed < item.end
             || completedSequenceSlots.has(item)) return;
@@ -7466,20 +9139,21 @@
         if (slot !== activeSlot) {
           announce(activeSlot, 'end');
           activeEffect?.remove?.();
+          activeReadEmphasis?.remove(); activeReadEmphasis = null;
           activeSlot = slot;
           activeEffect = null;
           activeEffectStarted = false;
           activeAnimatedElements = [];
           if (slot) {
-            completeLogicalEventsBefore(slot.event?.order);
+            completeLogicalEventsBefore(slot.event);
             options.root.dataset.traceActiveEventId = String(slot.event?.id || '');
             options.root.dataset.traceActiveEventType = String(slot.type || '');
             announce(slot, 'start');
             if (slot.animation === 'assign' && (slot.event?.bitShift || slot.event?.bitwise)
               && Number(options.direction) >= 0 && !bitShiftEffects.has(slot)) {
               const effect = slot.event.bitwise
-                ? createBitwiseEffect(slot.event, options.document, eventFrame, options.currentElements)
-                : createBitShiftEffect(slot.event, options.document, eventFrame,
+                ? createBitwiseEffect(slot.event, options.document, execution.frame(slot.event), options.currentElements)
+                : createBitShiftEffect(slot.event, options.document, execution.frame(slot.event),
                   options.currentElements, options.previousObjects);
               if (effect) { effect.update(0); bitShiftEffects.set(slot, effect); }
             }
@@ -7487,7 +9161,7 @@
             const nextSlot = eventTimeline.find(item => (
               elapsed < Number(item.promptStart ?? item.start)
             )) || null;
-            completeLogicalEventsBefore(nextSlot?.event?.order ?? Infinity);
+            completeLogicalEventsBefore(nextSlot?.event);
             delete options.root.dataset.traceActiveEventId;
             delete options.root.dataset.traceActiveEventType;
           }
@@ -7495,14 +9169,37 @@
         if (slot && !activeEffectStarted && elapsed >= Number(slot.visualStart ?? slot.start)) {
           activeEffectStarted = true;
           activeEffect = effectFor(slot);
+          const checkpoint = replayPlan.checkpoints.find(item => item.event === slot.event);
+          const readElements = new Map([...(options.previousObjects || new Map()), ...options.currentElements]);
+          readElements.forEach((element, key) => {
+            if (element?.isConnected) return;
+            const connected = options.root.querySelector(`[data-trace-object-key="${CSS.escape(key)}"]`);
+            if (connected) readElements.set(key, connected);
+          });
+          const readEvent = slot.initializerEvent || slot.event;
+          activeReadEmphasis = createReadEmphasis(options.root, readEvent, options.document, execution.frame(readEvent),
+            new Map([...(options.previousPlacements || new Map()), ...options.currentPlacements]), readElements,
+            key => execution.visualKey(readEvent, key),
+            options.appearingKeys, options.previousObjects);
           if (activeEffect) activeAnimatedElements = animatedElementsFor(slot);
         }
+        pendingSequenceRemovals.forEach(item => {
+          if (elapsed >= item.start) item.wrapper.remove();
+        });
         if (slot && activeEffect) activeEffect.update(Math.max(0, elapsed - (slot.effectStart ?? slot.start)));
+        if (slot) activeReadEmphasis?.update?.(Math.max(0, elapsed - (slot.effectStart ?? slot.start)));
         // The DOM is rendered from the destination frame, but visible values
         // are always committed by the forward checkpoint stream. A later
         // event can therefore never leak its final value into an earlier one.
         forwardValues.update(elapsed);
+        activeEffect?.afterReplay?.();
         combinedAdjustments.clear();
+        const restore = options.selectionRestore;
+        const restoreProgress = restore
+          ? easeOutCubic(clamp01((elapsed - restore.start) / restore.duration)) : 0;
+        selectionScales.forEach((record, key) => combinedAdjustments.set(key, {
+          x: 0, y: 0, scale: record.scale + (1 - record.scale) * restoreProgress
+        }));
         markerMotion.adjustments.forEach((value, key) => combinedAdjustments.set(key, value));
         activeEffect?.adjustments?.forEach?.((value, key) => {
           const existing = combinedAdjustments.get(key);
@@ -7510,10 +9207,40 @@
             ? {
               x: (Number(existing.x) || 0) + (Number(value.x) || 0),
               y: (Number(existing.y) || 0) + (Number(value.y) || 0),
-              scale: Number(value.scale) || Number(existing.scale) || 1,
+              scale: activeSlot?.event?.selectionOperation ? Number(value.scale) || Number(existing.scale) || 1
+                : (Number(value.scale) || 1) * (Number(existing.scale) || 1),
               absolute: existing.absolute === true
             }
             : value);
+        });
+        selectionScales.forEach((record, key) => {
+          if (!record.direct || !record.element.isConnected) return;
+          const rootMatrix = options.root.getScreenCTM();
+          const parentMatrix = record.element.parentElement?.getScreenCTM();
+          if (!rootMatrix || !parentMatrix) return;
+          const asMatrix = matrix => new DOMMatrix([matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f]);
+          const parentToRoot = asMatrix(rootMatrix).inverse().multiply(asMatrix(parentMatrix));
+          const adjustment = combinedAdjustments.get(key) || { x: 0, y: 0, scale: record.scale };
+          const center = record.direct.center;
+          const motion = new DOMMatrix().translate(center.x + adjustment.x, center.y + adjustment.y)
+            .scale(adjustment.scale).translate(-center.x, -center.y);
+          const local = parentToRoot.inverse().multiply(motion).multiply(parentToRoot).multiply(record.direct.base);
+          record.element.setAttribute('transform', `matrix(${local.a} ${local.b} ${local.c} ${local.d} ${local.e} ${local.f})`);
+          record.direct.textSize?.update(adjustment.scale);
+        });
+        selectionMarkerOffsets.clear();
+        options.currentElements?.forEach((element,key)=>{
+          if (!element.dataset?.traceSourceVariableId) return;
+          const target = markerMotion.committedTargets.get(key) || element.dataset.traceBindingTarget;
+          const recordEntry = [...selectionScales].find(([visual,record])=>visual===target || record.logicalKey===target);
+          if (!recordEntry) return;
+          const [cellKey,record] = recordEntry;
+          const combined = combinedAdjustments.get(cellKey)?.scale || record.scale;
+          const active = activeEffect?.adjustments?.get(cellKey)?.scale || 1;
+          const y = record.height * (active-combined)/2;
+          const previous = combinedAdjustments.get(key)||{x:0,y:0,scale:1};
+          combinedAdjustments.set(key,{...previous,y:previous.y+y});
+          selectionMarkerOffsets.set(key,{y});
         });
       },
       finish() {
@@ -7521,12 +9248,22 @@
         finished = true;
         const announceCompletion = () => {
           announce(activeSlot, 'end');
-          completeLogicalEventsBefore(Infinity);
+          completeLogicalEventsBefore();
         };
         if (announcementsReady) announceCompletion();
         else queueMicrotask(announceCompletion);
         activeEffect?.remove?.();
+        selectionScales.forEach(record => {
+          if (!record.direct) return;
+          if (record.direct.transform == null) record.element.removeAttribute('transform');
+          else record.element.setAttribute('transform', record.direct.transform);
+          record.direct.textSize?.remove();
+        });
+        selectionScales.clear();
+        selectionMarkerOffsets.clear();
+        activeReadEmphasis?.remove(); activeReadEmphasis = null;
         sequenceEffects.forEach(effect => effect.remove());
+        pendingSequenceRemovals.forEach(item => item.wrapper.remove());
         bitShiftEffects.forEach(effect => effect.remove());
         bitShiftEffects.clear();
         activeEffect = null;
@@ -7749,7 +9486,7 @@
     const rowHeight = Number(content.dataset.rowHeight) || 40;
     const colWidth = Number(content.dataset.colWidth) || 40;
     const index = content.querySelector('[data-trace-index-label]') || rowHeight >= 52 ? 1 : 0;
-    const columns = Number(content.dataset.itemsPerRow);
+    const columns = Number(content.dataset.outerframeColumns ?? content.dataset.itemsPerRow);
     window.draw_array_normal(group, name, Array(Math.max(0, size)).fill(''), [],
       [0, size - 1], Number.isFinite(columns) && columns > 0 ? columns : Infinity,
       index, { horizontal: Math.max(0, colWidth - 40), vertical: Math.max(0, rowHeight - 40 - (index ? 12 : 0)) });
@@ -7899,10 +9636,15 @@
       }
     });
     let resolveRun = null;
+    let directivePresentation = null;
     const completion = new Promise(resolve => { resolveRun = resolve; });
+    currentCompletion = completion;
+    playbackPaused = false;
     const finishRun = () => {
       if (!resolveRun) return;
       animationEffectLayer.clear();
+      directivePresentation?.remove();
+      [...cellTextScaleControllers].forEach(controller => controller.remove(runId !== activeRun));
       newArrows.forEach(({ element }) => {
         const tween = element._asmArrowTween;
         if (tween) {
@@ -7920,6 +9662,7 @@
       const resolve = resolveRun;
       resolveRun = null;
       if (finishActiveRun === finishRun) finishActiveRun = null;
+      if (currentCompletion === completion) currentCompletion = null;
       resolve();
     };
     finishActiveRun = finishRun;
@@ -7985,7 +9728,12 @@
     const recursiveContinuations = recursiveRoleContinuations(
       traceDocument, options.previousFrame, frame, previousObjects, currentElements
     );
-    const continuingKeys = new Set(recursiveContinuations.keys());
+    const referenceContinuations = referenceContainerContinuations(
+      traceDocument, options.previousFrame, frame, previousObjects, currentElements
+    );
+    // Container continuity is not pointer-role continuity: a callee's local
+    // index still owns its own lifetime and declaration entrance.
+    const continuingKeys = new Set([...recursiveContinuations.keys(), ...referenceContinuations.keys()]);
     // A layout may expose its newest snapshot under the live alias in the
     // element map. Lifecycle ownership must still inspect the live DOM slot.
     const liveAuthoredSlots = new Set([...root.querySelectorAll('[data-trace-authored-continuity]')]
@@ -8135,6 +9883,15 @@
     });
     const markerReflowKeys = new Set();
     if (canonicalPointersOnly) {
+      const topologyEntries=pointerTransitions.flatMap(transition=>{
+        const entry=transition.current||transition.previous;
+        return entry?[{key:entry.key,element:entry.element,
+          previousTarget:transition.previous?.state?.targetKey||''}]:[];
+      });
+      const execution=createExecutionContext(traceDocument,eventFrame,
+        createForwardReplayPlan(traceDocument,eventFrame,provisionalEventTimeline));
+      pointerEventReflowKeys(traceDocument,eventFrame,presentationEvents(traceDocument,eventFrame),execution,topologyEntries)
+        .forEach(key=>eventControlledKeys.add(key));
       pointerTransitions.forEach(transition => {
         if (transition.type !== window.ASMTracePointerModel.transitions.REFLOW
           || !transition.current?.key
@@ -8212,8 +9969,11 @@
       keepTransitionDurationMs: keepTransitionDuration,
       cameraTransitionDurationMs: options.cameraTransitionDurationMs
     });
+    const lifecycleFrame = Number(options.direction) > 0
+      ? visualSequenceFrame(eventFrame, options.previousFrame, currentElements, previousPlacements, previousObjects)
+      : eventFrame;
     const regularEventTimeline = buildEventTimeline(
-      traceDocument, eventFrame, options.direction, duration,
+      traceDocument, lifecycleFrame, options.direction, duration,
       previousPlacements, currentPlacements, currentElements,
       Math.max(preEventPlan.preEventDurationMs, markerReflowDuration),
       previousObjects, event => event?.preKeepExit !== true,
@@ -8276,7 +10036,12 @@
       initialDelayMs: initialDelay,
       keepTransitionKeys,
       keepTransitionDurationMs: keepTransitionDuration,
-      cameraTransitionDurationMs: options.cameraTransitionDurationMs
+      cameraTransitionDurationMs: options.cameraTransitionDurationMs,
+      // 最後一幀沒有後續事件，跳幀與反向也不應額外等待。
+      eventGapAfterMs: options.direction > 0
+        && (traceDocument.frames || []).some((candidate, index, frames) =>
+          candidate.id === frame.id && index < frames.length - 1)
+        ? eventGap(traceDocument) : 0
     });
     const forwardReplayPlan = createForwardReplayPlan(
       traceDocument, eventFrame, eventTimeline, options.direction
@@ -8398,6 +10163,9 @@
       const current = motionPosition(element, currentPlacement);
       const plan = transitionForKey?.(key) || { mode: 'move', sourceKey: key, duration };
       const swap = swapMap.get(key);
+      // The same event clock owns both the state commit and cell travel.
+      // A generic frame transition must not leave a swap moving past commit.
+      if (swap) plan.duration = swap.duration;
       const markerContinuation = markerContinuations.get(key);
       const useMarkerContinuation = markerContinuation
         && !redeclaredMarkerKeys.has(key)
@@ -8471,6 +10239,9 @@
         && !retainedSnapshot
         && !objectLabelOwnerContinues
         && !runtimeOwnerContinues
+        // Semantic continuation owns the whole hierarchy, including its
+        // frame/name/index; do not preserve only the inner cell positions.
+        && !continuingKeys.has(key)
         && !sameDataCellContinuity(element, candidatePreviousVisual)
         && !sameSceneGeneration(element, candidatePreviousVisual);
       const sceneActivationChanged = key === topKey
@@ -8574,6 +10345,26 @@
 
     const entriesByKey = new Map(entries.map(entry => [entry.key, entry]));
     entries.forEach(entry => {
+      if (entry.recursionGrowth) entry.recursionDeclarationClock = recursionDeclarationClock(
+        entry.element, entry.recursionGrowth, eventFrame, eventTimeline
+      );
+      if (entry.recursionDeclarationClock && !entry.recursionDeclarationClock.instant) {
+        const parent = currentElements.get(entry.recursionGrowth.parentKey);
+        const parentBox = parent && window.ASMArrowModel?.presentedBounds?.(parent, root, true);
+        const childBox = window.ASMArrowModel?.presentedBounds?.(entry.element, root, true);
+        if (parentBox && childBox) {
+          const old = rawDeltas.get(entry.key) || { x: 0, y: 0 };
+          const dx = parentBox.x + parentBox.width / 2 - childBox.x - childBox.width / 2 - old.x;
+          const dy = parentBox.y + parentBox.height / 2 - childBox.y - childBox.height / 2 - old.y;
+          // 先以父節點終點建立相對路徑，每個 tick 再加上父節點尚未完成的位移。
+          entries.filter(child => child.topKey === entry.key).forEach(child => {
+            const raw = rawDeltas.get(child.key) || { x: 0, y: 0 };
+            rawDeltas.set(child.key, { x: raw.x + dx, y: raw.y + dy });
+          });
+        }
+      }
+    });
+    entries.forEach(entry => {
       entry.isIndexLabel = entry.element?.hasAttribute?.('data-trace-index-label') === true;
       entry.indexLabelEntrance = indexLabelGrowthCandidate(
         entry, previousPlacements, previousObjects
@@ -8585,6 +10376,11 @@
         && !declarationSchedule.slotsByKey.has(entry.key);
       const topEntry = entriesByKey.get(entry.topKey);
       const structuralGrowth = Boolean(topEntry?.recursionGrowth || topEntry?.keepGrowth);
+      entry.recursionDeclarationClock = topEntry?.recursionDeclarationClock || null;
+      if (entry.recursionDeclarationClock) {
+        entry.motionDelay = entry.recursionDeclarationClock.start;
+        if (entry.recursionDeclarationClock.instant) { entry.dx = entry.dy = 0; entry.mode = 'instant'; }
+      }
       // Reference parameters can give the same container a new source key in
       // another function/recursion. The top-level runtime identity still
       // proves continuity, but a nested cell may have no independently keyed
@@ -8684,6 +10480,16 @@
       } catch (error) {
         entry.compareCenter = { x: 0, y: 0 };
       }
+      if (entry.recursionGrowth) {
+        // 以主體外框為生長中心，point／mark 等裝飾不能移動縮放樞紐。
+        const geometry = outerframeGeometry(entry.element);
+        if (geometry?.bounds) try {
+          const [left, top, right, bottom] = geometry.bounds;
+          const transform = entry.target.getCTM().inverse().multiply(geometry.group.getCTM());
+          const center = new DOMPoint((left + right) / 2, (top + bottom) / 2).matrixTransform(transform);
+          entry.structuralCenter = { x: center.x, y: center.y };
+        } catch (_error) { /* 無可測量幾何時沿用原有中心。 */ }
+      }
       entry.rects = visualRects(entry.element);
       entry.indexLabelGeometry = entry.indexLabelEntrance
         ? indexLabelGrowthGeometry(entry.element) : null;
@@ -8742,6 +10548,7 @@
         ? alignedRectStates(previousVisual, entry.element, entry.topKey)
         : (previousTop ? rectStates(previousTop, entry.topKey) : new Map());
       entry.currentRectStates = rectStates(entry.element, entry.topKey);
+      entry.textSize = entry.lifecycleKind === 'marker' ? null : preserveCellTextSize(entry.target);
       entry.geometryTransition = outerframeGeometryChanged(
         entry.previousOuterframeGeometry, entry.currentOuterframeGeometry
       ) || (entry.previousSegmentGeometry && entry.currentSegmentGeometry
@@ -8966,12 +10773,16 @@
         .map(id => options.document?.variables?.[id]?.name).filter(Boolean) : [];
       const markerSlots = markerVisual ? playbackEventTimeline.filter(slot =>
         markerLifetimeActiveAtEvent(eventFrame, slot.event, markerVisual)
-        && (['assign','position'].includes(slot.animation)
-          ? slot.event?.targets?.some(target => markerMatchesEventTarget(markerVisual, target))
-          : slot.type === 'compare' && slot.event?.targets?.some(target => {
-            const indexName = String(target.expression || '').match(/\[\s*([A-Za-z_]\w*)\s*\]$/)?.[1];
-            return markerNames.includes(indexName);
-          }))) : [];
+        && slot.event?.targets?.some(target => {
+          if (['assign','position'].includes(slot.animation)
+            && markerMatchesEventTarget(markerVisual, target)) return true;
+          // A disappearing binding may still supply an index to a later
+          // copy/push/assignment. Keep it through that operation, not merely
+          // through the last comparison. Index expressions also cover i+1.
+          const index = String(target.indexExpression ||
+            (String(target.expression || '').match(/\[[^\]]*\]/g) || []).join(' '));
+          return (index.match(/[A-Za-z_]\w*/g) || []).some(name => markerNames.includes(name));
+        })) : [];
       ghosts.push({
         wrapper,
         comparisonKey: `compare-removed:${key}`,
@@ -8983,7 +10794,8 @@
         markerKeepArrowVertical: Number(markerGeometry?.width) > (Number(markerVisual?.dataset?.traceMarkerBaseCellWidth) || 40) + 0.5,
         comparisonRemovalStart: markerSlots.length ? Math.max(...markerSlots.map(slot => slot.end)) : 0,
         assignmentSchedule: previousMarkerAssignmentSchedule({traceDocument: options.document,
-          eventFrame, eventTimeline: playbackEventTimeline, visual: markerVisual, placements: currentPlacements}),
+          eventFrame, eventTimeline: playbackEventTimeline, visual: markerVisual,
+          placements: new Map([...(previousPlacements || new Map()), ...currentPlacements])}),
         scopeExitSlot: null,
         lifecycleKind: visualLifecycleKind(clone),
         retainedByEnteringKeep,
@@ -8999,6 +10811,7 @@
     // must not lower an exiting label beneath the retained cells or arrows.
     const pointerLayer = root.querySelector(':scope > .asm-trace-pointer-layer');
     if (pointerLayer) ghosts.filter(item => item.markerVisual).forEach(item => pointerLayer.append(item.wrapper));
+    ghosts.forEach(item => { item.textSize = item.markerVisual ? null : preserveCellTextSize(item.wrapper); });
 
     const appearingKeys = new Set(entries.filter(entry => entry.appearing).map(entry => entry.key));
     // Convert verified visual movement into internal playback events. Runtime
@@ -9006,7 +10819,7 @@
     // movement can occur in an eventless authored frame. Consumers such as
     // style timing only read these events and never repeat the geometry test.
     const visualMoveEvents = entries.flatMap(entry => {
-      if (!entry.previous || entry.appearing) return [];
+      if (!entry.previous || entry.appearing || entry.recursionDeclarationClock?.instant) return [];
       const raw = rawDeltas.get(entry.key) || { x: 0, y: 0 };
       const distance = Math.hypot(Number(raw.x) || 0, Number(raw.y) || 0);
       const visiblyMoves = distance > 0.5
@@ -9015,7 +10828,8 @@
       if (!visiblyMoves) return [];
       const durationMs = Math.max(
         1,
-        Number(entry.sequenceMotionSlot?.duration)
+        Number(entry.recursionDeclarationClock?.duration)
+          || Number(entry.sequenceMotionSlot?.duration)
           || Number(entry.declarationReflow?.duration)
           || Number(entry.exitReflow?.duration)
           || Number(entry.markerGroupReflowDuration)
@@ -9084,8 +10898,39 @@
         endMs
       );
     }
+    // Reverse playback uses the outgoing frame for motion events only. The
+    // follow plan also supplies styleFrameAt() when there are no follow records;
+    // seed it from the destination so it cannot restore outgoing fixed marks.
+    const directiveFrame = Number(options.direction) < 0 ? frame : eventFrame;
+    const directiveFollowPlan = createDirectiveFollowPlan(traceDocument, directiveFrame,
+      forwardReplayPlan, playbackEventTimeline, options.direction);
+    directivePresentation = window.ASMTraceRenderers?.createDirectivePresenter?.(
+      traceDocument, frame, root, currentPlacements, currentElements, directiveFollowPlan.records);
+    directivePresentation?.update(0);
+    playbackPlan.directiveCheckpoints = directiveFollowPlan.records.map(record => ({
+      kind: record.kind, id: record.descriptor.id, variableIds: record.ids,
+      steps: record.steps.map(({ before, after, ...step }) => step)
+    }));
+    playbackPlan.totalDurationMs = Math.max(playbackPlan.totalDurationMs,
+      ...directiveFollowPlan.records.flatMap(record => record.steps.map(step => step.end)));
+    const selectionRestore = { start: Infinity, duration: COMPARE_TIMING.reset };
     const events = eventSequence({
       ...options,
+      selectionRestore,
+      directiveFollowPlan,
+      outgoingPointerEntries: ghosts.filter(item => item.markerVisual && !item.retainedByEnteringKeep
+        && !entries.some(entry=>entry.element?.dataset?.tracePointerInstanceId
+          && entry.element.dataset.tracePointerInstanceId===item.markerVisual.dataset.tracePointerInstanceId))
+        .map(item=>{
+          const start=Math.max(removedVisualStartMs(item.lifecycleKind,initialDelay,keepSettlementDuration)
+            +(item.backgroundHandoff?HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION:0),Number(item.comparisonRemovalStart)||0);
+          return {key:item.comparisonKey,element:item.markerVisual,previousVisual:item.markerVisual,
+            markerPointPath:item.markerPointPath,markerLabelBox:item.markerLabelBox,outgoing:true,
+            exitStart:item.scopeExitSlot ? Number(item.scopeExitSlot.start) : start,
+            topologyExitSlot:item.scopeExitSlot?null:{event:{id:`pointer-view-exit:${item.comparisonKey}`,type:'visual-exit',presentationOnly:true,
+              targets:markerSourceVariableIds(item.markerVisual).map(variableId=>({variableId,role:'target'}))},
+              animation:'exit',start,visualStart:start,motionStart:start,end:start+APPEAR_TIMING.duration,exitDuration:APPEAR_TIMING.duration}};
+        }),
       comparisonExitMarkers: new Map(ghosts.filter(item => item.markerVisual)
         .map(item => [item.comparisonKey, item.markerVisual])),
       rawDeltas,
@@ -9111,19 +10956,22 @@
     const motionDuration = entries.reduce((end, entry) => {
       const localDuration = Math.max(
           1,
-          Number(entry.sequenceMotionSlot?.duration)
+          Number(entry.recursionDeclarationClock?.duration)
+          || Number(entry.sequenceMotionSlot?.duration)
           || Number(entry.declarationReflow?.duration)
           || Number(entry.exitReflow?.duration)
           || Number(entry.markerGroupReflowDuration)
           || Number(entry.plan?.duration)
           || duration
       );
-      const normalEnd = entry.motionDelay + localDuration;
+      const movement = visualMoveEvents.find(event => event.id === `visual-move:${entry.key}`);
+      const normalEnd = movement ? Number(movement.endMs) || 0 : 0;
       const appearanceEnd = entry.appearing
         ? entry.appearanceStart + Math.min(APPEAR_TIMING.duration, localDuration)
         : 0;
       return Math.max(end, normalEnd, appearanceEnd);
-    }, duration);
+    }, newArrows.length || ghosts.some(ghost => ghost.recursionRetraction)
+      ? frameTransitionStart + duration : 0);
     const backgroundHandoffDuration = ghosts.reduce((end, ghost) => {
       if (!ghost.backgroundHandoff) return end;
       const start = removedVisualStartMs(
@@ -9132,19 +10980,68 @@
       return Math.max(end, start + HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION
         + APPEAR_TIMING.duration);
     }, 0);
-    const totalDuration = Math.max(
+    // An outbound index update still owns a visible movement slot even when
+    // the destination frame omits that pointer. Its fade follows the update,
+    // including when the user explicitly chooses a zero event gap.
+    const outboundMarkerExitEnd = ghosts.reduce((end, ghost) => (
+      ghost.markerVisual && !ghost.scopeExitSlot && !ghost.retainedByEnteringKeep
+        ? Math.max(end, (Number(ghost.comparisonRemovalStart) || 0) + APPEAR_TIMING.duration)
+        : end
+    ), 0);
+    if (outboundMarkerExitEnd > playbackPlan.totalDurationMs) {
+      const start = Math.max(0, outboundMarkerExitEnd - APPEAR_TIMING.duration);
+      playbackPlan.phases.push({ id: 'outbound-pointer-exit', startMs: start,
+        endMs: outboundMarkerExitEnd, durationMs: APPEAR_TIMING.duration,
+        steps: [{ id: 'outbound-pointer-exit', kind: 'visual-exit', startMs: start,
+          endMs: outboundMarkerExitEnd, durationMs: APPEAR_TIMING.duration,
+          blocking: true, enabled: true }] });
+      playbackPlan.totalDurationMs = outboundMarkerExitEnd;
+    }
+    // A delayed pointer entrance can outlive the last runtime event. Its
+    // peer reflow remains part of the shared completion/phase contract.
+    const pointerMotionEnd = Number(events?.pointerMotionDuration) || 0;
+    if (pointerMotionEnd > playbackPlan.totalDurationMs) {
+      const start = Number(playbackPlan.totalDurationMs) || 0;
+      playbackPlan.phases.push({ id: 'pointer-group-settlement', mode: 'parallel',
+        startMs: start, durationMs: pointerMotionEnd - start, steps: [{
+          id: 'pointer-group-settlement', kind: 'marker-reflow', startMs: start,
+          endMs: pointerMotionEnd, durationMs: pointerMotionEnd - start,
+          blocking: true, enabled: true
+        }] });
+      playbackPlan.totalDurationMs = pointerMotionEnd;
+    }
+    const frameSettlementEnd = Math.max(
+      pointerMotionEnd,
+      outboundMarkerExitEnd,
       eventTimelineDuration,
       motionDuration,
       backgroundHandoffDuration,
       playbackPlan.totalDurationMs
     );
+    // Selection emphasis belongs to the frame, including a blocking smooth
+    // restoration after its final operation and any other visual settlement.
+    const restoresSelection = playbackEventTimeline.some(slot =>
+      ['assign', 'select'].includes(slot.animation) && selectionDuration(slot.event) > 0);
+    selectionRestore.start = restoresSelection ? frameSettlementEnd : Infinity;
+    const totalDuration = frameSettlementEnd + (restoresSelection ? selectionRestore.duration : 0);
+    if (restoresSelection) {
+      playbackPlan.phases.push({ id: 'selection-scale-restore', mode: 'parallel',
+        startMs: frameSettlementEnd, endMs: totalDuration, durationMs: selectionRestore.duration,
+        steps: [{ id: 'selection-scale-restore', kind: 'selection-scale-restore',
+          startMs: frameSettlementEnd, endMs: totalDuration, durationMs: selectionRestore.duration,
+          blocking: true, enabled: true }] });
+      playbackPlan.totalDurationMs = totalDuration;
+    }
+    const eventPresentationEnd = restoresSelection ? totalDuration : styleTimelineDuration;
     let previousTick = performance.now();
     let elapsed = 0;
     let codeTransitionElapsed = 0;
     let animationElapsed = 0;
+    let rateSlot = null;
+    let sampledRate = animationPlaybackRate();
     function tick(now) {
       if (runId !== activeRun) return;
-      if (document.hidden) {
+      if (document.hidden || playbackPaused) {
         previousTick = now;
         requestAnimationFrame(tick);
         return;
@@ -9153,11 +11050,23 @@
       let wallDelta = Math.max(0, now - previousTick);
       previousTick = now;
       if (codeTransitionElapsed < initialDelay) {
-        const delayDelta = Math.min(wallDelta, initialDelay - codeTransitionElapsed);
-        codeTransitionElapsed += delayDelta;
+        const codeRate = animationPlaybackRate();
+        const delayDelta = Math.min(wallDelta, (initialDelay - codeTransitionElapsed) / codeRate);
+        codeTransitionElapsed += delayDelta * codeRate;
         wallDelta -= delayDelta;
       }
-      if (wallDelta > 0) animationElapsed += wallDelta * animationPlaybackRate();
+      // Sample speed only on entering the next event. Split a long rAF delta
+      // at slot boundaries so changing speed cannot jump the active transfer.
+      for (let guard = 0; wallDelta > 0 && guard < 1000; guard++) {
+        const at = codeTransitionElapsed + animationElapsed;
+        const slot = eventTimeline.find(item => at >= item.start && at < item.end);
+        const key = slot?.event?.id || 'frame';
+        if (key !== rateSlot) { rateSlot = key; sampledRate = animationPlaybackRate(); }
+        const next = slot ? slot.end : eventTimeline.find(item => item.start > at)?.start ?? Infinity;
+        const portion = Math.min(wallDelta, Math.max(0.00001, (next - at) / sampledRate));
+        animationElapsed += portion * sampledRate;
+        wallDelta -= portion;
+      }
       elapsed = codeTransitionElapsed + animationElapsed;
       if (window.ASMTraceDebugRecorder?.isRecording?.()) {
         root.dataset.traceDebugElapsedMs = String(elapsed);
@@ -9168,9 +11077,13 @@
       const progress = Math.max(0, Math.min(1, elapsed / duration));
       const eased = easeOutCubic(progress);
 
-      if (elapsed < styleTimelineDuration) {
+      if (elapsed < eventPresentationEnd) {
         events?.update(elapsed);
       } else {
+        // rAF can land on or skip past the last event's exact end. Publish
+        // its committed cell visibility before removing the travelling clone;
+        // the post-event gap must not retain the previous hidden state.
+        events?.update(eventPresentationEnd);
         events?.finish();
       }
       heapResizeStages.update(elapsed, events?.adjustments);
@@ -9180,15 +11093,19 @@
         const motionElapsed = Math.max(0, elapsed - entry.motionDelay);
         const localDuration = Math.max(
           1,
-          Number(entry.sequenceMotionSlot?.duration)
+          Number(entry.recursionDeclarationClock?.duration)
+            || Number(entry.sequenceMotionSlot?.duration)
             || Number(entry.declarationReflow?.duration)
             || Number(entry.exitReflow?.duration)
             || Number(entry.markerGroupReflowDuration)
             || Number(entry.plan?.duration)
             || duration
         );
-        const localProgress = Math.max(0, Math.min(1, motionElapsed / localDuration));
-        const localEased = easeOutCubic(localProgress);
+        const localProgress = entry.recursionDeclarationClock?.instant
+          ? 1 : Math.max(0, Math.min(1, motionElapsed / localDuration));
+        const localEased = entry.sequenceMotionSlot
+          ? sequenceOuterframeProgress(entry.sequenceMotionSlot, elapsed)
+          : easeOutCubic(localProgress);
         const appearElapsed = Math.max(0, elapsed - entry.appearanceStart);
         const appearProgress = clamp01(
           appearElapsed / Math.min(APPEAR_TIMING.duration, localDuration)
@@ -9256,6 +11173,14 @@
       // frame movement, outerframe resizing and repainting stay in the normal
       // object layer; promoting every transitioning entry can lift a whole
       // container and then its cells, changing child order and z-order.
+      entries.forEach(entry => {
+        if (!entry.recursionGrowth || !entry.recursionDeclarationClock || entry.recursionDeclarationClock.instant) return;
+        const state = motionStates.get(entry.key), parent = motionStates.get(entry.recursionGrowth.parentKey);
+        if (state && parent) {
+          state.x += parent.x * (1 - state.localEased);
+          state.y += parent.y * (1 - state.localEased);
+        }
+      });
       const animatedVisuals = [];
       nestedLifecycleVisuals.forEach(({ element, declarationSlot, exitSlot }) => {
         const entranceStart = (Number(declarationSlot?.start) || 0)
@@ -9285,13 +11210,15 @@
           ? `translate(${adjustedX}, ${adjustedY})`
           : '';
         const scale = state.scale;
-        const pivot = entry.compareCenter || { x: 0, y: 0 };
+        const pivot = entry.structuralCenter || entry.compareCenter || { x: 0, y: 0 };
         const scaleTransform = Math.abs(scale - 1) > 0.001
           ? `translate(${pivot.x}, ${pivot.y}) scale(${scale}) translate(${-pivot.x}, ${-pivot.y})`
           : '';
         entry.target.setAttribute('transform', [translate, entry.baseTransform, scaleTransform].filter(Boolean).join(' '));
+        entry.textSize?.update(scale);
         if (entry.sequenceRectGeometry?.length) {
-          applyLeftAnchoredRectGeometry(entry.sequenceRectGeometry, state.localEased);
+          applyLeftAnchoredRectGeometry(entry.sequenceRectGeometry,
+            entry.sequenceGeometrySlot ? sequenceOuterframeProgress(entry.sequenceGeometrySlot, elapsed) : state.localEased);
         }
         applyIndexLabelGrowth(entry.indexLabelGeometry, state.appearEased);
         if (entry.sequenceOuterframes?.length) {
@@ -9300,7 +11227,7 @@
           for (const item of timeline) {
             if (elapsed < Number(item.slot.start)) break;
             if (elapsed < Number(item.slot.end)) {
-              const progress = easeOutCubic(clamp01((elapsed - Number(item.slot.start)) / Math.max(1, Number(item.slot.duration))));
+              const progress = sequenceOuterframeProgress(item.slot, elapsed);
               applyOuterframeGeometry({ ...item.after, group: entry.currentOuterframeGeometry.group,
                 background: entry.currentOuterframeGeometry.background }, item.before, progress);
               geometry = null;
@@ -9312,8 +11239,7 @@
         } else if (entry.previousOuterframeGeometry) {
           const resizeSlot = entry.outerframeResizeSlot;
           const geometryProgress = resizeSlot
-            ? easeOutCubic(clamp01((elapsed - Number(resizeSlot.start))
-              / Math.max(1, Number(resizeSlot.duration))))
+            ? sequenceOuterframeProgress(resizeSlot, elapsed)
             : state.localEased;
           applyOuterframeGeometry(
             entry.currentOuterframeGeometry,
@@ -9327,6 +11253,14 @@
         const markerArrowState = events?.markerArrowStates?.get?.(entry.key);
         if (entry.markerPointPath && markerArrowState) {
           entry.markerPointPath.setAttribute('d', markerArrowPath(entry, markerArrowState));
+        }
+        if (entry.recursionDeclarationClock && elapsed >= entry.recursionDeclarationClock.start) {
+          if (entry.baseOpacity != null) entry.target.setAttribute('opacity', entry.baseOpacity);
+          else entry.target.removeAttribute('opacity');
+          entry.attachedVisuals.forEach(attachment => {
+            if (attachment.baseOpacity != null) attachment.wrapper.setAttribute('opacity', attachment.baseOpacity);
+            else attachment.wrapper.removeAttribute('opacity');
+          });
         }
         if (entry.recursionGrowth || entry.keepGrowth) {
           const growthAttribute = entry.recursionGrowth
@@ -9371,6 +11305,11 @@
           entry.attachedVisuals.forEach(attachment => {
             attachment.wrapper.setAttribute('opacity', String(lifecycleOpacity));
           });
+        }
+        // 包含格子、名稱、標籤及獨立 style 層；任何事件 opacity 都不能提早揭露。
+        if (entry.recursionDeclarationClock && elapsed < entry.recursionDeclarationClock.start) {
+          entry.target.setAttribute('opacity', '0');
+          entry.attachedVisuals.forEach(attachment => attachment.wrapper.setAttribute('opacity', '0'));
         }
 
         entry.rects.forEach((rect, index) => {
@@ -9458,18 +11397,24 @@
         else element.removeAttribute('transform');
       });
       events?.syncPositions?.();
+      directivePresentation?.update(elapsed);
       const arrowProgress = easeOutCubic(clamp01((elapsed - initialDelay) / duration));
       newArrows.forEach(({ element }) => {
+        const growthClock = !element._asmArrowTween && [element.dataset.traceArrowFromKey, element.dataset.traceArrowToKey]
+          .map(key => entriesByKey.get(key)?.recursionDeclarationClock).find(Boolean);
+        const edgeProgress = growthClock ? (growthClock.instant ? 1
+          : easeOutCubic(clamp01((elapsed - growthClock.start) / Math.max(1, growthClock.duration)))) : null;
         if (element._asmArrowTween) element._asmArrowTween.progress = arrowProgress;
         const draws = !element._asmArrowTween && element.dataset.traceArrowDraw === 'true';
         const drawDuration = Math.max(1,
           Math.min(duration, Number(element.dataset.traceArrowDrawDuration) || duration));
-        const drawProgress = draws
+        const drawProgress = edgeProgress ?? (draws
           ? easeOutCubic(clamp01((elapsed - initialDelay) / drawDuration))
-          : arrowProgress;
+          : arrowProgress);
         if (draws) element.setAttribute('stroke-dashoffset', String(1 - drawProgress));
         element.setAttribute('opacity', element._asmArrowTween ? '1' : String(drawProgress));
       });
+      directivePresentation?.syncLifecycle?.();
       // Endpoints use the SVG positions produced by this tick, not a second
       // independent tween. The new recursion edge therefore ends at the
       // moving keep node on every tick and extends with that node.
@@ -9481,7 +11426,7 @@
         assignmentSchedule, assignmentPeerSchedule, initialMarkerLayout,
         markerVisual, markerPointPath, markerPointBasePath, markerLabelBox,
         markerTargetHeight, markerKeepArrowVertical, backgroundHandoff, comparisonKey, comparisonRemovalStart,
-        recursionRetraction, previousPlacement
+        recursionRetraction, previousPlacement, textSize
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -9510,6 +11455,7 @@
             `scale(${scale})`,
             `translate(${-fromCenter.x}, ${-fromCenter.y})`
           ].join(' '));
+          textSize?.update(scale);
           return;
         }
         if (scopeExitSlot) {
@@ -9520,6 +11466,14 @@
           ghost.setAttribute('opacity', String(1 - ghostProgress));
           const offsetY = heapSplitExit ? 0
             : visualLifecycleOffsetY(lifecycleKind, 'exit', ghostProgress);
+          if (events?.outgoingMarkerKeys?.has?.(comparisonKey)) {
+            const motion = events.adjustments.get(comparisonKey) || {};
+            ghost.setAttribute('transform', `translate(${Number(motion.x)||0},${(Number(motion.y)||0)+offsetY})`);
+            const arrow = events.markerArrowStates.get(comparisonKey);
+            if (markerPointPath && arrow) markerPointPath.setAttribute('d',markerArrowPath({markerPointPath,markerLabelBox},
+              {x:0,y:0,targetX:arrow.targetX-arrow.x,targetY:arrow.targetY-arrow.y,targetMissing:arrow.targetMissing}));
+            return;
+          }
           const holdOffsetX = Number(exitReflow?.ghostOffsetX) || 0;
           const arrivalStart = Number(exitReflow?.arrivalStart) || 0;
           const arrivalEnd = Number(exitReflow?.arrivalEnd) || arrivalStart;
@@ -9589,6 +11543,14 @@
         }
         else if (markerPointPath && markerPointBasePath) markerPointPath.setAttribute('d',markerPointBasePath);
         const assignmentOffset = previousMarkerAssignmentOffset(assignmentSchedule, elapsed);
+        if(events?.outgoingMarkerKeys?.has?.(comparisonKey)){
+          const motion=events.adjustments.get(comparisonKey)||{};
+          ghost.setAttribute('transform',`translate(${Number(motion.x)||0},${(Number(motion.y)||0)+offsetY})`);
+          const arrow=events.markerArrowStates.get(comparisonKey);
+          if(markerPointPath&&arrow)markerPointPath.setAttribute('d',markerArrowPath({markerPointPath,markerLabelBox},
+            {x:0,y:0,targetX:arrow.targetX-arrow.x,targetY:arrow.targetY-arrow.y,targetMissing:arrow.targetMissing}));
+          applyHeapSplitVerticalFade(heapSplitExit,ghostProgress,'exit');return;
+        }
         const x = assignmentOffset.x + (Number(compareOffset?.x) || 0);
         const y = offsetY + assignmentOffset.y + (Number(compareOffset?.y) || 0);
         if (Math.abs(x) > 0.01 || Math.abs(y) > 0.01) ghost.setAttribute('transform', `translate(${x}, ${y})`);
@@ -9670,6 +11632,10 @@
           const committedArrowState = commitMarker
             ? events?.markerArrowStates?.get?.(entry.key)
             : null;
+          if (committedArrowState) {
+            entry.element.dataset.traceMarkerTargetX = String(committedArrowState.targetX);
+            entry.element.dataset.traceMarkerTargetY = String(committedArrowState.targetY);
+          }
           entry.markerPointPath.setAttribute(
             'd',
             committedArrowState
@@ -9688,7 +11654,7 @@
         if (baseTransform) element.setAttribute('transform', baseTransform);
         else element.removeAttribute('transform');
       });
-      ghosts.forEach(({ wrapper }) => wrapper.remove());
+      ghosts.forEach(({ wrapper, textSize }) => { textSize?.remove(); wrapper.remove(); });
       heapResizeStages.finish();
       window.ASMTraceRenderers?.refreshArrows?.();
       markerEntrancesByFrame.delete(frame.id);
@@ -9713,6 +11679,8 @@
   }
 
   function cancel() {
+    initialExecution = null;
+    playbackPaused = false;
     activeRun += 1;
     finishActiveRun?.();
     document.querySelectorAll('.asm-trace-style-paint').forEach(element => {
@@ -9723,11 +11691,12 @@
     });
     document.querySelectorAll(
       '.asm-trace-compare-highlight, .asm-trace-compare-operator, '
+      + '.asm-trace-read-source-ghost, .asm-trace-selection-label, .asm-trace-selection-value, .asm-trace-condition-label, '
       + '.asm-trace-compare-marker-popup, .asm-trace-assign-marker-popup, '
       + '.asm-trace-assign-falling-value, .asm-trace-assign-transfer, '
       + '.asm-trace-compare-self-clone, .asm-trace-transition-ghost-motion, '
       + '.asm-trace-transition-ghost, .asm-trace-heap-resize-ghost, '
-      + '.asm-trace-sequence-ghost'
+      + '.asm-trace-sequence-ghost, .asm-trace-sequence-entry, .asm-trace-sequence-pending-removal'
     ).forEach(element => element.remove());
     document.querySelectorAll('[data-trace-heap-resize-current]').forEach(wrapper => {
       const heap = wrapper.querySelector(':scope > [data-layout="heap"]');
@@ -9749,12 +11718,20 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-301';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-368';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-301', play, cancel, updateEventAvailability,
+    build: 'trace-369', play, cancel, updateEventAvailability,
+    preserveCellTextSize, cloneWithoutCellTextScale,
+    pause() { if (currentCompletion) playbackPaused = true; },
+    resume() { playbackPaused = false; },
+    isPaused() { return playbackPaused; },
+    waitForCompletion() { return currentCompletion || Promise.resolve(); },
+    motionTime: MOTION_TIME, eventActionPlan, operationKind,
     captureAssignmentSourceGeometry,
     recursionGrowthTransitions,
+    recursionDeclarationClock,
+    referenceContainerContinuations,
     keepLiveGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
@@ -9770,7 +11747,7 @@
     markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
-    createForwardReplayPlan, prepareForwardValues,
+    createForwardReplayPlan, createExecutionContext, createDirectiveFollowPlan, prepareForwardValues,
     assignmentTransferOperator, formatAssignmentTransferValue,
     bitShiftTargets, createBitShiftEffect, bitwisePlan, createBitwiseEffect
   };

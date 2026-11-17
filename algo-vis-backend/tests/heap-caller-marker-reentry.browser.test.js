@@ -39,14 +39,12 @@ test('an invisible caller marker never shifts the outgoing heap parameter label'
         input.dispatchEvent(new Event('input', { bubbles: true }));
         document.getElementById('runBtn').click();
       }, code);
-      await page.waitForFunction(code => (
-        window.ASMTracePlayer.getDocument()?.sourceCode === code
-        && window.ASMTracePlayer.getDocument()?.frames?.length === 34
-      ), code, { timeout: 30000 });
+      await require('./helpers/algorithm-page').waitForTraceSource(page,code);
+      assert.equal(await page.evaluate(()=>ASMTracePlayer.getDocument().frames.length),34);
 
-      await page.locator('#editAnimationBtn').click();
+      await page.evaluate(()=>ASMTraceStudio.open());
       await page.evaluate(() => ASMTracePlayer.renderStable(4));
-      await page.locator('.trace-studio-frame[data-frame-index="4"]').click();
+      await page.evaluate(()=>CodeScript.goto(4));
       await page.waitForTimeout(700);
       await page.evaluate(() => {
         const markerRows = () => [...document.querySelectorAll(

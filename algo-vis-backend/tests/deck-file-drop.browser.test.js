@@ -1,3 +1,4 @@
+global.ASMTraceProvenance=require('../public/trace-provenance');
 /**
  * 測試模組：deck-file-drop.browser.test
  *
@@ -30,14 +31,15 @@ test('external deck files drop onto import and add controls, workspace creates a
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const fixture = label => ({ groups: [{ id: label, slides: [1, 2].map(n => ({ id: `${label}-${n}`, canvas: { objects: [{ type: 'textbox', text: `${label} ${n}`, left: 100, top: 100, width: 600, fontSize: 32 }] }, widgets: [] })) }] });
     async function drop(selector, name, deck, mode = 'json') {
-      await page.evaluate(async ({ selector, name, deck, mode }) => {
-        const payload = mode === 'asmdeck' ? await ASMDeck.encode(await ASMDeck.project(deck)) : typeof deck === 'string' ? deck : JSON.stringify(deck);
+      const archive=mode==='asmdeck'?Buffer.from(await (await require('../public/asmdeck').encode({deck,assets:{}})).arrayBuffer()).toString('base64'):null;
+      await page.evaluate(async ({ selector, name, deck, mode, archive }) => {
+        const payload = archive ? Uint8Array.from(atob(archive),c=>c.charCodeAt(0)) : typeof deck === 'string' ? deck : JSON.stringify(deck);
         const transfer = new DataTransfer(); transfer.items.add(new File([payload], name));
         const target = document.querySelector(selector);
         target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
         window.dropHighlight = target.classList.contains('deck-file-drop-active');
         target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
-      }, { selector, name, deck, mode });
+      }, { selector, name, deck, mode, archive });
     }
     await page.goto(base + '/slides.html'); await page.waitForFunction(() => document.body.dataset.slideCount);
     await drop('#importDeckBtn', 'import.json', fixture('import'));

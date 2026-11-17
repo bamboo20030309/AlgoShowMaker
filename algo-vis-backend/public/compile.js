@@ -134,9 +134,8 @@ async function runProgram() {
 
   try {
     const t0 = performance.now();
-    if (document.body.classList.contains('asm-trace-studio-open')) {
-      window.ASMTraceStudio?.close?.({ render: false });
-    }
+    // 左側「程式碼框」「事件動畫」的設定先寫回 @asm-view，再送出編譯。
+    window.ASMTraceStudio?.flushSourceSettings?.();
     const sourceCode = aceEditor.getValue();
     const sourceInput = inputEl ? inputEl.value : '';
     syntaxRequest = window.ASMSyntaxTree?.refresh?.(sourceCode);
@@ -273,6 +272,7 @@ async function runProgram() {
         }
         const incomingTraceDocument = {
           ...data.traceDocument,
+          ...(data.cache?.executableId ? { executableRef: { id: data.cache.executableId } } : {}),
           sourceCode: typeof data.traceDocument.sourceCode === 'string'
             && data.traceDocument.sourceCode
             ? data.traceDocument.sourceCode

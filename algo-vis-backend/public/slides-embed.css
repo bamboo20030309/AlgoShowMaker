@@ -7,12 +7,23 @@ body.asm-embed-runtime #codePanel,
 body.asm-embed-runtime #divider,
 body.asm-embed-runtime #drawingToolbar,
 body.asm-embed-runtime #algoSidePanel,
-body.asm-embed-runtime #myCodesSidebar,
-body.asm-embed-runtime #traceStudioRail,
-body.asm-embed-runtime .trace-studio-inspector,
-body.asm-embed-runtime #traceStudioTimeline,
+body.asm-embed-runtime #myCodesPanel,
 body.asm-embed-runtime .gui-prop-panel {
   display: none !important;
+}
+
+/* 編輯動畫（同一個 iframe 展開成完整頁面）：標題列與返回由投影片頁提供，
+   不顯示程式碼頁的網站頂部列、我的程式碼、範例側欄與手繪工具列。 */
+body.asm-embed-editor #top-bar,
+body.asm-embed-editor #drawingToolbar,
+body.asm-embed-editor #algoSidePanel,
+body.asm-embed-editor #myCodesPanel,
+body.asm-embed-editor .asm-mobile-dock {
+  display: none !important;
+}
+
+body.asm-embed-editor #main {
+  height: 100%;
 }
 
 body.asm-embed-runtime #main {
@@ -26,46 +37,14 @@ body.asm-embed-runtime #vizPanel {
   background: #fbfcfa;
 }
 
-/* Algorithm slides keep the original result tabs so the slide itself can
-   switch between the canvas, input, output, debug log and syntax tree. */
-body.asm-embed-runtime #subTabs {
-  flex: 0 0 42px;
-  height: 42px;
-  box-sizing: border-box;
-  align-items: flex-end;
-  gap: 2px;
-  padding: 4px 14px 0;
-  border-bottom-color: #eeeeee;
-  background: #ffffff;
-}
-
-body.asm-embed-runtime #subTabs .tab-btn {
-  margin-top: 0;
-  padding: 7px 14px 8px;
-  border-radius: 8px 8px 0 0;
-  background: transparent;
-  color: #687774;
-}
-
-body.asm-embed-runtime #subTabs .tab-btn:hover {
-  background: rgba(78, 113, 109, 0.06);
-  color: #355d59;
-}
-
-body.asm-embed-runtime #subTabs .tab-btn.active {
-  background: #ffffff;
-  color: var(--primary-blue);
-}
-
-body.asm-embed-runtime #subTabs .tab-btn::after {
-  right: 14px;
-  left: 14px;
-  height: 2px;
-  background: var(--primary-blue);
+/* 投影片上的動畫只有畫布（2026-11-16）：輸入在投影片編輯欄，輸出、除錯記錄與語法樹在編輯動畫頁。 */
+body.asm-embed-runtime #subTabs,
+body.asm-embed-runtime #vizPanel > .subContent:not(#tab-canvas) {
+  display: none !important;
 }
 
 body.asm-embed-runtime #tab-canvas {
-  display: flex;
+  display: flex !important;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
@@ -96,4 +75,49 @@ body.asm-embed-runtime #canvasWrapper {
    most of the slide, so the presenter can pan from anywhere on the drawing. */
 body.asm-embed-runtime #viewport .draggable-object {
   pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+ * 投影片畫布工具列
+ * 放映、唯讀檢視與編輯畫面的工具列完全相同；RUN 在投影片編輯欄的輸入框上方。
+ * 上一大步／下一大步在投影片中一律不顯示。
+ * -------------------------------------------------------------------------- */
+body.asm-embed-runtime .controls #prevKeyFrameBtn,
+body.asm-embed-runtime .controls #nextKeyFrameBtn {
+  display: none !important;
+}
+
+/* 組裝式過場（編輯動畫展開／收回）：頁面背景透明，只看得到正在移動的畫布、
+   從左側展開的編輯區與從上方落下的分頁；移動中的元素不被父層裁切。 */
+html.asm-embed-assembling,
+html.asm-embed-assembling body,
+html.asm-embed-assembling #main,
+html.asm-embed-assembling #vizPanel {
+  background: transparent !important;
+  overflow: visible !important;
+}
+
+/* 但頁面本身不能捲動：移動中的畫布超出視窗時，傳統（非覆蓋式）捲軸會出現並佔掉約 15px，
+   整個版面往左擠，過場終點就和投影片差了一條捲軸寬。 */
+html.asm-embed-assembling,
+html.asm-embed-assembling body {
+  overflow: hidden !important;
+}
+
+/* 畫布框由 #tab-canvas 的 clip-path 裁切；裡面不再各自裁切。播放列在過場中縮成投影片上的高度，
+   畫布區（版面仍在編輯頁的位置）上緣與播放列之間的空隙要由格線與程式碼框補滿，才會和投影片完全貼合。 */
+html.asm-embed-assembling #canvasWrapper,
+html.asm-embed-assembling #arraySvg {
+  overflow: visible !important;
+}
+
+html.asm-embed-assembling #tab-canvas {
+  position: relative;
+  z-index: 3;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.18);
+}
+
+/* 收到展開指令到過場第一幀之間不畫任何東西，避免先閃出完整版面。 */
+html.asm-embed-assembly-pending body {
+  visibility: hidden;
 }

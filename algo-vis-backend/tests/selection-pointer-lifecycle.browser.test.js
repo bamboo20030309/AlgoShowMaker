@@ -11,7 +11,7 @@ test('selection pointers survive captures, follow authored order and advance aft
   let trace;
   try {
     process.env.ASM_TEST_BASE_URL = base;
-    trace = (await compile(fs.readFileSync(path.join(__dirname,'fixtures/selection-pointer-lifecycle.cpp'),'utf8'),
+    trace = (await compile(fs.readFileSync(path.join(__dirname, 'fixtures/selection-pointer-lifecycle.cpp'),'utf8'),
       '10\n1 8 7 4 2 6 3 9 10 12')).trace;
   } finally { if(oldBase === undefined) delete process.env.ASM_TEST_BASE_URL; else process.env.ASM_TEST_BASE_URL=oldBase; }
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
@@ -69,9 +69,9 @@ test('selection pointers survive captures, follow authored order and advance aft
       p.apply(JSON.parse(JSON.stringify(p.getDocument())));await p.render(12);const reopened=read();
       return {first,order,next,following,final,reopened,checkpoints,backward,replayed};
     },{trace:source,speed});
-    fs.mkdirSync(path.join(__dirname,'../test-results'),{recursive:true});
-    fs.writeFileSync(path.join(__dirname,'../test-results/selection-test-result.json'),JSON.stringify(result,null,2));
-    const {validateBehavior}=require('../scripts/trace-behavior-rules');
+    fs.mkdirSync(path.join(__dirname, '../test-results'),{recursive:true});
+    fs.writeFileSync(path.join(__dirname, '../test-results/selection-test-result.json'),JSON.stringify(result,null,2));
+    const {validateBehavior}=require('../scripts/validation/trace-behavior-rules');
     const fixedRule=(state,contract)=>{
       const result=validateBehavior({...state,visibility:{arr:state.arr}},contract);
       assert.equal(result.pass,true,mode+': '+JSON.stringify(result.firstViolation));

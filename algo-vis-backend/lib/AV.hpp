@@ -18,6 +18,7 @@
 #define AV_HPP
 
 #include <string>
+#include <algorithm>
 #include <vector>
 #include <fstream>
 #include <iostream>

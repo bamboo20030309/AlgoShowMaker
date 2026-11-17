@@ -6,7 +6,7 @@ const { createHash, randomUUID } = require('node:crypto');
 
 const fsp = fs.promises;
 const CACHE_VERSION = 1;
-const ARTIFACT_TYPES = new Set(['executable', 'trace']);
+const ARTIFACT_TYPES = new Set(['executable', 'trace', 'transport']);
 const CONTENT_KEY_PATTERN = /^[a-f0-9]{64}$/;
 
 class ArtifactCacheCapacityError extends Error {
@@ -274,15 +274,20 @@ class ArtifactCache {
     });
   }
 
-  async setPinned(type, key, pinned = true) {
+  async setPinned(type, key, pinned = true, options = {}) {
     await this.init();
     assertType(type);
     assertContentKey(key);
     return this._enqueueMutation(async () => {
       const entry = this.entries.get(entryMapKey(type, key));
       if (!entry) return null;
+      const wasPinned = entry.pinned;
       entry.pinned = Boolean(pinned);
-      entry.updatedAt = this.now();
+      const now = this.now();
+      if (entry.pinned) entry.expiresAt = null;
+      else if (wasPinned) entry.expiresAt = this.defaultTtlMs === 0 ? null : now + this.defaultTtlMs;
+      if (options.metadata) entry.custom = { ...entry.custom, ...sanitizeCustomMetadata(options.metadata) };
+      entry.updatedAt = now;
       await atomicWriteJson(entry.metadataPath, serializeEntry(entry));
       if (!entry.pinned) await this._pruneInternal();
       return publicEntry(entry);
@@ -356,6 +361,7 @@ class ArtifactCache {
       const now = this.now();
       if (options.pinned && !existing.pinned) {
         existing.pinned = true;
+        existing.expiresAt = null;
       }
       if (!existing.pinned && options.ttlMs !== undefined) {
         const ttlMs = nonNegativeNumber(options.ttlMs, this.defaultTtlMs, 'ttlMs');

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>第三方授權 · AlgoShowMaker</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.7 Arial,"Noto Sans TC",sans-serif; background:#1e1e1e; color:#d7dddd; }
+    body { max-width:1000px; margin:auto; padding:32px 24px 64px; }
+    a { color:#8bd5cb; text-underline-offset:3px; }
+    a:focus-visible, summary:focus-visible { outline:2px solid #8bd5cb; outline-offset:4px; }
+    h1 { color:#fff; font-size:30px; margin:24px 0 12px; }
+    h2 { color:#fff; font-size:22px; margin:32px 0 12px; }
+    p { max-width:85ch; }
+    nav { display:flex; flex-wrap:wrap; gap:12px 24px; }
+    .notice { padding:16px 20px; background:#252a2b; border-left:3px solid #6cae9f; }
+    details { border-bottom:1px solid #454545; padding:12px 0; }
+    summary { cursor:pointer; overflow-wrap:anywhere; }
+    small { color:#b3babc; margin-left:10px; }
+    h3 { font-size:15px; }
+    pre { white-space:pre-wrap; overflow-wrap:anywhere; font:13px/1.6 monospace; background:#252526; padding:18px; }
+    @media(max-width:600px) { body {padding:20px 16px;} small {display:block;margin-left:0;} }
+  </style>
+</head>
+<body>
+  <nav aria-label="授權頁導覽"><a href="/">← 返回首頁</a><a href="third-party-notices.txt" download>下載完整第三方授權</a><a href="project-license.txt">AlgoShowMaker MIT 授權</a></nav>
+  <main>
+    <h1>第三方授權</h1>
+    <p>AlgoShowMaker 使用以下開放原始碼套件。各套件的版權、授權條款與免責聲明均保留於下方，與 AlgoShowMaker 自身的 MIT 授權分別適用。</p>
+    <p>前端主要使用 Ace Editor（BSD-3-Clause）、Fabric.js、Reveal.js、KaTeX（MIT），以及 iro.js（MPL-2.0）；Reveal 的程式碼反白另外包含 highlight.js（BSD-3-Clause），iro.js 另含 iro-core（MPL-2.0）與 Preact（MIT）。</p>
+    <section class="notice" aria-labelledby="mpl-source">
+      <h2 id="mpl-source">MPL 套件原始碼</h2>
+      <p>本站使用 npm 發布的原版 iro.js 5.5.2 與 iro-core 1.2.1，未修改套件程式碼。可從以下固定版本提交取得可修改的原始碼；相應 MPL-2.0 完整條款亦附於下方套件項目。</p>
+      <ul>
+        <li><a href="https://github.com/jaames/iro.js/tree/1825363da88e1971befb6c6b827951594f388798" target="_blank" rel="noopener noreferrer">iro.js 5.5.2 原始碼</a></li>
+        <li><a href="https://github.com/irojs/iro-core/tree/bd46ac36225cc4de5ea2a8453cec4f69b8f40ba6" target="_blank" rel="noopener noreferrer">iro-core 1.2.1 原始碼</a></li>
+      </ul>
+      <p>來源註記：iro.js 的 npm 5.5.2 發布資料指向上述提交，但該提交的 package.json 仍標為 5.5.1；此連結依發布者記錄的 gitHead 提供，並保留這項上游版本標記差異。</p>
+    </section>
+    <h2>完整套件聲明</h2>
+    <p>展開套件可讀取授權原文。本清單也涵蓋鎖檔中的間接依賴、開發工具與可選依賴；列出不表示每個環境均會安裝或傳送所有套件。作業系統、Node.js、編譯器與資料庫的授權另隨其發行套件提供。</p>
+    <!-- COMPONENTS -->
+  </main>
+</body>
+</html>

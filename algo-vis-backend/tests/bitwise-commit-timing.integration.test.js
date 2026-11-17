@@ -6,8 +6,7 @@ const { chromium } = require('playwright');
 
 test('n=5 preserves P=11111 until XOR completes',
   { timeout: 60000 }, async () => {
-    const code = fs.readFileSync(path.join(__dirname,
-      '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
+    const code = fs.readFileSync(path.join(__dirname, '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
     const browser = await chromium.launch({ headless: true,
       ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
     try {
@@ -91,8 +90,7 @@ test('n=5 preserves P=11111 until XOR completes',
 
 test('queen complete P expression, synchronized result and pre-call exits',
   { timeout: 60000 }, async () => {
-    const code = fs.readFileSync(path.join(__dirname,
-      '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
+    const code = fs.readFileSync(path.join(__dirname, '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
     const browser = await chromium.launch({ headless: true,
       ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
     try {

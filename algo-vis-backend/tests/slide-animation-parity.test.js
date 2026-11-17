@@ -12,11 +12,26 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const plain = value => JSON.parse(JSON.stringify(value));
+// Minimal detached element: the runtime builds its RUN button and error bar at load.
+const fakeElement = () => {
+  const children = [];
+  return {
+    hidden: false, disabled: false, textContent: '', innerHTML: '',
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener() {}, setAttribute() {}, before() {},
+    append(...nodes) { children.push(...nodes); },
+    querySelector: () => children[0] || fakeElement()
+  };
+};
 
 function context(mode = 'editor') {
   const listeners = new Map();
   const messages = [];
-  const input = { value: '' };
+  const input = { value: '', addEventListener() {}, dispatchEvent() {} };
+  // body 與 html 的 class 會在 runtime／editor 之間切換（同一個 iframe 展開成編輯頁）。
+  const classes = () => { const set = new Set(); return {
+    add: (...names) => names.forEach(name => set.add(name)), remove: (...names) => names.forEach(name => set.delete(name)),
+    contains: name => set.has(name), toggle: (name, on) => (on ?? !set.has(name)) ? set.add(name) : set.delete(name) }; };
   const c = vm.createContext({
     URLSearchParams, setTimeout() {}, clearTimeout() {},
     requestAnimationFrame(callback) { callback(); return 1; },
@@ -24,7 +39,8 @@ function context(mode = 'editor') {
     dispatchEvent(event) { listeners.get(event?.type)?.(event); },
     location: { origin: 'http://localhost:3000', search: `?asmEmbed=${mode}` },
     localStorage: { getItem: () => '' },
-    document: { addEventListener() {}, body: { classList: { add() {} } },
+    document: { addEventListener() {}, body: { classList: classes() }, documentElement: { classList: classes() },
+      createElement: fakeElement, querySelector: () => null,
       getElementById: id => id === 'inputArea' ? input : null },
     addEventListener: (type, fn) => listeners.set(type, fn),
     parent: { postMessage: value => messages.push(plain(value)) },
@@ -43,11 +59,11 @@ function savedTrace() {
     frames: [{ id: 'frame-0', state: {}, events: [{ id: 'event-1', signature: 'j++', type: 'write', update: true, order: 1 }] }],
     skins: { arr: { renderer: 'original-stack' } }, rules: [{ id: 'new-rule' }],
     studio: { positions: { 'frame-0': { arr: { x: 80, y: 120 } } },
-      cameraRules: [{ id: 'new-camera', zoom: 2 }], eventInstructionStates: { 'j++': true },
+      cameraRules: [{ id: 'new-camera', zoom: 2 }], codePanelFontSize: 26, eventInstructionStates: { 'j++': true },
       eventSettings: { gapMs: 740, autoLoopBoundaryEnabled: true,
         defaultEnabled: { write: true }, timelineTypes: { write: true } } },
     asmView: { version: 1, rules: [], skins: { arr: { renderer: 'original-array' } },
-      studio: { cameraRules: [{ id: 'old-camera', zoom: 0.5 }], eventInstructionStates: { 'j++': false } } }
+      studio: { cameraRules: [{ id: 'old-camera', zoom: 0.5 }], codePanelFontSize: 12, eventInstructionStates: { 'j++': false } } }
   };
 }
 
@@ -59,7 +75,7 @@ for (const changedView of [false, true]) {
     c.aceEditor.value = 'int main() {}' + block;
     const pending = { mode: 'trace', code: c.aceEditor.value, input: '6', rebuildError: 'bad directive',
       rebuild: { view: { version: 1, rules: [], skins: {}, studio: {
-        cameraRules: [{ id: 'pending-camera', allFrames: true, zoom: 1.4 }]
+        codePanelFontSize: 31
       } }, globals: { eventSettings: { gapMs: 720, autoFixedEnabled: false } } } };
     c.ASMTraceEditor.loadAnimation(pending);
     assert.deepEqual(plain(c.ASMTraceEditor.snapshot().rebuild), pending.rebuild);
@@ -70,8 +86,9 @@ for (const changedView of [false, true]) {
     assert.equal(snapshot.rebuild, undefined);
     assert.equal(snapshot.rebuildError, undefined);
     assert.equal(snapshot.traceDocument.studio.eventSettings.gapMs, 720);
-    assert.equal(snapshot.traceDocument.studio.cameraRules.some(rule => rule.id === 'pending-camera'), !changedView,
+    assert.equal(snapshot.traceDocument.studio.codePanelFontSize === 31, !changedView,
       'deleting/editing source view must not restore deleted imported presentation');
+    assert.equal(snapshot.traceDocument.studio.cameraRules, undefined, 'manual camera rules are never restored');
   });
 }
 
@@ -81,12 +98,13 @@ for (const changedView of [false, true]) {
 test('normalization applies source view once, preserving later Studio edits and event settings', () => {
   const { c } = context();
   const first = c.ASMTraceModel.normalizeTraceDocument(savedTrace());
-  assert.equal(first.studio.cameraRules[0].id, 'old-camera', 'fresh compile imports source view');
-  first.studio.cameraRules[0].id = 'edited-camera';
+  assert.equal(first.studio.codePanelFontSize, 12, 'fresh compile imports source view');
+  assert.equal(first.studio.cameraRules, undefined, 'manual camera rules are dropped');
+  first.studio.codePanelFontSize = 30;
   first.studio.eventInstructionStates['j++'] = true;
   first.studio.eventSettings = { gapMs: 740, autoLoopBoundaryEnabled: true };
   const reloaded = c.ASMTraceModel.normalizeTraceDocument(first);
-  assert.equal(reloaded.studio.cameraRules[0].id, 'edited-camera');
+  assert.equal(reloaded.studio.codePanelFontSize, 30);
   assert.equal(reloaded.studio.eventSettings.gapMs, 740);
   assert.equal(reloaded.studio.eventSettings.autoLoopBoundaryEnabled, true);
   assert.equal(reloaded.frames[0].events[0].enabled, true);
@@ -101,9 +119,10 @@ test('old saved trace wins over its original asm-view and stale top-level copies
     return plain(c.ASMTraceEditor.snapshot().traceDocument);
   });
   assert.deepEqual(results[0], results[1]);
-  assert.equal(results[0].studio.cameraRules[0].id, 'new-camera');
+  assert.equal(results[0].studio.codePanelFontSize, 26);
+  assert.equal(results[0].studio.cameraRules, undefined, 'manual camera rules are dropped');
   assert.equal(results[0].skins.arr.renderer, 'original-stack');
-  assert.equal(results[0].rules[0].id, 'new-rule');
+  assert.deepEqual(results[0].rules, [], 'Studio rules are dropped');
   assert.equal(results[0].studio.eventSettings.gapMs, 740);
   assert.equal(results[0].studio.eventSettings.autoLoopBoundaryEnabled, true);
   assert.equal(results[0].frames[0].events[0].enabled, true);
@@ -195,12 +214,12 @@ test('a saved slide keeps Studio edits when its newer view block agrees with the
   c.aceEditor.value = code;
   c.ASMTraceEditor.loadAnimation({ mode: 'trace', code, traceDocument: old });
   const saved = plain(c.ASMTraceEditor.snapshot().traceDocument);
-  assert.equal(saved.studio.cameraRules[0].id, 'new-camera');
+  assert.equal(saved.studio.codePanelFontSize, 26);
   assert.equal(saved.studio.eventSettings.gapMs, 740);
-  assert.equal(saved.rules[0].id, 'new-rule');
+  assert.deepEqual(saved.rules, []);
 });
 
-test('the next compile config takes rules only from the current source view', async () => {
+test('the compile config never sends Studio rules, even from an old source view', async () => {
   const { c } = context();
   c.fetch = async () => ({ ok: true, json: async () => ({ variables: [], frameDirectives: [] }) });
   c.load('trace-editor.js');
@@ -210,7 +229,7 @@ test('the next compile config takes rules only from the current source view', as
   const bare = await c.ASMTraceEditor.getCompileConfig('int main() {}');
   assert.deepEqual(plain(bare.rules), []);
   const withRule = await c.ASMTraceEditor.getCompileConfig('int main() {}\n/* @asm-view\n{"rules":[{"id":"current"}]}\n@asm-view */');
-  assert.deepEqual(plain(withRule.rules), [{ id: 'current' }]);
+  assert.deepEqual(plain(withRule.rules), [], 'cross-frame rules are no longer applied (directive-only animation)');
 });
 
 test('editor and slide runtime recover the generation source for the shared code presenter', () => {
@@ -316,48 +335,7 @@ test('slide runtime rebases the visible frame before reporting geometry ready', 
   assert.equal(messages.filter(message => message.type === 'asm-animation-geometry-ready').length, 1);
 });
 
-test('the slide editor recompiles an outdated saved trace and migrates its Studio settings', async () => {
-  const { c, send, messages, input } = context('editor');
-  const code = 'int main() { for (int i = 0; i < 2; i++) {} }';
-  const oldTrace = savedTrace();
-  oldTrace.sourceCode = code;
-  oldTrace.provenance = {
-    engineVersion: 1,
-    formatVersion: 1,
-    sourceFingerprint: 'old',
-    inputFingerprint: 'old'
-  };
-  c.ASMTraceProvenance = {
-    status(trace, loadedCode, loadedInput) {
-      assert.equal(trace.frames.length, oldTrace.frames.length);
-      assert.equal(loadedCode, code);
-      assert.equal(loadedInput, 'fixture input');
-      return { kind: 'outdated' };
-    }
-  };
-  let clicked = 0;
-  let migrationRequested = false;
-  const runButton = {
-    classList: { contains: () => false },
-    click() {
-      clicked++;
-      migrationRequested = c.__asmMigrateTraceSettingsOnNextRun === true;
-      c.dispatchEvent(new c.CustomEvent('asm:compile-finished'));
-    }
-  };
-  c.document.getElementById = id => id === 'inputArea' ? input : id === 'runBtn' ? runButton : null;
-  c.ASMTraceEditor = { loadAnimation() {} };
-  c.load('slides-embed.js');
-  send({ type: 'asm-load-animation', animation: {
-    mode: 'trace', code, input: 'fixture input', traceDocument: oldTrace
-  } });
-  await Promise.resolve();
-  assert.equal(clicked, 1);
-  assert.equal(migrationRequested, true);
-  assert.equal(messages.filter(message => message.type === 'asm-animation-applied').length, 1,
-    'the parent reveals the editor only after the automatic refresh finishes');
-});
-
+// Freshness recovery is exercised through the actual recipe pipeline in cloud-trace-repair.
 test('saving flushes pending edits before capturing both code and playback data', () => {
   const { c, send, messages } = context();
   const trace = savedTrace();

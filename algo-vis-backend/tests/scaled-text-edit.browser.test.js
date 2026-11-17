@@ -50,7 +50,7 @@ test('editing scaled old text preserves its transforms and styles', { timeout: 6
         if (sessionStorage.getItem('fixture')) return;
         localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(value)); sessionStorage.setItem('fixture', '1');
       }, deck);
-      const ready = () => page.waitForFunction(() => fixtureCanvas?.getObjects().length >= 2 && Reveal.isReady());
+      const ready = () => page.waitForFunction(() => window.fixtureCanvas?.getObjects().length >= 2 && Reveal.isReady());
       const saved = () => page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage)
         .loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0]);
       await page.goto(base + '/slides.html'); await ready();
@@ -79,9 +79,9 @@ test('editing scaled old text preserves its transforms and styles', { timeout: 6
       assert.equal(await page.locator('.widget-edge-handle').count(),0,'old DOM resize handles are removed');
       const outer = await page.locator('[data-widget-id="formula"]').evaluate(el => ({
         shadow:getComputedStyle(el).boxShadow, pseudo:getComputedStyle(el,'::after').content,
-        border:getComputedStyle(el).borderTopColor
+        borderWidth:getComputedStyle(el).borderTopWidth
       }));
-      assert.deepEqual(outer,{shadow:'none',pseudo:'none',border:'rgba(0, 0, 0, 0)'});
+      assert.deepEqual(outer,{shadow:'none',pseudo:'none',borderWidth:'0px'});
       await page.locator('#latexEditorInput').fill(String.raw`\(x^2+y^2\)`);
       await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
       const formulaAfter = (await saved()).widgets.find(w => w.id==='formula');

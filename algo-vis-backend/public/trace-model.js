@@ -11,6 +11,15 @@
     return value == null ? value : JSON.parse(JSON.stringify(value));
   }
 
+  // Rendering, Studio and playback must agree on aliases of secondary
+  // objects, not just the primary object named by @frame.
+  function objectKeyForVariable(frame, variableId) {
+    const source = frame?.source || {};
+    if (source.objectIds?.[variableId]) return source.objectIds[variableId];
+    if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
+    return variableId;
+  }
+
   // ---------------------------------------------------------------------------
   // 區段：資料值正規化
   // ---------------------------------------------------------------------------
@@ -209,7 +218,7 @@
         const group = activeEventGroups.get(activeKey);
         if (!group?.eventOnly) return;
         group.last = frameIndex;
-        if (['assign','write'].includes(event.type) && event.payload?.after) {
+        if (['assign', 'input-assign','write'].includes(event.type) && event.payload?.after) {
           const value = scalarValue(event.loopBoundary ? event.payload.before : event.payload.after);
           if (value != null && typeof value !== 'object') group.lastValue = value;
         }
@@ -261,9 +270,154 @@
     return summaries;
   }
 
+  // Normalize facts once, before any renderer builds a plan. Legacy traces use
+  // recorded operation flags; never guess an operand from an equal data value.
+  function normalizeEventSemantics(document) {
+    const sourcesOf = event => (event.targets || []).filter(target =>
+      String(target.role || '').startsWith('source'));
+    const unique = targets => {
+      const seen = new Set();
+      return targets.filter(target => {
+        if (!target?.variableId) return false;
+        const key = JSON.stringify([target.variableId, target.resolvedIndices,
+          target.resolvedIndex, target.indexExpression || '', target.lifetimeIdentity || '']);
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      }).map(target => ({ ...target, role: 'read' }));
+    };
+    for (const frame of document.frames || []) {
+      const events = [...(frame.events || [])].sort((a, b) => Number(a.order) - Number(b.order));
+      for (const event of events) {
+        const sources = sourcesOf(event);
+        const assignment = ['assign', 'input-assign', 'write'].includes(event.type);
+        const explicitKind = event.source?.operationKind || event.semantics?.kind;
+        let kind = ['select-max', 'select-min'].includes(event.type) ? 'select' : explicitKind || event.type;
+        if (assignment && event.selectionEventsRecorded && !event.binaryOperation && !event.multiSourceArithmetic && !event.compound) {
+          kind = sources.length === 1 && sources[0].literal ? 'literal' : 'copy';
+        }
+        if (assignment && !explicitKind) {
+          kind = event.selectionOperation ? 'select'
+            : event.conditionalSelection ? 'conditional'
+            : event.compound || event.update || event.binaryOperation || event.multiSourceArithmetic || event.bitwise ? 'compute'
+            : sources.length === 1 && sources[0].literal ? 'literal'
+            : sources.length === 1 && sources[0].variableId ? 'copy' : 'unknown';
+        }
+        const sourceReads = event.selectionEventsRecorded ? sources : event.conditionalSelection
+          ? sources.filter(target => target.role === event.selectedSourceRole)
+          : sources.some(target => target.variableId) ? sources : event.source?.readSources || [];
+        let reads = assignment || event.type === 'sequence-operation' ? sourceReads : ['compare', 'select-max', 'select-min', 'swap', 'output', 'return', 'call'].includes(event.type)
+          ? event.targets || [] : [];
+        if (!event.selectionEventsRecorded && event.selectionSteps?.length) reads = [...reads, ...event.selectionSteps.flatMap(step =>
+          (step.targets || []).filter(target => step.operation !== 'conditional' || target.role === step.selectedSourceRole))];
+        if (event.compound || event.update) reads = [...reads, ...(event.targets || []).filter(target => target.role === 'target')];
+        event.semantics = { ...(event.semantics || {}), version: 1, kind, reads: unique(reads) };
+        delete event.semantics.ownerEventId;
+        delete event.semantics.readEventIds;
+        if (event.selectedSourceRole) event.semantics.selectedSourceRole = event.selectedSourceRole;
+      }
+      // Associate an executed read with its enclosing operation in the same
+      // activation. A return/call may open before its operand is evaluated.
+      for (const read of events.filter(event => event.type === 'read')) {
+        const start = Number(read.source?.from), end = Number(read.source?.to);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+        const opensBeforeRead = event => ['return', 'call'].includes(event.type)
+          && Number(event.order) < Number(read.order) && events.some(completion =>
+            (event.type === 'return' ? completion.type === 'return-complete' && completion.returnEventId === event.id
+              : completion.type === 'call-return' && completion.callEventId === event.id)
+            && Number(completion.order) > Number(read.order));
+        const owners = events.filter(event => event.type !== 'read' && event.type !== 'declare'
+          && event.type !== 'condition' && (Number(event.order) > Number(read.order) || opensBeforeRead(event))
+          && String(event.recursionActivationId || '') === String(read.recursionActivationId || '')
+          && Number(event.source?.from) <= start && Number(event.source?.to) >= end)
+          .sort((a, b) => (Number(a.source.to) - Number(a.source.from)) - (Number(b.source.to) - Number(b.source.from))
+            || Number(a.order) - Number(b.order));
+        const owner = owners[0];
+        if (!owner) continue;
+        read.semantics.ownerEventId = String(owner.id || '');
+        // Read records can include address/index calculation. The operation's
+        // precise source targets remain the authoritative visual read set.
+        owner.semantics.readEventIds ||= [];
+        owner.semantics.readEventIds.push(String(read.id || ''));
+      }
+      // Calls/returns can open before their operand is evaluated. Output has
+      // no synthetic source targets. Use only executed, owned read records as
+      // their fallback; do not scan source text for a potentially unrun branch.
+      for (const owner of events.filter(event => ['return', 'output', 'call'].includes(event.type)
+        && !sourcesOf(event).some(target => target.variableId))) {
+        const owned = events.filter(read => read.type === 'read' && read.semantics.ownerEventId === String(owner.id || ''));
+        const valueReads = owned.filter(read => !owned.some(other => other !== read
+          && (other.targets || []).some(target => target.indexExpression)
+          && Number(other.source?.from) <= Number(read.source?.from)
+          && Number(other.source?.to) >= Number(read.source?.to)
+          && (Number(other.source.from) < Number(read.source.from) || Number(other.source.to) > Number(read.source.to))));
+        owner.semantics.reads = unique([...owner.semantics.reads, ...valueReads.flatMap(read => read.targets || [])]);
+      }
+    }
+    return document;
+  }
+
   // ---------------------------------------------------------------------------
   // 區段：文件入口正規化
   // ---------------------------------------------------------------------------
+  function restoreMatrixLabelSources(document) {
+    const resolver=window.ASMTraceLabelSources?.resolve;
+    if(!resolver)return;
+    const directives=document.frameDirectives||[];
+    for(const frame of [...document.frames,...document.snapshots.map(s=>s.frame).filter(Boolean)]) {
+      const source=frame.source||{};
+      const directive=directives.find(d=>source.directiveKey && (d.sourceKey===source.directiveKey
+        || (d.sourceKeyAliases||[]).includes(source.directiveKey))
+        || source.logicalDirectiveKey && d.logicalSourceKey===source.logicalDirectiveKey
+        || d.line===source.line && d.functionName===source.function);
+      if(!directive)continue;
+      for(const [id,options] of Object.entries(frame.rendererOptions||{}))for(const name of ['rowLabels','columnLabels']) {
+        const spec=options[name];
+        // Preserve explicit source mappings and deliberately hidden/static labels.
+        if(!spec||spec.mode!=='custom'||Array.isArray(spec.sources))continue;
+        const object=(directive.objects||[]).find(o=>o.primaryVariableId===id);
+        const raw=object?.rendererOptions?.[name]||directive.rendererOptions?.[name];
+        if(!raw?.parts?.some(p=>p.type==='variable'))continue;
+        const {values,sources}=resolver(raw,frame.state);
+        // Validate the authored projection as a whole; never infer identity
+        // from equal characters or override a saved custom label list.
+        if(JSON.stringify(values)===JSON.stringify(spec.values))spec.sources=sources;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 動畫完全由指令驅動（2026-11-14）
+  // Trace Studio 的手動調整（拖曳位置、位置綁定、自訂物件、手動箭頭、物件樣式、逐幀顯示、
+  // 鏡頭、幀間動畫）一律不再套用，舊資料載入時直接捨棄；事件、程式碼片段與其他設定照常保留。
+  // 只列出要捨棄的欄位，之後新增的設定不會被意外丟掉。
+  // ---------------------------------------------------------------------------
+  const MANUAL_STUDIO_KEYS = new Set([
+    'positions', 'bindings', 'objects', 'arrows', 'objectStyles', 'visibility',
+    'cameraRules', 'transitions', 'transitionDefaults'
+  ]);
+  function directiveStudio(studio) {
+    if (!studio || typeof studio !== 'object' || Array.isArray(studio)) return {};
+    const kept = {};
+    Object.entries(studio).forEach(([key, value]) => {
+      if (!MANUAL_STUDIO_KEYS.has(key) && key !== 'frameMaps') kept[key] = clone(value);
+    });
+    // @asm-view 的壓縮格式把逐幀設定放在 frameMaps；手動調整那幾類一併捨棄。
+    if (studio.frameMaps && typeof studio.frameMaps === 'object') {
+      const frameMaps = Object.fromEntries(Object.entries(studio.frameMaps)
+        .filter(([key]) => !MANUAL_STUDIO_KEYS.has(key)).map(([key, value]) => [key, clone(value)]));
+      if (Object.keys(frameMaps).length) kept.frameMaps = frameMaps;
+    }
+    return kept;
+  }
+
+  // 只處理原本就有的欄位：沒有 studio 的 asmView 不能補上空的 studio，否則會蓋掉已存的事件設定。
+  function directiveAsmView(asmView) {
+    const view = clone(asmView);
+    if (Array.isArray(view.rules)) view.rules = [];
+    if (view.studio && typeof view.studio === 'object') view.studio = directiveStudio(view.studio);
+    return view;
+  }
+
   function normalizeTraceDocument(source = {}) {
     const variables = source.variables && typeof source.variables === 'object' ? clone(source.variables) : {};
     const frames = Array.isArray(source.frames) ? source.frames.map((frame, index) => ({
@@ -302,6 +456,7 @@
       keepLastFocus: frame.keepLastFocus === true
     })) : [];
     const normalized = {
+      ...(source.executableRef && typeof source.executableRef.id === 'string' ? { executableRef: clone(source.executableRef) } : {}),
       schemaVersion: source.schemaVersion || '1.0',
       generatedAt: source.generatedAt || '',
       loopRecords: Array.isArray(source.loopRecords) ? clone(source.loopRecords) : [],
@@ -319,10 +474,11 @@
       })) : [],
       layouts: Array.isArray(source.layouts) ? clone(source.layouts) : [],
       skins: source.skins && typeof source.skins === 'object' ? clone(source.skins) : {},
-      rules: Array.isArray(source.rules) ? clone(source.rules) : [],
+      // 跨幀規則只來自 Trace Studio 的手動設定（指令不經這裡），一律不套用。
+      rules: [],
       frameDirectives: Array.isArray(source.frameDirectives) ? clone(source.frameDirectives) : [],
-      studio: source.studio && typeof source.studio === 'object' ? clone(source.studio) : {},
-      asmView: source.asmView && typeof source.asmView === 'object' ? clone(source.asmView) : null
+      studio: directiveStudio(source.studio),
+      asmView: source.asmView && typeof source.asmView === 'object' ? directiveAsmView(source.asmView) : null
     };
     const calls = new Map();
     const callLifecycles = [];
@@ -373,10 +529,12 @@
     normalized.skins = normalizeSkins(normalized.variables, normalized.skins);
     normalized.viewSettingsApplied = Boolean(source.viewSettingsApplied
       || (normalized.asmView && window.ASMTraceViewSource?.applyToTrace));
+    restoreMatrixLabelSources(normalized);
     applyFrameConditions(normalized);
     window.ASMTraceEvents?.rebuildVisualLifecycleEvents?.(normalized);
     window.ASMTraceEvents?.rebuildAutoFixedEvents?.(normalized);
     window.ASMTraceEvents?.applyEnabledStates?.(normalized);
+    normalizeEventSemantics(normalized);
     return normalized;
   }
 
@@ -487,6 +645,10 @@
         const resolveIndices = endpoint => {
           if (!endpoint) return endpoint;
           const expressions = endpoint.indexExpressions || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
+          if (window.ASMTraceSelection) {
+            const values = expressions.map(expression => window.ASMTraceSelection.stringify(window.ASMTraceSelection.freeze(window.ASMTraceSelection.dimension(expression), value => window.ASMTraceRules.resolveExpression(document,frame,value,locals))));
+            return { ...endpoint, indexExpressions: values, indexExpression: values.join(',') };
+          }
           const values = expressions.map(expression => window.ASMTraceRules.resolveExpression(document, frame, expression, locals));
           if (values.some(value => !Number.isSafeInteger(value))) fail('端點索引無法解析為安全整數');
           return { ...endpoint, indexExpressions: values.map(String), indexExpression: values.join(',') };
@@ -515,6 +677,11 @@
       const expressions = endpoint.indexExpressions
         || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
       if (!expressions.length) return { ...endpoint };
+      if (window.ASMTraceSelection) {
+        try { const values = expressions.map(expression => window.ASMTraceSelection.stringify(window.ASMTraceSelection.freeze(window.ASMTraceSelection.dimension(expression), value => window.ASMTraceRules.resolveExpression(document,sourceFrame,value,locals))));
+          return { ...endpoint, indexExpressions:values, indexExpression:values.join(',') };
+        } catch { return null; }
+      }
       const values = expressions.map(expression =>
         window.ASMTraceRules.resolveExpression(document, sourceFrame, expression, locals));
       if (values.some(value => !Number.isSafeInteger(value))) return null;
@@ -567,6 +734,7 @@
   }
 
   window.ASMTraceModel = {
+    objectKeyForVariable,
     characterItems,
     presentationItems,
     drawingDirectives,
@@ -580,6 +748,8 @@
     applyFrameConditions,
     buildIterationSummaries,
     normalizeTraceDocument,
+    directiveStudio,
+    MANUAL_STUDIO_KEYS,
     scalarValue,
     diffFrame
   };

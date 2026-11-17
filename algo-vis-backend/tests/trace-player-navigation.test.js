@@ -16,9 +16,13 @@ function playerHarness(options = {}) {
   const harnessOptions = options;
   const renders = [];
   let cancellations = 0;
+  let pauses = 0, tweenPauses = 0, resumes = 0, finishPlayback = null;
+  const documentListeners = new Map();
+  const windowListeners = new Map();
   const browserDocument = {
     hidden: false,
     body: { classList: { contains: () => false } },
+    addEventListener: (name, callback) => documentListeners.set(name, callback),
     getElementById: () => ({
       getBoundingClientRect: () => ({ width: 800, height: 600 })
     })
@@ -29,7 +33,7 @@ function playerHarness(options = {}) {
     ASMTraceRenderers: {
       renderFrame: (document, frame, previousFrame, renderOptions) => {
         renders.push({ frame, previousFrame, options: renderOptions });
-        const transition = Promise.resolve();
+        const transition = previousFrame && harnessOptions.pendingPlayback ? new Promise(resolve => { finishPlayback = resolve; }) : Promise.resolve();
         if (previousFrame && harnessOptions.playbackPlans) {
           transition.playbackPlan = {
             id: `plan-${frame.id}`,
@@ -39,12 +43,13 @@ function playerHarness(options = {}) {
         return transition;
       }
     },
-    ASMTraceFrameTween: { cancel() { cancellations += 1; } },
+    ASMTraceFrameTween: { cancel() { cancellations += 1; }, pause() { tweenPauses++; }, resume() { resumes++; }, isPaused() { return false; } },
+    ASMPlaybackNavigation: { pause() { pauses += 1; } },
     ASMTraceCamera: { apply() {}, transitionDuration: () => 0 },
     ASMTraceCodePresenter: { transitionDelay: () => 0 },
     dispatchEvent() {},
     requestAnimationFrame: callback => callback(),
-    addEventListener() {}
+    addEventListener: (name, callback) => windowListeners.set(name, callback)
   };
   const context = vm.createContext({
     window,
@@ -63,7 +68,8 @@ function playerHarness(options = {}) {
     frames: [{ id: 'f0', source: {} }, { id: 'f1', source: {} }, { id: 'f2', source: {} }]
   });
   renders.length = 0;
-  return { window, browserDocument, renders, cancellations: () => cancellations };
+  return { window, browserDocument, renders, cancellations: () => cancellations,
+    pauses: () => pauses, tweenPauses: () => tweenPauses, resumes: () => resumes, finishPlayback: () => finishPlayback?.(), documentListeners, windowListeners };
 }
 
 // -----------------------------------------------------------------------------
@@ -118,4 +124,23 @@ test('next during playback settles the current frame before animating the follow
     { frame: 'f2', previous: 'f1', stable: false, interrupted: false }
   ]);
   assert.equal(cancellations(), 1);
+});
+
+test('leaving the visible page pauses and resumes the same active transition', async () => {
+  const h = playerHarness({playbackPlans:true,pendingPlayback:true});
+  const transition=h.window.CodeScript.next(); const plan=h.window.ASMTracePlayer.getActivePlaybackPlan();
+  h.browserDocument.hidden=true; h.documentListeners.get('visibilitychange')();
+  assert.equal(h.pauses(),1);assert.equal(h.tweenPauses(),1);assert.equal(h.cancellations(),0);
+  assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),plan);
+  h.browserDocument.hidden=false;h.documentListeners.get('visibilitychange')();
+  assert.equal(h.resumes(),1);assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),plan);
+  h.finishPlayback();await transition;assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),null);
+});
+
+test('pagehide pauses before document.hidden changes and pageshow resumes', async () => {
+  const h=playerHarness({playbackPlans:true,pendingPlayback:true});const transition=h.window.CodeScript.next();
+  const plan=h.window.ASMTracePlayer.getActivePlaybackPlan();h.windowListeners.get('pagehide')();
+  assert.equal(h.pauses(),1);assert.equal(h.tweenPauses(),1);assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),plan);
+  h.windowListeners.get('pageshow')();assert.equal(h.resumes(),1);h.finishPlayback();await transition;
+  assert.equal(h.window.ASMTracePlayer.getActivePlaybackPlan(),null);
 });

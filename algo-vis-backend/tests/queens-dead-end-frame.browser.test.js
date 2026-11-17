@@ -8,7 +8,7 @@ const {randomBytes}=require('node:crypto');
 const {chromium}=require('playwright');
 
 test('Queens explains only initially empty P before returning',{timeout:90000},async()=>{
-  const root=path.resolve(__dirname,'..');
+  const root=path.resolve(__dirname, '..');
   const source=fs.readFileSync(path.join(root,'algorithm_sample/Backtracking/8queen_recursion.cpp'),'utf8');
   const port=await new Promise(resolve=>{const p=net.createServer();p.listen(0,'127.0.0.1',()=>{const n=p.address().port;p.close(()=>resolve(n));});});
   const server=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),ASM_REGRESSION:'1',JWT_SECRET:randomBytes(32).toString('hex')},windowsHide:true,stdio:'ignore'});

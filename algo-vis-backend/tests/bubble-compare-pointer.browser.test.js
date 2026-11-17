@@ -1,11 +1,11 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {chromium}=require('playwright'),{compile}=require('./helpers/compile'),{startIsolatedServer}=require('./helpers/isolated-server');
-const {validateBehavior}=require('../scripts/trace-behavior-rules');
+const {validateBehavior}=require('../scripts/validation/trace-behavior-rules');
 test('bubble frame 2 to 3 lifts the pointer over 8 and lowers the pointer over 7 before their swap', {timeout:90000},async t=>{
   const {base}=await startIsolatedServer(t),oldBase=process.env.ASM_TEST_BASE_URL;
   let trace;
-  try{process.env.ASM_TEST_BASE_URL=base;trace=(await compile(fs.readFileSync(path.join(__dirname,'fixtures/bubble-compare-pointer.cpp'),'utf8'),'10\n1 8 7 5 6 2 3 9 10 12')).trace;}
+  try{process.env.ASM_TEST_BASE_URL=base;trace=(await compile(fs.readFileSync(path.join(__dirname, 'fixtures/bubble-compare-pointer.cpp'),'utf8'),'10\n1 8 7 5 6 2 3 9 10 12')).trace;}
   finally{if(oldBase===undefined)delete process.env.ASM_TEST_BASE_URL;else process.env.ASM_TEST_BASE_URL=oldBase;}
   const comparison=trace.frames[2].events.find(e=>e.type==='compare'&&e.payload?.left?.value===8&&e.payload?.right?.value===7);
   assert.ok(comparison,'independent expected comparison is 8 > 7');

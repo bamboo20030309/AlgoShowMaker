@@ -39,7 +39,8 @@ function mobileDom(markup, prepare) {
 // -----------------------------------------------------------------------------
 test('mobile CSS is isolated behind a mobile breakpoint', () => {
   assert.match(css, /@media \(max-width: 760px\)/);
-  assert.match(css, /body\.asm-trace-studio-open:has\(#arraySvg\)/);
+  assert.doesNotMatch(css, /asm-trace-studio-open|asm-mobile-studio-/,
+    'the left side tabs replaced Trace Studio, so mobile has no Studio drawers');
   assert.match(css, /body\.asm-mobile-slide-tools-open\.asm-edit-mode:has\(#slidesRoot\)/);
 });
 
@@ -48,7 +49,7 @@ test('algorithm mobile dock switches between canvas and collapsible code', () =>
     <div id="arraySvg"></div>
     <div id="codePanel" class="collapsed"></div>
     <div id="subTabs"><button class="tab-btn" data-tab="tab-canvas"></button><button class="tab-btn" data-tab="tab-input"></button></div>
-    <button id="algoSamplesBtn"></button><button id="editAnimationBtn"></button><button id="eventSettingsBtn"></button>
+    <button id="algoSamplesBtn"></button>
   `);
   const { document } = dom.window;
   document.querySelector('[data-mobile-action="code"]').click();
@@ -56,7 +57,9 @@ test('algorithm mobile dock switches between canvas and collapsible code', () =>
   assert.ok(!document.getElementById('codePanel').classList.contains('collapsed'));
   document.querySelector('[data-mobile-action="canvas"]').click();
   assert.ok(!document.body.classList.contains('asm-mobile-code-open'));
-  assert.equal(document.querySelectorAll('.asm-mobile-extra-tab').length, 3);
+  // 更多：範例、我的程式碼（程式碼框與事件動畫已是左側面板的標籤）。
+  assert.deepEqual([...document.querySelectorAll('.asm-mobile-extra-tab')].map(tab => tab.textContent), ['範例', '我的程式碼']);
+  assert.equal(document.querySelector('[data-mobile-action="frames"], [data-mobile-action="inspector"]'), null);
 });
 
 test('mobile algorithm editor enables native long-press clipboard handling', () => {

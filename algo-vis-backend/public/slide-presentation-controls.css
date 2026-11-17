@@ -1,0 +1,48 @@
+/* 固定螢幕尺寸的雷射光點：紅心、白色輪廓與暗色外緣，在深淺背景皆可辨識。 */
+:root {
+  --asm-slide-laser-cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='%23ff2020' fill-opacity='.24'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23ff2020' stroke='%23202020' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23ff2020' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E") 16 16, crosshair;
+}
+
+body.asm-slide-laser-mode:not(.asm-edit-mode) > .reveal:not(.overview),
+body.asm-slide-laser-mode:not(.asm-edit-mode) > .reveal:not(.overview) *,
+html.asm-slide-laser-frame,
+html.asm-slide-laser-frame * {
+  cursor: var(--asm-slide-laser-cursor) !important;
+}
+
+/* Mode menu: transitions-dev dropdown tokens, with reduced-motion support. */
+.asm-presentation-menu {
+  position: fixed; z-index: 2147483647; display: flex; gap: 4px; padding: 5px;
+  border: 1px solid #526064; border-radius: 8px; background: #20282b; color: #fff;
+  box-shadow: 0 8px 24px #0005; transform-origin: top left;
+  opacity: 0; transform: scale(.97); pointer-events: none;
+  transition: transform 250ms cubic-bezier(.22,1,.36,1), opacity 250ms cubic-bezier(.22,1,.36,1);
+}
+.asm-presentation-menu.is-open { opacity: 1; transform: scale(1); pointer-events: auto; }
+.asm-presentation-menu.is-closing { opacity: 0; transform: scale(.99); transition-duration: 150ms; }
+.asm-presentation-menu[hidden] { display: none; }
+/* 圖示按鈕：目前模式以底色與外框標示；名稱只在滑鼠停留或鍵盤聚焦時以提示文字出現。 */
+.asm-presentation-menu button { position: relative; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.asm-presentation-menu button svg { width: 20px; height: 20px; display: block; }
+/* 雷射筆圖示的外圈是半透明光暈，實際紅點較小，放大才和箭頭一樣醒目。 */
+.asm-presentation-menu button svg.asm-laser-icon { width: 30px; height: 30px; }
+.asm-presentation-menu button:hover, .asm-presentation-menu button:focus-visible { background: #ffffff20; outline: none; }
+.asm-presentation-menu button[aria-checked="true"] { background: #ffffff2e; border-color: #ffffff59; }
+.asm-presentation-menu button::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 7px); left: 50%; z-index: 1;
+  padding: 4px 8px; border-radius: 4px; background: #111a1d; color: #fff; font: 12px/1.3 Arial, sans-serif; white-space: nowrap;
+  box-shadow: 0 2px 8px #0006; opacity: 0; transform: translate(-50%, -2px); pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+/* 開選單時預設按鈕會取得焦點，不能因此就顯示提示；只有滑鼠停留，或用方向鍵移動後才顯示。 */
+.asm-presentation-menu button:hover::after, .asm-presentation-menu.is-keyboard button:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 250ms; }
+body.asm-slide-view-mode:not(.asm-slide-laser-mode) .reveal { cursor: default; }
+.asm-presentation-text-layer { position: absolute; inset: 0; z-index: 1; overflow: visible; pointer-events: none; }
+.asm-presentation-text-layer text, .asm-presentation-text-layer tspan {
+  fill: transparent !important; stroke: none !important; pointer-events: auto; user-select: text !important; cursor: text;
+}
+.asm-presentation-text-layer text::selection, .asm-presentation-text-layer tspan::selection { fill: white !important; background: #3178c6; }
+body.asm-edit-mode .asm-presentation-text-layer, body.asm-slide-laser-mode .asm-presentation-text-layer, .reveal.overview .asm-presentation-text-layer { display: none; }
+body.asm-slide-view-mode:not(.asm-slide-laser-mode) .widget-content,
+body.asm-slide-view-mode:not(.asm-slide-laser-mode) .widget-content * { user-select: text; }
+@media (prefers-reduced-motion: reduce) { .asm-presentation-menu, .asm-presentation-menu button::after { transition: none !important; } }

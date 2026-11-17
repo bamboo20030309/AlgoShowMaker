@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { migrateSource, migrateJavaScript } = require('../scripts/migrate-indexed-pointers');
+const { migrateSource, migrateJavaScript } = require('../scripts/migrations/migrate-indexed-pointers');
 const { findFrameDirectives } = require('../trace-instrumenter');
 test('legacy migration preserves complete object blocks, pointer order, nested indices and conditions', () => {
   const old = `int main(){int a[3],b[3]; int i=0,j=1;

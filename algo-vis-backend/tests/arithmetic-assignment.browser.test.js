@@ -14,119 +14,7 @@ const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('visible-source declaration enters blank and receives the copied value in one slot', { timeout: 45000 }, async () => {
-  const base = process.env.ASM_TEST_BASE_URL;
-  assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
-  });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
-    await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build, TWEEN_BUILD);
-    const result = await page.evaluate(async () => {
-      const code = `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  int a = 7;
-  vector<int> num = {4, 7};
-  // @frame a,num
-  int x = a;
-  vector<int> copy = num;
-  // @frame a,num,x,copy
-}`;
-      const analyzed = await fetch('/trace/analyze', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
-      }).then(response => response.json());
-      const watches = [...new Set(analyzed.frameDirectives.flatMap(frame => frame.variableIds))];
-      const compiled = await fetch('/compile', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, input: '', trace: { enabled: true, watches, sliceMode: 'manual' } })
-      }).then(response => response.json());
-      const trace = window.ASMTraceModel.normalizeTraceDocument(compiled.traceDocument || compiled.trace);
-      const frame = trace.frames[1];
-      const xId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'x');
-      const copyId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'copy');
-      const declaration = frame.events.find(event => (
-        event.type === 'declare' && event.targets?.some(target => target.variableId === xId)
-      ));
-      const initializer = frame.events.find(event => (
-        event.type === 'assign' && event.declarationInitializer === true
-        && event.targets?.some(target => target.variableId === xId)
-      ));
-      const copyDeclaration = frame.events.find(event => (
-        event.type === 'declare' && event.targets?.some(target => target.variableId === copyId)
-      ));
-      await window.ASMTraceRenderers.renderFrame(trace, trace.frames[0], null, {
-        animatePositions: false, animateEvents: false
-      });
-      window.asmGetAnimationPlaybackRate = () => 4;
-      const samples = [];
-      let settled = false;
-      const transition = window.ASMTraceRenderers.renderFrame(trace, frame, trace.frames[0], {
-        direction: 1, animatePositions: true, animateEvents: true
-      }).finally(() => { settled = true; });
-      for (let count = 0; count < 360 && !settled; count += 1) {
-        await new Promise(resolve => requestAnimationFrame(resolve));
-        const object = document.querySelector(`[data-trace-variable="${xId}"]`);
-        const copyObject = document.querySelector(`[data-trace-variable="${copyId}"]`);
-        samples.push({
-          eventId: document.querySelector('[data-trace-active-event-id]')?.dataset.traceActiveEventId || '',
-          values: object ? [...object.querySelectorAll('.asm-trace-motion text')]
-            .map(node => node.textContent) : null,
-          transfers: [...document.querySelectorAll('.asm-trace-assign-transfer text')]
-            .map(node => node.textContent),
-          falling: [...document.querySelectorAll('.asm-trace-assign-falling-value')]
-            .map(node => node.textContent),
-          copyValues: copyObject ? [...copyObject.querySelectorAll(
-            '[data-trace-index] text:not([data-trace-content-role="index"])'
-          )].map(node => node.textContent) : null
-        });
-      }
-      await transition;
-      const finalObject = document.querySelector(`[data-trace-variable="${xId}"]`);
-      const finalCopy = document.querySelector(`[data-trace-variable="${copyId}"]`);
-      return {
-        declarationId: declaration?.id || '', initializerId: initializer?.id || '',
-        copyDeclarationId: copyDeclaration?.id || '', samples,
-        initializer: initializer ? {
-          enabled: initializer.enabled, disabled: initializer.autoAnimationDisabled,
-          targets: initializer.targets, payload: initializer.payload
-        } : null,
-        finalValues: finalObject ? [...finalObject.querySelectorAll('text')]
-          .map(node => node.textContent) : [],
-        finalCopyValues: finalCopy ? [...finalCopy.querySelectorAll(
-          '[data-trace-index] text:not([data-trace-content-role="index"])'
-        )].map(node => node.textContent) : [],
-        rows: frame.events.filter(event => window.ASMTraceEvents.showInspector(event, trace) !== false)
-          .filter(event => event.targets?.some(target => target.variableId === xId))
-          .filter(event => ['declare', 'assign'].includes(event.type))
-          .map(event => event.type)
-      };
-    });
-    const declarationSamples = result.samples.filter(sample => sample.eventId === result.declarationId);
-    assert.ok(result.declarationId && result.initializerId);
-    assert.deepEqual(result.rows, ['declare']);
-    assert.ok(declarationSamples.some(sample => (
-      !sample.values?.includes('7') && sample.transfers.includes('7')
-    )),
-      JSON.stringify({ initializer: result.initializer, declarationSamples }));
-    assert.ok(result.finalValues.includes('7'),
-      'x receives 7 when the transfer lands');
-    const copySamples = result.samples.filter(sample => sample.eventId === result.copyDeclarationId);
-    assert.ok(copySamples.some(sample => (
-      !sample.copyValues?.includes('4') && !sample.copyValues?.includes('7')
-      && sample.transfers.includes('4') && sample.transfers.includes('7')
-    )), JSON.stringify(copySamples));
-    assert.deepEqual(result.finalCopyValues, ['4', '7']);
-    assert.deepEqual(errors, []);
-  } finally {
-    await browser.close();
-  }
-});
+// Joined initialization is covered by initializer-visibility and declaration-cell-copy.
 
 test('push_back copies a visible source cell into the new destination cell', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
@@ -139,7 +27,7 @@ test('push_back copies a visible source cell into the new destination cell', { t
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
+    await page.goto(`${base}/algorithm.html?asmEmbed=runtime`);
     await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build, TWEEN_BUILD);
     const result = await page.evaluate(async () => {
       const code = `#include <bits/stdc++.h>
@@ -228,6 +116,9 @@ int main() {
         literalSamples.push({
           eventId: document.querySelector('[data-trace-active-event-id]')?.dataset.traceActiveEventId || '',
           hasCellTransfer: Boolean(document.querySelector('.asm-trace-sequence-cell-transfer')),
+          opacity: Number(getComputedStyle(document.querySelector('.asm-trace-sequence-entry') || destinationElement).opacity),
+          entryText: document.querySelector('.asm-trace-sequence-entry text[data-trace-content-role="value"],.asm-trace-sequence-entry text')?.textContent,
+          entryHasRect: Boolean(document.querySelector('.asm-trace-sequence-entry rect')),
           destinationCenterX: destinationRect
             ? destinationRect.x + destinationRect.width / 2 : null
         });
@@ -270,11 +161,13 @@ int main() {
       sample => sample.eventId === result.literalEventId
     );
     assert.equal(literalEventSamples.some(sample => sample.hasCellTransfer), false,
-      'a literal push keeps the generic edge insertion instead of inventing a source cell');
+      'a literal insertion does not invent a source cell');
     const literalPositions = literalEventSamples
       .map(sample => sample.destinationCenterX).filter(Number.isFinite);
-    assert.ok(Math.max(...literalPositions) - Math.min(...literalPositions) > 20,
-      'the literal destination retains the original right-edge entrance motion');
+    assert.ok(Math.max(...literalPositions) - Math.min(...literalPositions) < 1,
+      'the literal cell fades into its final slot without a right-edge fly-in');
+    assert.ok(literalEventSamples.some(sample=>sample.opacity>0&&sample.opacity<1&&sample.entryText==='9'&&sample.entryHasRect),
+      'the literal cell and its number fade together before the formal commit');
     assert.equal(result.finalValue, '5');
     assert.equal(result.finalLiteralValue, '9');
     assert.deepEqual(errors, []);
@@ -308,7 +201,7 @@ int main() {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      await page.goto(`${base}/algorithm.html`);
+      await page.goto(`${base}/algorithm.html?asmEmbed=runtime`);
       const samples = await page.evaluate(async ({ sourceTrace, targetId }) => {
         window.ASMTracePlayer.apply(sourceTrace);
         const previous = sourceTrace.frames[0];
@@ -347,7 +240,7 @@ int main() {
     }
   });
 
-test('binary and compound arithmetic transfers show their operators', { timeout: 45000 }, async () => {
+test('binary arithmetic transfers operand values and compound addition carries its plus sign', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -358,7 +251,7 @@ test('binary and compound arithmetic transfers show their operators', { timeout:
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
+    await page.goto(`${base}/algorithm.html?asmEmbed=runtime`);
     await page.waitForFunction(() => window.ASMTraceRenderers && window.ASMTraceModel);
     const result = await page.evaluate(async () => {
       const code = `#include <bits/stdc++.h>
@@ -393,7 +286,9 @@ int main() {
         animatePositions: false, animateEvents: false
       });
       window.asmGetAnimationPlaybackRate = () => 4;
-      const samples = new Set();
+      const assignments=trace.frames[1].events.filter(event=>['assign','write'].includes(event.type));
+      const expressions=Object.fromEntries(assignments.map(event=>[event.id,event.expression.replace(/\s/g,'')]));
+      const samples = Object.fromEntries(assignments.map(event=>[event.expression.replace(/\s/g,''),new Set()]));
       let settled = false;
       const transition = window.ASMTraceRenderers.renderFrame(
         trace, trace.frames[1], trace.frames[0],
@@ -403,7 +298,8 @@ int main() {
         await new Promise(resolve => requestAnimationFrame(resolve));
         const values = [...document.querySelectorAll('.asm-trace-assign-transfer-value text')]
           .map(node => node.textContent).sort();
-        if (values.length) samples.add(JSON.stringify(values));
+        const expression=expressions[document.querySelector('[data-trace-active-event-id]')?.dataset.traceActiveEventId];
+        if (values.length&&expression) samples[expression].add(JSON.stringify(values));
       }
       await transition;
       return {
@@ -415,7 +311,7 @@ int main() {
           .filter(event => event.multiSourceArithmetic)
           .map(event => event.targets.filter(target => String(target.role).startsWith('source-'))
             .map(target => [target.expression, target.arithmeticOperator])),
-        samples: [...samples]
+        samples: Object.fromEntries(Object.entries(samples).map(([expression,values])=>[expression,[...values]]))
       };
     });
     assert.equal(result.build, TWEEN_BUILD);
@@ -424,12 +320,12 @@ int main() {
       [['a', '+'], ['b', '+'], ['c', '-'], ['d', '+']],
       [['a', '*'], ['b', '*'], ['c', '/'], ['d', '*']]
     ]);
-    for (const values of [
-      ['+12', '+3'], ['-12', '-3'], ['*12', '*3'], ['/12', '/3'],
-      ['+3'], ['-3'], ['*3'], ['/3'],
-      ['+12', '+3', '-4', '+5'], ['*12', '*3', '/4', '*5']
-    ]) {
-      assert.ok(result.samples.includes(JSON.stringify([...values].sort())), JSON.stringify(result));
+    for (const [expression,values] of Object.entries({
+      'result=a+b':['12','3'],'result=a-b':['12','3'],'result=a*b':['12','3'],'result=a/b':['12','3'],
+      'result+=b':['+3'],'result-=b':['-3'],'result*=b':['*3'],'result/=b':['/3'],
+      'result=a+b-c+d':['12','3','4','5'],'result=a*b/c*d':['12','3','4','5']
+    })) {
+      assert.ok(result.samples[expression]?.includes(JSON.stringify([...values].sort())), JSON.stringify(result));
     }
     assert.deepEqual(errors, []);
   } finally {
@@ -437,7 +333,7 @@ int main() {
   }
 });
 
-test('literal operands display while a hidden data source disables all source transfers', { timeout: 45000 }, async () => {
+test('mixed constants retain operand numbers and their operators over the destination value', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -448,7 +344,7 @@ test('literal operands display while a hidden data source disables all source tr
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
+    await page.goto(`${base}/algorithm.html?asmEmbed=runtime`);
     await page.waitForFunction(() => window.ASMTraceRenderers && window.ASMTraceModel);
     const result = await page.evaluate(async () => {
       const code = `#include <bits/stdc++.h>
@@ -519,11 +415,12 @@ int main() {
     const hidden = result.events.find(event => event.sources[0].expression === 'hidden');
     assert.equal(visible.sources[1].literal, true);
     assert.equal(visible.sources[1].literalValue, '1');
-    assert.ok(result.samples[visible.expression].transfers.includes(JSON.stringify(['+1', '+4'])),
+    assert.ok(result.samples[visible.expression].transfers.includes(JSON.stringify(['+1', '4'])),
       JSON.stringify(result));
     assert.ok(result.samples[constants.expression].transfers.includes(JSON.stringify(['+1', '+2'])),
       JSON.stringify(result));
-    assert.deepEqual(result.samples[hidden.expression].transfers, []);
+    assert.ok(result.samples[hidden.expression].transfers.includes(JSON.stringify(['+2','7'])),
+      'hidden 7 is retained as a source value rather than suppressing the event or replacing both operands with 9');
     assert.equal(result.finalValue, '9');
     assert.deepEqual(errors, []);
   } finally {
@@ -531,85 +428,6 @@ int main() {
   }
 });
 
-test('max and min move only the selected visible source', { timeout: 45000 }, async () => {
-  const base = process.env.ASM_TEST_BASE_URL;
-  assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
-  const browser = await chromium.launch({
-    headless: true,
-    ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
-  });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${base}/algorithm.html`);
-    await page.waitForFunction(() => window.ASMTraceRenderers && window.ASMTraceModel);
-    const result = await page.evaluate(async () => {
-      const code = `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  vector<int> values = {3, 8};
-  int hidden = 9, maximum = 0, minimum = 0, hiddenMaximum = 0;
-  // @frame values,maximum,minimum,hiddenMaximum when hidden >= 0
-  maximum = max(values[0], values[1]);
-  minimum = std::min(values[0], values[1]);
-  hiddenMaximum = max(values[0], hidden);
-  // @frame values,maximum,minimum,hiddenMaximum when hidden >= 0
-}`;
-      const analyzed = await fetch('/trace/analyze', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
-      }).then(response => response.json());
-      const watches = [...new Set(analyzed.frameDirectives.flatMap(frame => frame.variableIds))];
-      const compiled = await fetch('/compile', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, input: '', trace: { enabled: true, watches, sliceMode: 'manual' } })
-      }).then(response => response.json());
-      const trace = window.ASMTraceModel.normalizeTraceDocument(compiled.traceDocument || compiled.trace);
-      const frame = trace.frames[1];
-      const selections = frame.events.filter(event => event.selectionOperation);
-      const expressions = Object.fromEntries(selections.map(event => [event.id, event.expression]));
-      const samples = Object.fromEntries(selections.map(event => [event.expression, new Set()]));
-      await window.ASMTraceRenderers.renderFrame(trace, trace.frames[0], null, {
-        animatePositions: false, animateEvents: false
-      });
-      window.asmGetAnimationPlaybackRate = () => 4;
-      let settled = false;
-      const transition = window.ASMTraceRenderers.renderFrame(
-        trace, frame, trace.frames[0],
-        { direction: 1, animatePositions: true, animateEvents: true }
-      ).finally(() => { settled = true; });
-      for (let count = 0; count < 600 && !settled; count += 1) {
-        await new Promise(resolve => requestAnimationFrame(resolve));
-        const root = document.querySelector('[data-trace-active-event-id]');
-        const expression = expressions[root?.dataset?.traceActiveEventId];
-        if (!expression) continue;
-        const values = [...document.querySelectorAll('.asm-trace-assign-transfer-value text')]
-          .map(node => node.textContent).sort();
-        if (values.length) samples[expression].add(JSON.stringify(values));
-      }
-      await transition;
-      return {
-        build: window.ASMTraceFrameTween.build,
-        events: selections.map(event => ({
-          expression: event.expression,
-          operation: event.selectionOperation,
-          selectedSourceRole: event.selectedSourceRole
-        })),
-        samples: Object.fromEntries(Object.entries(samples)
-          .map(([expression, values]) => [expression, [...values]]))
-      };
-    });
-    assert.equal(result.build, TWEEN_BUILD);
-    const maximum = result.events.find(event => event.expression.startsWith('maximum ='));
-    const minimum = result.events.find(event => event.expression.startsWith('minimum ='));
-    const hidden = result.events.find(event => event.expression.startsWith('hiddenMaximum ='));
-    assert.equal(maximum.selectedSourceRole, 'source-right');
-    assert.equal(minimum.selectedSourceRole, 'source-left');
-    assert.ok(result.samples[maximum.expression].includes(JSON.stringify(['8'])), JSON.stringify(result));
-    assert.ok(result.samples[minimum.expression].includes(JSON.stringify(['3'])), JSON.stringify(result));
-    assert.deepEqual(result.samples[hidden.expression], []);
-    assert.deepEqual(errors, []);
-  } finally {
-    await browser.close();
-  }
-});
+// Independent max/min events and the selected-value transfer are covered by
+// selection-events.browser.test.js and minmax-presentation.browser.test.js.
+// The former combined 600ms/300ms timing assertion no longer describes the API.

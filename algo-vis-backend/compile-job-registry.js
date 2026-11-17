@@ -161,6 +161,14 @@ class CompileJobRegistry {
     return this._snapshot(record);
   }
 
+  // Release the transient transport only after every coalesced owner received it.
+  markDelivered(jobId, ownerId) {
+    const record = this._authorizedRecord(jobId, ownerId);
+    record.delivered = true;
+    const subscribers = [...this.jobs.values()].filter(job => job.executionId === record.executionId);
+    return subscribers.length > 0 && subscribers.every(job => job.delivered || job.state === 'cancelled');
+  }
+
   get(jobId, ownerId) {
     return this.getSnapshot(jobId, ownerId);
   }

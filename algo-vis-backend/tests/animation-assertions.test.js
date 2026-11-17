@@ -8,7 +8,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { validate } = require('../scripts/animation-assertions');
+const { validate } = require('../scripts/validation/animation-assertions');
 const box = x => ({ x, y: 0, right: x + 20, bottom: 20 });
 const object = (key, extra = {}) => ({ key, effectiveOpacity: 1, computed: {}, ...extra });
 const sample = (timeMs, objects) => ({ sequence: timeMs, frameId: 'frame-1', timeMs, objects, reason: 'playback-complete' });

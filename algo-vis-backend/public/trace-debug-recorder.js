@@ -66,7 +66,6 @@
   function surfaceName() {
     let embed = '';
     try { embed = new URLSearchParams(root?.location?.search || '').get('asmEmbed') || ''; } catch {}
-    if (root?.document?.body?.classList?.contains?.('asm-trace-studio-open')) return 'studio';
     return embed === 'runtime' ? 'slides-runtime' : embed === 'editor' ? 'slides-editor' : 'algorithm';
   }
 

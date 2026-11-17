@@ -72,7 +72,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
     assert.ok(Math.abs(standaloneCamera.panXRatio) > .01);
     await compilePage.evaluate(() => ASMTraceStudio.open());
     assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()),
-      { panXRatio: 0, panYRatio: 0, zoomFactor: 1 }, 'studio has its own temporary camera');
+      standaloneCamera, 'Studio shares the existing canvas camera');
     const studioBox = await compilePage.locator('#arraySvg').boundingBox();
     await compilePage.mouse.move(studioBox.x + studioBox.width / 2, studioBox.y + studioBox.height / 2);
     await compilePage.mouse.wheel(0, -120);
@@ -80,7 +80,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
     await compilePage.waitForTimeout(220);
     const studioCamera = await compilePage.evaluate(() => getPresentationCameraTransform());
     await compilePage.evaluate(() => ASMTraceStudio.close());
-    assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()), standaloneCamera);
+    assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()), studioCamera);
     await compilePage.evaluate(() => ASMTraceStudio.open());
     assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()), studioCamera);
     await compilePage.evaluate(() => ASMTraceStudio.close());
@@ -172,26 +172,26 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
         && Math.abs(camera.panYRatio - expected.panYRatio) < 1e-6;
     }, saved);
 
+    // 編輯動畫頁是同一個畫布展開（2026-11-16）：手動平移縮放與投影片編輯畫面共用，雙向同步。
     await page.click('#algorithmEditSlideBtn');
-    await page.waitForFunction(() => document.querySelector('#algorithmEditorFrame')
-      ?.contentWindow?.document?.body?.classList.contains('asm-embed-editor'));
-    const editor = page.frames().find(frame => frame.url().includes('asmEmbed=editor'));
-    assert.ok(editor);
-    const editorCamera = await editor.evaluate(() => window.getPresentationCameraTransform?.());
-    assert.deepEqual(editorCamera, { panXRatio: 0, panYRatio: 0, zoomFactor: 1 },
-      'the algorithm-animation editor must not inherit the slide presentation camera');
-    const editorBox = await editor.locator('#arraySvg').boundingBox();
+    await runtime.waitForFunction(() => document.body.classList.contains('asm-embed-editor')
+      && !document.documentElement.classList.contains('asm-embed-assembling'));
+    assert.deepEqual(await runtime.evaluate(() => window.getPresentationCameraTransform?.()), saved,
+      'the animation editor shows the slide canvas with the same manual camera');
+    const editorBox = await runtime.locator('#arraySvg').boundingBox();
     await page.mouse.move(editorBox.x + editorBox.width / 2, editorBox.y + editorBox.height / 2);
     await page.mouse.wheel(0, -120);
-    await editor.waitForFunction(() => getPresentationCameraTransform().zoomFactor > 1);
+    await runtime.waitForFunction(expected => getPresentationCameraTransform().zoomFactor > expected, saved.zoomFactor);
     await page.waitForTimeout(220);
-    const changedEditorCamera = await editor.evaluate(() => getPresentationCameraTransform());
-    assert.deepEqual(await runtime.evaluate(() => getPresentationCameraTransform()), saved);
+    const changedEditorCamera = await runtime.evaluate(() => getPresentationCameraTransform());
     await page.keyboard.press('Escape');
-    await page.click('#algorithmEditSlideBtn');
-    await page.waitForFunction(() => !document.getElementById('algorithmEditorModal').classList.contains('is-loading'));
-    assert.deepEqual(await editor.evaluate(() => getPresentationCameraTransform()), changedEditorCamera);
-    await page.keyboard.press('Escape');
+    await page.locator('#algorithmEditorPage').waitFor({ state: 'hidden', timeout: 30000 });
+    await runtime.waitForFunction(() => document.body.classList.contains('asm-embed-runtime'));
+    assert.deepEqual(await runtime.evaluate(() => getPresentationCameraTransform()), changedEditorCamera,
+      'returning to the slide keeps the camera adjusted in the editor');
+    saved.panXRatio = changedEditorCamera.panXRatio;
+    saved.panYRatio = changedEditorCamera.panYRatio;
+    saved.zoomFactor = changedEditorCamera.zoomFactor;
 
     await page.reload();
     await page.waitForFunction(() => document.querySelector('.algorithm-slide-frame')
@@ -202,7 +202,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
       return camera && Math.abs(camera.panXRatio - expected.panXRatio) < 1e-6
         && Math.abs(camera.panYRatio - expected.panYRatio) < 1e-6
         && Math.abs(camera.zoomFactor - expected.zoomFactor) < 1e-6;
-    }, saved);
+    }, {panXRatio:0,panYRatio:0,zoomFactor:1});
     const downloadEvent = page.waitForEvent('download');
     await page.click('#exportDeckBtn');
     const exported = await archive.decode(new Blob([fs.readFileSync(await (await downloadEvent).path())]));
@@ -225,7 +225,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
     await legacyPage.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length > 1);
     await legacyPage.click('#modeToggleBtn');
     let legacyRuntime = legacyPage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
-    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1.2);
+    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1);
     const legacyTrace = await legacyRuntime.evaluate(() => ASMTracePlayer.getDocument());
     assert.equal(legacyTrace.studio.eventSettings.autoFixedEnabled, false);
     assert.equal(legacyTrace.studio.codePanelFontSize, 19);
@@ -237,7 +237,7 @@ test('temporary camera gestures stay local, survive reload, and isolate each int
     await legacyPage.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length > 1);
     if (await legacyPage.locator('body').evaluate(body => body.classList.contains('asm-edit-mode'))) await legacyPage.click('#modeToggleBtn');
     legacyRuntime = legacyPage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
-    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1.2);
+    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1);
     await legacyRuntime.evaluate(() => resetTemporaryCamera());
     assert.equal(await legacyRuntime.evaluate(() => getPresentationCameraTransform().zoomFactor), 1);
     await legacyContext.close();

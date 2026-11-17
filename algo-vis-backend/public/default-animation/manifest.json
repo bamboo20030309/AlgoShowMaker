@@ -1,22 +1,131 @@
 {
   "format": "AlgoShowMaker.default-animation",
-  "packageVersion": 1,
-  "engineVersion": "14/1",
+  "packageVersion": 2,
   "id": "linear-sieve",
-  "sourceSlideId": "linear-sieve-teaching-22",
-  "totalFrames": 116,
-  "sourceFingerprint": "3697:3846085724:854195580",
-  "inputFingerprint": "3:1731450012:193358996",
-  "preview": {
-    "url": "/default-animation/linear-sieve-preview.asmtrace",
-    "contentHash": "0a4e1099bf515b074b85fe36d6c6c1df8da4f2b03662e9a983cb6b0e6566b5f3",
-    "bytes": 10973,
-    "jsonBytes": 134511
-  },
-  "full": {
-    "url": "/default-animation/linear-sieve-full.asmtrace",
-    "contentHash": "319a0dc4ad463f8a67cd4ded6ee338e26b44668fd6f7e95765dbede0ba9cff1d",
-    "bytes": 385112,
-    "jsonBytes": 6280620
+  "animation": {
+    "mode": "trace",
+    "code": "// Euler's_Sieve Sample\r\n#include <bits/stdc++.h>\r\nusing namespace std;\r\n\r\n// @preset sieve_view\r\n// @object isprime with range(1,n), columns(10), labels(index)\r\n// @object prime with columns(10), labels(value)\r\n// @place prime.top-left at isprime.bottom-left offset(0,60)\r\n// @style isprime[1:n] focus when value == 1\r\n// @endpreset\r\n\r\n// @preset sieve_view_i\r\n// @object isprime with range(1,n), columns(10), labels(index)\r\n// @object prime with columns(10), labels(value)\r\n// @pointer i at isprime\r\n// @place prime.top-left at isprime.bottom-left offset(0,60)\r\n// @style isprime[1:n] focus when value == 1\r\n// @style prime[0:iteration.last(j)] focus when i * value <= n\r\n// @endpreset\r\n\r\n// @preset camera\r\n// @camera focus isprime offset(0,40) zoom(1.1)\r\n// @endpreset\r\n\r\nint n = 100;\r\nvector<int> isprime(n + 5, 1);\r\nvector<int> prime;\r\n\r\nvoid prime_table() {\r\n    isprime[0] = isprime[1] = 0;\r\n\r\n    // @frame use sieve_view,camera\r\n    // @style isprime[1] highlight\r\n    // @style isprime[1] background rgba(223,127,255)\r\n    // @text \"首先因為 1 不是{質:直}數 所以先刪掉\" at isprime.top offset(0,-20)\r\n\r\n    for (int i = 2; i <= n; i++) {\r\n        if (isprime[i]) prime.push_back(i);\r\n\r\n        // @frame use sieve_view_i,camera when i<=7\r\n        // @text \"因為 {isprime[${i}]=true:${i}是直樹}\\n所以將其放入 prime\" at isprime.top offset(0,-20) when isprime[i]==1\r\n        // @text \"因為 {isprime[${i}]=false:${i}不是直樹}\\n所以不將其放入 prime\" at isprime.top offset(0,-20) when isprime[i]==0\r\n\r\n        for (int j = 0; j < prime.size(); j++) {\r\n            // @frame use sieve_view_i,camera when i*prime[j]<=n and i<=7\r\n            // @style isprime[i,i*prime[j]] highlight\r\n            // @style prime[j] highlight\r\n            // @arrow from isprime[i] to prime[j] color rgba(13, 102, 13, 0.8) width 3\r\n            // @arrow from prime[j] to isprime[i*prime[j]] color rgba(51, 168, 51, 0.7) width 3\r\n            // @text \"因為 ${i}{×:乘}${prime[j]}{=:等於}${i*prime[j]}\\n所以殺掉 ${i*prime[j]}\" at isprime.top offset(0,-20)\r\n\r\n            if (i * prime[j] > n) break;\r\n            isprime[i * prime[j]] = 0;\r\n\r\n            // @frame use sieve_view_i,camera when i%prime[j]==0 and j<prime.size()-1 and i<=7\r\n            // @style isprime[i,i*prime[j+1]] highlight\r\n            // @style prime[j+1] highlight\r\n            // @style isprime[i*prime[j+1]] background AV_red\r\n            // @arrow from isprime[i] to prime[j+1] color rgba(255, 0, 0, 0.7) width 3\r\n            // @arrow from prime[j+1] to isprime[i*prime[j+1]] color rgba(255, 62, 62, 0.7) width 3\r\n            // @text \"因為 ${i}{%:除}${prime[j]}{=:等於}0\\n所以後面留著給其他人殺\" at isprime.top offset(0,-20)\r\n\r\n            if (i % prime[j] == 0) break;\r\n        }\r\n        // 濃縮幀\r\n        // @frame use sieve_view_i,camera when i>7\r\n        // @events animate off\r\n        // @style isprime[i] highlight\r\n        // @for j\r\n        //     @style isprime[i*prime[j]] highlight when i*prime[j]<=n\r\n        //     @arrow from prime[j] to isprime[i*prime[j]] color rgba(51, 168, 51, 0.7) width 3 when i*prime[j]<=n \r\n        // @endfor\r\n        // @text \"一次殺掉這幾個\" at isprime.top offset(0,-20)\r\n\r\n        \r\n    }\r\n}\r\n\r\nint main() {\r\n    cin >> n;\r\n\r\n    // @frame use sieve_view,camera\r\n    // @text \"這是線篩的演算法視覺化範例\\n是一種只需要線性時間就能完成的{質:直}數篩選法\" at isprime.top offset(0,-20)\r\n\r\n    prime_table();\r\n\r\n    // @frame use sieve_view,camera\r\n    // @text \"線篩完成\" at isprime.top offset(0,-20)\r\n\r\n    return 0;\r\n}\r\n\r\n/* @asm-view\r\n{\r\n  \"version\": 1,\r\n  \"rules\": [],\r\n  \"skins\": {},\r\n  \"studio\": {\r\n    \"eventInstructionStates\": {\r\n      \"assign:prime_table:isprime[i*v]=0\": false,\r\n      \"assign:prime_table:isprime[1]=0\": false,\r\n      \"scope-exit:prime_table:i\": false,\r\n      \"assign:prime_table:isprime[i*prime[j]]=0\": false,\r\n      \"assign:prime_table:isprime[1] = 0\": false,\r\n      \"assign:prime_table:isprime[i * prime[j]] = 0\": false\r\n    },\r\n    \"codePanelFontSize\": 14\r\n  }\r\n}\r\n@asm-view */",
+    "input": "100",
+    "sliceMode": "manual",
+    "watches": [
+      {
+        "id": "global:n@757",
+        "name": "n",
+        "cppType": "int",
+        "kind": "scalar"
+      },
+      {
+        "id": "global:isprime@779",
+        "name": "isprime",
+        "cppType": "vector<int>",
+        "kind": "sequence"
+      },
+      {
+        "id": "global:prime@811",
+        "name": "prime",
+        "cppType": "vector<int>",
+        "kind": "sequence"
+      },
+      {
+        "id": "prime_table:i@1089",
+        "name": "i",
+        "cppType": "int",
+        "kind": "scalar"
+      },
+      {
+        "id": "prime_table:j@1462",
+        "name": "j",
+        "cppType": "int",
+        "kind": "scalar"
+      }
+    ],
+    "rebuild": {
+      "view": {
+        "version": 1,
+        "rules": [],
+        "skins": {},
+        "studio": {
+          "eventInstructionStates": {
+            "assign:prime_table:isprime[i*v]=0": false,
+            "assign:prime_table:isprime[1]=0": false,
+            "scope-exit:prime_table:i": false,
+            "assign:prime_table:isprime[i*prime[j]]=0": false,
+            "assign:prime_table:isprime[1] = 0": false,
+            "assign:prime_table:isprime[i * prime[j]] = 0": false
+          },
+          "codePanelFontSize": 14,
+          "eventSettings": {
+            "autoFixedEnabled": true,
+            "autoLoopBoundaryEnabled": false
+          }
+        }
+      },
+      "globals": {
+        "eventSettings": {
+          "gapMs": 500,
+          "autoFixedEnabled": true,
+          "autoLoopBoundaryEnabled": false,
+          "defaultEnabled": {
+            "declare": true
+          },
+          "timelineTypes": {
+            "declare": true,
+            "read": false
+          }
+        }
+      }
+    },
+    "traceView": {
+      "studio": {
+        "eventInstructionStates": {
+          "assign:prime_table:isprime[i*v]=0": false,
+          "assign:prime_table:isprime[1]=0": false,
+          "scope-exit:prime_table:i": false,
+          "assign:prime_table:isprime[i*prime[j]]=0": false,
+          "assign:prime_table:isprime[1] = 0": false,
+          "assign:prime_table:isprime[i * prime[j]] = 0": false
+        },
+        "codePanelFontSize": 14,
+        "eventSettings": {
+          "gapMs": 500,
+          "autoFixedEnabled": true,
+          "autoLoopBoundaryEnabled": false,
+          "defaultEnabled": {
+            "declare": true
+          },
+          "timelineTypes": {
+            "declare": true,
+            "read": false
+          }
+        }
+      },
+      "skins": {
+        "global:n@756": {
+          "renderer": "original-cell",
+          "options": {}
+        },
+        "global:isprime@777": {
+          "renderer": "original-array",
+          "options": {}
+        },
+        "global:prime@808": {
+          "renderer": "original-array",
+          "options": {}
+        },
+        "prime_table:i@1076": {
+          "renderer": "original-cell",
+          "options": {}
+        },
+        "prime_table:j@1442": {
+          "renderer": "original-cell",
+          "options": {}
+        }
+      },
+      "rules": []
+    },
+    "executionPolicy": "executable-only-v1",
+    "executableRef": {
+      "id": "5d3ce359b4f3bcc2afb95d42afefc8aa05996cec97b4fe80b5f95211745af5e0"
+    }
   }
 }

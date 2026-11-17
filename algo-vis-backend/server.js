@@ -47,6 +47,7 @@ const TraceChunkStore = require('./trace-chunk-store');
 const SlideStorage = require('./public/slides-storage');
 const CloudContent = require('./cloud-content');
 const { resolveCompileOwner } = require('./compile-owner');
+const { OfficialExecutables } = require('./official-executables');
 const {
   CompileJobQueue,
   CompileQueueCancelledError,
@@ -276,7 +277,7 @@ const compileJobRegistry = new CompileJobRegistry({
     maxPendingPerOwner: positiveIntegerEnv('COMPILE_MAX_QUEUED_PER_OWNER', 3),
     maxActivePerOwner: 1,
   },
-  ttlMs: positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 10) * 60 * 1000,
+  ttlMs: positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 2) * 60 * 1000,
   maxResults: positiveIntegerEnv('ASYNC_COMPILE_MAX_RESULTS', 100),
 });
 
@@ -422,7 +423,7 @@ function computeCompilerFingerprint() {
     hash.update(result.stderr || '');
     hash.update(String(result.status));
   }
-  for (const relativePath of ['trace-instrumenter.js', 'lib/ASMTrace.hpp', 'lib/AV.hpp']) {
+  for (const relativePath of ['trace-instrumenter.js', 'public/trace-selection.js', 'lib/ASMTrace.hpp', 'lib/AV.hpp']) {
     hash.update(relativePath);
     hash.update(fs.readFileSync(path.join(__dirname, relativePath)));
   }
@@ -430,20 +431,43 @@ function computeCompilerFingerprint() {
 }
 
 const COMPILER_FINGERPRINT = computeCompilerFingerprint();
+const TRACE_GENERATION_FINGERPRINT = require('./trace-generation').generationFingerprint();
+TraceProvenance.configure({ generationFingerprint: TRACE_GENERATION_FINGERPRINT });
+app.get('/api/trace/version', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ engineVersion: TraceProvenance.ENGINE_VERSION, formatVersion: TraceProvenance.FORMAT_VERSION,
+    generationFingerprint: TRACE_GENERATION_FINGERPRINT });
+});
 
+const officialExecutables = new OfficialExecutables({
+  publicRoot: path.join(__dirname, 'public'), sampleRoot: path.join(__dirname, 'algorithm_sample'),
+  normalizeSource, compiler: COMPILER_FINGERPRINT,
+  engine: `${TraceProvenance.ENGINE_VERSION}/${TraceProvenance.FORMAT_VERSION}`,
+});
 const artifactCache = new ArtifactCache({
   rootDir: process.env.ARTIFACT_CACHE_DIR || path.join(__dirname, 'artifact-cache-data'),
   maxBytes: positiveIntegerEnv('ARTIFACT_CACHE_MAX_MB', 512) * 1024 * 1024,
   defaultTtlMs: positiveIntegerEnv('ARTIFACT_CACHE_TTL_HOURS', 168) * 60 * 60 * 1000,
 });
-const artifactCacheReady = artifactCache.init().catch((error) => {
+const artifactCacheReady = artifactCache.init().then(async cache => {
+  for (const entry of [...cache.entries.values()]) {
+    if (entry.type !== 'executable') await cache.remove(entry.type, entry.key, { forcePinned: true });
+  }
+  await officialExecutables.refresh({ force: true });
+  console.log('Official executable retention:', await officialExecutables.reconcile(cache));
+  return cache;
+}).catch((error) => {
   console.error('Artifact cache initialization failed:', error.message);
   return null;
 });
 
 const artifactMaintenanceTimer = setInterval(() => {
   compileJobRegistry.metrics();
-  artifactCache.prune().catch(error => console.error('Artifact cache prune failed:', error.message));
+  Promise.resolve(artifactCacheReady).then(async cache => {
+    if (!cache) return;
+    if (await officialExecutables.refresh()) await officialExecutables.reconcile(cache);
+    await cache.prune();
+  }).catch(error => console.error('Artifact cache prune failed:', error.message));
 }, 60_000);
 artifactMaintenanceTimer.unref();
 
@@ -494,10 +518,18 @@ function usesLegacyAnimationCompiler(source) {
 }
 
 // 設定中間件
+// Distribution folders omit the packages' root LICENSE files. Expose only
+// these known notices, without exposing node_modules or arbitrary paths.
+for (const [url, file] of [
+  ['/vendor/reveal/LICENSE', 'reveal.js/LICENSE'],
+  ['/vendor/fabric/LICENSE', 'fabric/LICENSE'],
+  ['/vendor/iro/LICENSE.txt', '@jaames/iro/LICENSE.txt'],
+]) app.get(url, (req, res) => res.sendFile(path.join(__dirname, 'node_modules', file)));
 app.use('/vendor/reveal', express.static(path.join(__dirname, 'node_modules', 'reveal.js', 'dist')));
 app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'fabric', 'dist')));
 app.use('/vendor/iro', express.static(path.join(__dirname, 'node_modules', '@jaames', 'iro', 'dist')));
 app.use('/vendor/ace', express.static(path.join(__dirname, 'node_modules', 'ace-builds', 'src-min-noconflict')));
+require('./sample-trace-route').registerSampleTraceRoute(app);
 app.use(express.static(path.join(__dirname, 'public')));
 // Async jobs are spooled to disk, but bounding each request also limits the
 // short interval between JSON parsing and the spool write during a burst.
@@ -542,7 +574,7 @@ async function spoolFetchResponse(response, ttlMs) {
   const stagingDirectory = path.join(artifactCache.rootDir, '.staging');
   await fs.promises.mkdir(stagingDirectory, { recursive: true });
   const temporaryPath = path.join(stagingDirectory, `async_result_${uuidv4()}.json`);
-  const hash = createHash('sha256').update('async-compile-result-v1\0');
+  const hash = createHash('sha256').update('async-compile-result-v1\0' + uuidv4());
   let bytes = 0;
   const limiter = new Transform({
     transform(chunk, encoding, callback) {
@@ -557,7 +589,7 @@ async function spoolFetchResponse(response, ttlMs) {
     await pipeline(source, limiter, fs.createWriteStream(temporaryPath, { flags: 'wx' }));
     const sharedTraceId = String(response.headers.get('x-compile-trace-id') || '');
     if (/^[a-f0-9]{64}$/.test(sharedTraceId)) {
-      const sharedTrace = await artifactCache.lookup('trace', sharedTraceId);
+      const sharedTrace = await artifactCache.lookup('transport', sharedTraceId);
       if (sharedTrace) {
         return {
           statusCode: response.status,
@@ -567,7 +599,7 @@ async function spoolFetchResponse(response, ttlMs) {
       }
     }
     const resultArtifactId = hash.digest('hex');
-    await artifactCache.putFile('trace', resultArtifactId, temporaryPath, {
+    await artifactCache.putFile('transport', resultArtifactId, temporaryPath, {
       ttlMs,
       metadata: {
         asyncCompileResult: true,
@@ -585,21 +617,6 @@ async function spoolFetchResponse(response, ttlMs) {
   }
 }
 
-async function storeJsonArtifact(key, body, options = {}) {
-  const stagingDirectory = path.join(artifactCache.rootDir, '.staging');
-  await fs.promises.mkdir(stagingDirectory, { recursive: true });
-  const temporaryPath = path.join(stagingDirectory, `cached_response_${uuidv4()}.json`);
-  try {
-    await pipeline(
-      Readable.from(TraceChunkStore.jsonParts(body)),
-      fs.createWriteStream(temporaryPath, { flags: 'wx' }),
-    );
-    return await artifactCache.putFile('trace', key, temporaryPath, options);
-  } finally {
-    await fs.promises.rm(temporaryPath, { force: true }).catch(() => {});
-  }
-}
-
 // Optional non-blocking API for bursty classrooms. Existing clients may keep
 // using POST /compile; new clients can submit once, poll status, then download
 // the owner-scoped result without holding a long HTTP connection open.
@@ -608,10 +625,11 @@ app.post('/api/compile/jobs', attachCompileOwner, ipAbuseLimiter, ownerRateLimit
   if (!req.body.code.trim()) return res.status(400).json({ error: '程式碼不能為空白', code: 'EMPTY_SOURCE' });
   if (!await artifactCacheReady) return res.status(503).json({ error: '編譯結果儲存區尚未就緒' });
   const requestBody = { ...req.body, cachePolicy: 'shared' };
-  const asyncResultTtlMs = positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 10) * 60 * 1000;
+  const asyncResultTtlMs = positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 2) * 60 * 1000;
   const asyncRequestTtlMs = positiveIntegerEnv('ASYNC_COMPILE_REQUEST_TTL_MINUTES', 120) * 60 * 1000;
   const requestArtifactId = sha256Canonical({
     namespace: 'async-compile-request-v1',
+    generation: TRACE_GENERATION_FINGERPRINT,
     requestBody,
     engine: `${TraceProvenance.ENGINE_VERSION}/${TraceProvenance.FORMAT_VERSION}`,
     compiler: COMPILER_FINGERPRINT,
@@ -619,7 +637,7 @@ app.post('/api/compile/jobs', attachCompileOwner, ipAbuseLimiter, ownerRateLimit
   const compileHeaders = forwardedCompileHeaders(req);
   const priority = compilePriority(req);
   try {
-    await artifactCache.put('trace', requestArtifactId, canonicalStringify(requestBody), {
+    await artifactCache.put('transport', requestArtifactId, canonicalStringify(requestBody), {
       ttlMs: asyncRequestTtlMs,
       metadata: { asyncCompileRequest: true },
     });
@@ -629,7 +647,7 @@ app.post('/api/compile/jobs', attachCompileOwner, ipAbuseLimiter, ownerRateLimit
       priority,
       metadata: { requestArtifactId },
       run: async () => {
-        const requestArtifact = await artifactCache.read('trace', requestArtifactId);
+        const requestArtifact = await artifactCache.read('transport', requestArtifactId);
         if (!requestArtifact) {
           const error = new Error('排隊中的編譯內容已過期，請重新送出工作');
           error.code = 'ASYNC_COMPILE_REQUEST_EXPIRED';
@@ -652,7 +670,7 @@ app.post('/api/compile/jobs', attachCompileOwner, ipAbuseLimiter, ownerRateLimit
           }
           return await spoolFetchResponse(response, asyncResultTtlMs);
         } finally {
-          await artifactCache.remove('trace', requestArtifactId).catch(() => {});
+          await artifactCache.remove('transport', requestArtifactId).catch(() => {});
         }
       },
     });
@@ -705,7 +723,7 @@ app.get('/api/compile/jobs/:jobId/result', attachCompileOwner, compileResultLimi
     if (snapshot.state !== 'completed') {
       return res.status(409).json({ error: '編譯工作尚未完成', state: snapshot.state });
     }
-    const lease = await artifactCache.acquire('trace', snapshot.result.resultArtifactId);
+    const lease = await artifactCache.acquire('transport', snapshot.result.resultArtifactId);
     if (!lease) return res.status(410).json({ error: '編譯結果已過期，請重新送出工作' });
     res.status(snapshot.result.statusCode);
     res.type(snapshot.result.contentType || 'application/json');
@@ -714,6 +732,11 @@ app.get('/api/compile/jobs/:jobId/result', attachCompileOwner, compileResultLimi
       await pipeline(fs.createReadStream(lease.entry.path), res);
     } finally {
       await lease.release();
+      if (res.writableFinished) {
+        if (compileJobRegistry.markDelivered(req.params.jobId, req.compileOwnerId)) {
+          await artifactCache.remove('transport', snapshot.result.resultArtifactId).catch(() => {});
+        }
+      }
     }
     return undefined;
   } catch (error) {
@@ -864,14 +887,26 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// 重設密碼後要回到的站內頁面（例如從程式碼頁出發）。只接受本站相對路徑，與首頁 safeNextPath 規則相同。
+function safeReturnPath(next) {
+  if (typeof next !== 'string' || next.length > 500) return '';
+  if (!next.startsWith('/') || /^\/[\/\\]/.test(next) || /[\u0000-\u001f\\]/.test(next)) return '';
+  return next;
+}
+
 // 忘記密碼 (寄送重置信)
+// 不論帳號是否存在都回同一句話，避免別人用這個表單試出某個 Email 有沒有註冊。
+const FORGOT_PASSWORD_REPLY = '如果這個 Email 已註冊，重設密碼的連結會寄到信箱，請檢查收件匣（也看看垃圾郵件）。';
 app.post('/api/auth/forgot-password', async (req, res) => {
-  const { username } = req.body;
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+  const returnPath = safeReturnPath(req.body?.next);
+  // 只接受字串：空值或物件（例如 {"$ne": null}）會讓 findOne 比對到任意帳號。
+  if (!username) return res.status(400).json({ error: '請輸入 Email' });
 
   try {
     const user = await User.findOne({ username });
     if (!user) {
-      return res.status(404).json({ error: '找不到此帳號 (Email)' });
+      return res.json({ success: true, message: FORGOT_PASSWORD_REPLY });
     }
 
     // 1. 產生 Token (有效期限 1 小時)
@@ -884,7 +919,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     // 使用者點這個連結會帶上 ?reset_token=xxxxx
     // 優先讀取環境變數，如果沒設定就預設用 localhost
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const resetLink = `${baseUrl}/?reset_token=${token}`;
+    const resetLink = `${baseUrl}/?reset_token=${token}${returnPath ? `&next=${encodeURIComponent(returnPath)}` : ''}`;
 
     // 3. 寄信
     const mailOptions = {
@@ -896,7 +931,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
     await transporter.sendMail(mailOptions);
 
-    res.json({ success: true, message: '重置信已寄出，請檢查您的信箱！' });
+    res.json({ success: true, message: FORGOT_PASSWORD_REPLY });
 
   } catch (err) {
     console.error('寄信失敗:', err);
@@ -988,6 +1023,9 @@ function cleanEventSettings(value = {}) {
       ? value.autoFixedEnabled
       : (typeof value.defaultEnabled?.fixed === 'boolean' ? value.defaultEnabled.fixed : true),
     autoLoopBoundaryEnabled: value.autoLoopBoundaryEnabled === true,
+    readHighlightEnabled: value.readHighlightEnabled === true,
+    readHighlightColor: typeof value.readHighlightColor === 'string' && value.readHighlightColor.trim()
+      ? value.readHighlightColor.trim().slice(0, 128) : 'AV_red',
     defaultEnabled: cleanFlags(value.defaultEnabled),
     timelineTypes: cleanFlags(value.timelineTypes)
   };
@@ -1163,9 +1201,10 @@ app.put('/api/slides/:deck_uid/share', authenticateToken, async (req, res) => {
 });
 
 async function restoreSlideDeck(slide, { lazyTraces = false } = {}) {
+  slide.trace_keys = [];
   if (slide.cloud_snapshot) {
     const restored = await cloudContent.restore(slide, { lazyTraces });
-    slide.trace_keys = restored.record.references.map(ref => ref.key);
+    slide.trace_keys = [];
     return restored.deck;
   }
   if (lazyTraces) {
@@ -1174,8 +1213,8 @@ async function restoreSlideDeck(slide, { lazyTraces = false } = {}) {
       : await SlideStorage.project(slide.deck);
     const deck = JSON.parse(JSON.stringify(record.deck));
     for (const ref of record.references) deck.groups[ref.groupIndex].slides[ref.slideIndex].animation.traceView = ref.view || {};
-    slide.trace_keys = record.references.map(ref => ref.key);
-    return deck;
+    slide.trace_keys = [];
+    return SlideStorage.hydrate({ deck, references: record.references });
   }
   return SlideStorage.hydrate({ deck: slide.deck, references: slide.trace_references || [],
     traces: slide.trace_results || {} });
@@ -1209,15 +1248,8 @@ async function prepareTraceSave(body, query, updates) {
   return unset;
 }
 
-async function readSlideTrace(slide, key, history = false) {
-  if (!/^[a-f0-9]{64}$/.test(key)) throw Object.assign(new Error('動畫 ID 無效'), { status: 400 });
-  if (slide.cloud_snapshot) return cloudContent.trace(slide, key, { history });
-  const owned = slide.trace_references?.length
-    ? { references: slide.trace_references, traces: slide.trace_results || {} }
-    : await SlideStorage.project(slide.deck);
-  if (!owned.references.some(ref => ref.key === key) || !Object.hasOwn(owned.traces, key))
-    throw Object.assign(new Error('找不到這份投影片的動畫結果'), { status: 404 });
-  return owned.traces[key];
+async function readSlideTrace() {
+  throw Object.assign(new Error('Trace 不再持久保存，請依投影片程式碼重新執行'), { status: 410 });
 }
 
 app.get('/api/slides/:deck_uid/traces/:key', authenticateToken, async (req, res) => {
@@ -1413,6 +1445,11 @@ app.delete('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
 });
 
 const cloudContent = CloudContent.register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, cleanCoverThumbnail);
+if (process.env.ASM_REGRESSION !== '1') {
+  const migrate = () => cloudContent.migrateAll().then(result => console.log('Executable recipe migration:', result)).catch(error => console.error('Trace migration failed:', error.message));
+  if (mongoose.connection.readyState === 1) void migrate();
+  else mongoose.connection.once('connected', migrate);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 子程序資源監控：Linux 讀取 /proc；其他平台保留可安全降級的空結果
@@ -1906,7 +1943,7 @@ function materializeKeepSnapshots(frames, layouts = []) {
       const identity = String(entry?.identity || '');
       const currentRenderState = variableRenderState(frame, variableId, identity);
       const previousRenderState = variableRenderState(frames[frameIndex - 1], variableId, identity);
-      const renderState = (event.layoutId && event.recursionActivationId
+      const renderState = (frame.source?.silentKeepView === true || (event.layoutId && event.recursionActivationId)
         ? currentRenderState || previousRenderState
         : previousRenderState || currentRenderState)
         || { frameId: '', sourceVariableId: variableId, renderer: '', rendererOptions: {}, binding: null, styles: [], arrows: [] };
@@ -2332,26 +2369,7 @@ function resolveFrameRendererOptions(frame, directive) {
     if (Array.isArray(data?.items)) return data.items.map(materializeTraceValue);
     return traceScalarValue(data);
   };
-  const resolveLabelSource = spec => {
-    if (!spec) return null;
-    if (spec.mode !== 'custom') return { mode: spec.mode, values: [] };
-    const values = [];
-    (spec.parts || []).forEach(part => {
-      if (part.type === 'blank') {
-        values.push(...Array.from({ length: Math.max(0, Number(part.count) || 0) }, () => ''));
-      } else if (part.type === 'literal') {
-        values.push(part.value);
-      } else if (part.type === 'variable') {
-        const entry = frame.state?.[part.variableId]
-          || Object.values(frame.state || {}).find(item => item?.name === part.name);
-        const value = materializeTraceValue(entry?.data);
-        if (Array.isArray(value)) values.push(...value);
-        else if (typeof value === 'string') values.push(...value);
-        else if (value !== undefined) values.push(value);
-      }
-    });
-    return { mode: 'custom', values };
-  };
+  const resolveLabelSource = spec => require('./public/trace-label-sources').resolve(spec, frame.state);
   ['indexLabels', 'rowLabels', 'columnLabels', 'innerLabels'].forEach(name => {
     if (source[name]) options[name] = resolveLabelSource(source[name]);
   });
@@ -2396,6 +2414,11 @@ function resolveFrameRendererOptions(frame, directive) {
   if (Array.isArray(source.symbols)) options.symbols = [...source.symbols];
   if (directive?.dataTransform?.type === 'char') {
     options.dataTransform = { type: 'char' };
+  }
+  if (directive?.dataTransform?.type === 'slice') {
+    options.selection = directive.dataTransform.dimensions.map(dimension => require('./public/trace-selection').freeze(
+      dimension, expression => resolveTraceIndexExpression(frame, expression)));
+    if (directive.dataTransform.characterView) options.dataTransform = { type: 'char' };
   }
   if (directive?.dataTransform?.type === 'element') {
     options.dataTransform = {
@@ -2513,6 +2536,15 @@ function appendFixedEvents(frames, variables = []) {
   });
 
   return frames;
+}
+
+// 動畫完全由指令驅動（2026-11-14）：回傳的 asmView 去掉 Studio 手動調整與跨幀規則。
+// 只處理原本就有的欄位；沒有 @asm-view 時不能憑空加上空的 studio，否則載入時會蓋掉已存的事件設定。
+function directiveAsmView(asmView) {
+  const view = { ...asmView };
+  if (Array.isArray(view.rules)) view.rules = [];
+  if (view.studio && typeof view.studio === 'object') view.studio = TraceViewSource.directiveStudio(view.studio);
+  return view;
 }
 
 async function readTraceDocument(tracePath, variables, traceRequest = {}) {
@@ -2714,11 +2746,10 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
     frames: keepSnapshots.frames,
     snapshots: keepSnapshots.snapshots,
     skins,
-    rules: Array.isArray(asmView.rules)
-      ? asmView.rules
-      : Array.isArray(traceRequest.rules) ? traceRequest.rules : [],
-    studio: asmView.studio && typeof asmView.studio === 'object' ? asmView.studio : {},
-    asmView,
+    // 動畫完全由指令驅動：Studio 手動調整與跨幀規則不寫進新產生的 trace，只留事件與程式碼片段設定。
+    rules: [],
+    studio: TraceViewSource.directiveStudio(asmView.studio),
+    asmView: directiveAsmView(asmView),
     frameDirectives,
     layouts: Array.isArray(traceRequest.layoutDirectives)
       ? JSON.parse(JSON.stringify(traceRequest.layoutDirectives))
@@ -2778,6 +2809,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
 
   code = normalizeSource(code);
   let sourceCode = code;
+  let officialAvailableVariables = [];
   let traceVariables = [];
   let traceFrameDirectives = [];
   let traceKeepDirectives = [];
@@ -2805,6 +2837,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       traceEnabled = instrumented.drawingEnabled !== false;
       sourceCode = instrumented.code;
       traceVariables = instrumented.variables;
+      officialAvailableVariables = instrumented.allVariables || [];
       traceFrameDirectives = instrumented.frameDirectives.map((directive, index) => ({
         line: directive.line,
         name: directive.name || '',
@@ -2907,51 +2940,19 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
     flags: [traceEnabled ? '-O0' : '-O2', process.platform === 'win32' ? '-std=c++1z' : '-std=c++17'],
     engine: engineFingerprint,
   });
-  const traceCacheKey = createTraceKey({
-    executableKey,
-    input: typeof input === 'string' ? input : '',
-    traceConfig: { ...trace, enabled: traceEnabled, sliceMode: traceSliceMode },
-    engine: engineFingerprint,
-  });
   // Explicit true affects this request only: it still uses the normal queue,
   // limits and sandbox, but neither reads nor writes shared compilation caches.
   const forceRecompile = req.body?.forceRecompile === true;
-  const sharedCache = !forceRecompile
-    && (req.headers['x-compile-cache'] === 'shared' || req.body?.cachePolicy === 'shared');
   const cacheAvailable = Boolean(await artifactCacheReady);
-  if (forceRecompile) {
-    res.setHeader('X-Compile-Trace-Cache', 'BYPASS');
-    res.setHeader('X-Compile-Executable-Cache', 'BYPASS');
-    logDebug('FORCE_RECOMPILE: 略過執行檔與 Trace 快取，重新編譯並執行');
+  if (cacheAvailable && await officialExecutables.refresh()) await officialExecutables.reconcile(artifactCache);
+  const executablePolicy = officialExecutables.classify(code, {
+    traceEnabled, watches: trace?.watches, allVariables: officialAvailableVariables,
+  });
+  if (cacheAvailable && !forceRecompile && executablePolicy.official) {
+    await artifactCache.setPinned('executable', executableKey, true, { metadata: executablePolicy });
   }
-  if (sharedCache) res.setHeader('X-Compile-Trace-Id', traceCacheKey);
-
-  if (sharedCache && cacheAvailable) {
-    let cachedLease = null;
-    try {
-      cachedLease = await artifactCache.acquire('trace', traceCacheKey);
-      if (cachedLease) {
-        res.setHeader('X-Compile-Trace-Cache', 'HIT');
-        res.type('application/json');
-        res.setHeader('Content-Length', String(cachedLease.entry.size));
-        // Parsing and execution are already complete. Release the single
-        // expensive-work slot before streaming to a slow browser.
-        markCompileWorkComplete();
-        await pipeline(fs.createReadStream(cachedLease.entry.path), res);
-        return undefined;
-      }
-      res.setHeader('X-Compile-Trace-Cache', 'MISS');
-    } catch (error) {
-      if (res.headersSent) {
-        logDebug('傳送追蹤快取失敗：' + error.message);
-        res.destroy(error);
-        return undefined;
-      }
-      logDebug('讀取追蹤快取失敗，改用一般編譯：' + error.message);
-    } finally {
-      if (cachedLease) await cachedLease.release();
-    }
-  }
+  res.setHeader('X-Compile-Trace-Cache', 'DISABLED');
+  if (forceRecompile) res.setHeader('X-Compile-Executable-Cache', 'BYPASS');
 
   /*
   // 關鍵字過濾
@@ -3026,6 +3027,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
   const compilerMemoryKB = 512 * 1024;
   req.compileWorkSpawned = true;
   let executableCacheHit = false;
+  let executablePinned = executablePolicy.official && !forceRecompile;
   if (cacheAvailable && !forceRecompile) {
     let lease = null;
     try {
@@ -3033,6 +3035,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       if (lease) {
         fs.copyFileSync(lease.entry.path, exePath);
         executableCacheHit = true;
+        executablePinned = lease.entry.pinned;
         res.setHeader('X-Compile-Executable-Cache', 'HIT');
         logDebug('EXECUTABLE_CACHE_HIT: 重用已編譯執行檔');
       } else {
@@ -3166,7 +3169,8 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
     if (!executableCacheHit && cacheAvailable && !forceRecompile) {
       try {
         await artifactCache.putFile('executable', executableKey, exePath, {
-          metadata: { compilerFingerprint, engineFingerprint },
+          pinned: executablePolicy.official,
+          metadata: { compilerFingerprint, engineFingerprint, ...executablePolicy },
         });
         logDebug('EXECUTABLE_CACHE_STORED: 已保存可重用執行檔');
       } catch (error) {
@@ -3352,6 +3356,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
 
       if (traceDocument && !finalError) traceDocument.provenance = TraceProvenance.create(code, input);
 
+      if (traceDocument) traceDocument.executableRef = { id: executableKey };
       const responseBody = {
         output: runOut,
         error: finalError,
@@ -3364,24 +3369,12 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
         scriptContent: scriptContent,
         traceDocument,
         cache: {
-          trace: sharedCache ? 'STORED' : 'BYPASS',
+          trace: 'DISABLED',
           executable: forceRecompile ? 'BYPASS' : executableCacheHit ? 'HIT' : 'MISS',
           executableId: executableKey,
-          traceId: traceCacheKey,
+          retention: forceRecompile ? 'bypass' : executablePinned ? 'official-permanent' : 'temporary',
         },
       };
-      if (sharedCache && cacheAvailable && traceDocument && !finalError) {
-        try {
-          await storeJsonArtifact(traceCacheKey, responseBody, {
-            metadata: { executableKey, engineFingerprint },
-          });
-          logDebug('TRACE_CACHE_STORED: 已保存共用追蹤結果');
-          responseBody.debug_log = getCompileDebugMessages();
-        } catch (error) {
-          logDebug('保存追蹤快取失敗，繼續回傳本次結果：' + error.message);
-          responseBody.debug_log = getCompileDebugMessages();
-        }
-      }
       // At this point the child has closed and trace parsing is complete. Free
       // the expensive-work slot before a slow client finishes downloading.
       markCompileWorkComplete();
@@ -3473,10 +3466,10 @@ setInterval(() => {
 
 
 
-const SAMPLES_DIR = path.join(__dirname, '/algorithm_sample');
+const SAMPLES_DIR = path.join(__dirname, 'algorithm_sample');
 
 // 遞迴讀取目錄結構
-function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {
+function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR, labels = {}) {
   const stats = fs.statSync(dirPath);
   if (!stats.isDirectory()) return [];
 
@@ -3494,13 +3487,15 @@ function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {
     if (itemStats.isDirectory()) {
       return {
         name: item,
+        ...(labels[relativePath] ? { displayName: labels[relativePath] } : {}),
         type: 'folder',
         path: relativePath, // 加入路徑
-        children: getDirectoryTree(fullPath, rootPath) // 遞迴
+        children: getDirectoryTree(fullPath, rootPath, labels) // 遞迴
       };
     } else {
       return {
         name: item,
+        ...(labels[relativePath] ? { displayName: labels[relativePath] } : {}),
         type: 'file',
         path: relativePath  // 加入路徑
       };
@@ -3623,10 +3618,11 @@ app.get('/api/samples', (req, res) => {
   if (requestedFilename) {
     // [安全防護] 防止 Directory Traversal 攻擊 (例如傳 ../../etc/passwd)
     // 1. 組合完整路徑
-    const safePath = path.join(SAMPLES_DIR, requestedFilename);
+    if (typeof requestedFilename !== 'string') return res.status(400).send('Invalid filename.');
+    const safePath = path.resolve(SAMPLES_DIR, requestedFilename);
 
     // 2. 確保解析後的路徑，真的還在 SAMPLES_DIR 裡面
-    if (!safePath.startsWith(SAMPLES_DIR)) {
+    if (!safePath.startsWith(SAMPLES_DIR + path.sep)) {
       return res.status(403).send("Access Denied: Invalid file path.");
     }
 
@@ -3655,7 +3651,8 @@ app.get('/api/samples', (req, res) => {
         return res.json([]);
       }
 
-      const tree = getDirectoryTree(SAMPLES_DIR);
+      // Show the actual English filenames; hidden export metadata stays private.
+      const tree = getDirectoryTree(SAMPLES_DIR, SAMPLES_DIR);
       res.json(tree);
     } catch (err) {
       console.error("Error scanning directory:", err);

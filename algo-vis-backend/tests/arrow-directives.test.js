@@ -89,7 +89,7 @@ test('@arrow keeps nested array lookups inside a complete cell index', () => {
     '// @arrow from grid[prime[j]][i+1] to grid[0][1]');
   assert.deepEqual(matrixArrow.fromTarget.indexExpressions, ['prime[j]', 'i+1']);
   assert.throws(() => findArrowDirectives('// @arrow from prime[j] to isprime[i*prime[j]'),
-    /定位目標無效/);
+    /第 1 行的 @arrow to 列表無效：isprime\[i\*prime\[j\]/);
 });
 
 test('@arrow rejects missing endpoints and invalid options', () => {

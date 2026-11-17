@@ -118,15 +118,10 @@
     root.ASMTraceViewSource.applyToTrace(probe, view);
     const studio = trace.studio || {};
     const restored = probe.studio || {};
-    for (const key of ['objects', 'arrows', 'transitions']) {
-      const expected = new Set((studio[key] || []).map(item => item?.id).filter(Boolean));
-      const actual = new Set((restored[key] || []).map(item => item?.id).filter(Boolean));
-      for (const id of expected) if (!actual.has(id)) {
-        throw new Error(`Trace Studio 的 ${key} 物件 ${id} 無法還原，請先重新 RUN 並儲存。`);
-      }
-    }
+    // 動畫完全由指令驅動（2026-11-14）：手動調整（物件、箭頭、位置、綁定、顯示、樣式、幀間動畫）
+    // 一律捨棄，不再核對；只確認逐幀事件設定能還原。
     const frameIds = new Set((trace.frames || []).map(frame => frame.id));
-    for (const key of ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates']) {
+    for (const key of ['eventStates']) {
       for (const [frameId, saved] of Object.entries(studio[key] || {})) {
         if (!frameIds.has(frameId) || !saved || !Object.keys(saved).length) continue;
         if (!restored[key]?.[frameId] || !Object.keys(restored[key][frameId]).length) {
@@ -136,7 +131,7 @@
     }
     // fromTrace deliberately omits these global settings; keep them separate.
     const globals = {};
-    for (const key of ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults', 'eventSettings']) {
+    for (const key of ['eventColors', 'eventSignatureColors', 'eventAnimations', 'eventSettings']) {
       if (Object.prototype.hasOwnProperty.call(studio, key)) globals[key] = clone(studio[key]);
     }
     return { view, globals };
@@ -184,67 +179,22 @@
 
   async function animationKey(animation, engine = engineVersion()) {
     const rebuild = animation.rebuild || {};
-    return sha256(JSON.stringify([engine, animation.code, animation.input, animation.sliceMode,
+    return sha256(JSON.stringify([engine, root.ASMTraceProvenance.generationFingerprint, animation.code, animation.input, animation.sliceMode,
       animation.watches, rebuild.view, rebuild.globals]));
   }
 
   async function baseKey(animation, engine = engineVersion()) {
-    return sha256(JSON.stringify([engine, animation.code, animation.input, animation.sliceMode,
+    return sha256(JSON.stringify([engine, root.ASMTraceProvenance.generationFingerprint, animation.code, animation.input, animation.sliceMode,
       animation.watches]));
   }
 
   async function project(liveDeck, editorDraft = null, options = {}) {
-    const deck = clone(liveDeck);
-    const liveSlides = new Map(algorithmSlides(liveDeck).map(slide => [slide.id, slide]));
-    const assets = {};
-    const prebuiltTraces = {};
-    const cacheSeeds = [];
-    for (const slide of algorithmSlides(deck)) {
-      const live = liveSlides.get(slide.id);
-      if (editorDraft?.slideId === slide.id) slide.animation = clone(editorDraft.animation);
-      const animation = slide.animation;
-      if (animation) delete animation.presentationCamera;
-      if (animation?.traceRef && !animation.traceDocument) {
-        if (!/^[a-f0-9]{64}$/.test(animation.traceRef) || !animation.code?.trim()) throw new Error('動畫 Trace ID 或原始碼無效。');
-        delete animation.prebuilt;
-        continue;
-      }
-      checkAnimation(animation, slide.id);
-      const trace = animation.traceDocument;
-      // Use the same immutable result identity as the independent slide trace store.
-      const result = { ...trace }, traceView = {};
-      for (const name of ['studio', 'skins', 'rules']) {
-        if (Object.hasOwn(result, name)) { traceView[name] = clone(result[name]); delete result[name]; }
-      }
-      const canonical = value => Array.isArray(value) ? '[' + value.map(canonical).join(',') + ']'
-        : value && typeof value === 'object' ? '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonical(value[k])).join(',') + '}' : JSON.stringify(value);
-      const traceRef = await sha256(canonical(result));
-      const rebuild = presentationFor(trace);
-      const exact = await animationKey({ ...animation, rebuild });
-      cacheSeeds.push({ key: `exact:${exact}`, trace: clone(trace) });
-      cacheSeeds.push({ key: traceRef, trace: clone(result) });
-      let prebuilt;
-      if (options.includePrebuiltTraces) {
-        const traceId = await sha256(JSON.stringify(trace));
-        const provenance = root.ASMTraceProvenance.create(animation.code, animation.input || '');
-        prebuiltTraces[traceId] = clone(trace);
-        prebuilt = {
-          traceId,
-          engineVersion: engineVersion(),
-          sourceFingerprint: provenance.sourceFingerprint,
-          inputFingerprint: provenance.inputFingerprint
-        };
-      }
-      slide.animation = {
-        mode: 'trace', code: animation.code, input: animation.input || '',
-        sliceMode: animation.sliceMode || trace.sliceMode || 'auto',
-        watches: clone(animation.watches || []), rebuild,
-        traceRef, traceView,
-        ...(prebuilt ? { prebuilt } : {})
-      };
-    }
-    await extractAssets(deck, assets);
-    return { deck, assets, prebuiltTraces, cacheSeeds };
+    const source=clone(liveDeck);
+    if(editorDraft?.slideId){const slide=algorithmSlides(source).find(s=>s.id===editorDraft.slideId);if(slide)slide.animation=clone(editorDraft.animation);}
+    const recipe=root.ASMAnimationRecipe || (typeof require==='function'?require('./animation-recipe'):null);
+    if(!recipe)throw new Error('Animation recipe module missing');
+    const deck=recipe.deck(source),assets={};await extractAssets(deck,assets);
+    return {deck,assets,prebuiltTraces:{},cacheSeeds:[]};
   }
 
   // -----------------------------------------------------------------------------
@@ -422,119 +372,38 @@
       if (matches) animation.traceDocument = clone(trace);
     }
     if (cover && cover.slideCount !== deck.groups.reduce((sum, group) => sum + (group.slides?.length || 0), 0)) throw new Error('封面頁數與投影片內容不符。');
-    return { deck, manifest, ...(cover ? { cover } : {}) };
+    const recipe = root.ASMAnimationRecipe || (typeof require === 'function' ? require('./animation-recipe') : null);
+    return { deck: recipe.deck(deck), manifest, ...(cover ? { cover } : {}) };
   }
 
   // -----------------------------------------------------------------------------
   // 重建 trace 快取
   // IndexedDB 以動畫輸入與 engine 版本作 key；容量超限時依最近使用時間淘汰。
   // -----------------------------------------------------------------------------
-  function openCache() {
-    return new Promise((resolve, reject) => {
-      if (!root.indexedDB) return reject(new Error('IndexedDB 無法使用'));
-      const request = root.indexedDB.open(CACHE_DB, 1);
-      request.onupgradeneeded = () => request.result.createObjectStore('traces', { keyPath: 'key' });
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
+  async function cacheGet(){return null;}
+  async function cachePut(){return false;}
+  async function clearCache(){
+    if(!root.indexedDB)return;
+    for(const name of [CACHE_DB,'asm-default-animation-cache'])await new Promise(resolve=>{const r=root.indexedDB.deleteDatabase(name);r.onsuccess=r.onerror=r.onblocked=resolve;});
   }
-
-  async function cacheGet(key) {
-    let db;
-    try {
-      db = await openCache();
-      const entry = await new Promise((resolve, reject) => {
-        const req = db.transaction('traces').objectStore('traces').get(key);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-      if (!entry) return null;
-      const tx = db.transaction('traces', 'readwrite');
-      tx.objectStore('traces').put({ ...entry, accessed: Date.now() });
-      await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
-      });
-      return clone(entry.trace);
-    } catch (error) {
-      console.warn('Trace cache read failed', error);
-      return null;
-    } finally { db?.close(); }
-  }
-
-  async function cachePut(key, trace) {
-    const size = encoder.encode(JSON.stringify(trace)).length;
-    const maxBytes = cacheLimitMB() * 1024 * 1024;
-    if (size > maxBytes) return;
-    let db;
-    try {
-      db = await openCache();
-      const old = await new Promise((resolve, reject) => {
-        const req = db.transaction('traces').objectStore('traces').getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
-      const tx = db.transaction('traces', 'readwrite');
-      const store = tx.objectStore('traces');
-      let total = old.filter(item => item.key !== key).reduce((sum, item) => sum + item.size, size);
-      for (const item of old.filter(item => item.key !== key).sort((a, b) => a.accessed - b.accessed)) {
-        if (total <= maxBytes) break;
-        store.delete(item.key);
-        total -= item.size;
-      }
-      store.put({ key, trace: clone(trace), size, accessed: Date.now() });
-      await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
-      });
-    } catch (error) { console.warn('Trace cache write failed', error); }
-    finally { db?.close(); }
-  }
-
-  async function clearCache() {
-    const db = await openCache();
-    try {
-      const tx = db.transaction('traces', 'readwrite');
-      tx.objectStore('traces').clear();
-      await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
-      });
-    } finally { db.close(); }
-  }
-
-  async function trimCache() {
-    const db = await openCache();
-    try {
-      const entries = await new Promise((resolve, reject) => {
-        const req = db.transaction('traces').objectStore('traces').getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
-      const tx = db.transaction('traces', 'readwrite');
-      const store = tx.objectStore('traces');
-      let total = entries.reduce((sum, entry) => sum + entry.size, 0);
-      const limit = cacheLimitMB() * 1024 * 1024;
-      for (const entry of entries.sort((a, b) => a.accessed - b.accessed)) {
-        if (total <= limit) break;
-        store.delete(entry.key); total -= entry.size;
-      }
-      await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
-      });
-    } finally { db.close(); }
-  }
+  async function trimCache(){await clearCache();}
 
   function applyPresentation(rawTrace, animation) {
     const trace = root.ASMTraceModel.normalizeTraceDocument(clone(rawTrace));
     root.ASMTraceViewSource.applyToTrace(trace, animation.rebuild.view);
     trace.studio ||= {};
     Object.assign(trace.studio, clone(animation.rebuild.globals || {}));
-    trace.sourceCode = animation.code;
-    trace.provenance = root.ASMTraceProvenance.create(animation.code, animation.input);
+    // 事件的 from/to 是編譯時 LF 原始碼的座標；不得用 CRLF 編輯文字覆蓋。
+    // 呈現設定也不能替 runtime 結果重新簽發來源／引擎證明。
+    trace.sourceCode = rawTrace.sourceCode ?? String(animation.code).replace(/\r\n?/g, '\n');
+    trace.provenance = clone(rawTrace.provenance || {});
     trace.viewSettingsApplied = true;
     if (!trace.frames?.length) throw new Error('重建的動畫沒有任何畫面。');
     return trace;
   }
 
   async function runTrace(animation) {
+    if (root.document) await root.ASMTraceProvenance.ready();
     const analysisResponse = await fetch('/trace/analyze', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...(root.ASMCompileSession?.headers?.() || {}) },
       body: JSON.stringify({ code: animation.code })
@@ -544,20 +413,38 @@
     const available = new Set((analysis.variables || []).map(variable => variable.id));
     const watches = (animation.watches || []).map(watch => typeof watch === 'string' ? watch : watch.id)
       .filter(id => available.has(id));
-    const compileResponse = await fetch('/compile', {
+    const request = {
       method: 'POST', headers: {
         'Content-Type': 'application/json',
         'X-Compile-Cache': 'shared',
         ...(root.ASMCompileSession?.headers?.('background') || {})
       },
-      body: JSON.stringify({ code: animation.code, input: animation.input,
+      body: JSON.stringify({ code: animation.code, input: animation.input, refreshTrace: true, executableId: animation.executableRef?.id,
         trace: { enabled: true, sliceMode: animation.sliceMode, watches,
           skins: animation.rebuild.view.skins || {}, rules: animation.rebuild.view.rules || [] } })
-    });
+    };
+    // 瀏覽器重建使用既有全站工作合併，避免同一動畫被多人重複編譯。
+    // Node 預建工具逐份執行，維持直接請求以免依賴瀏覽器的身份 cookie。
+    let compileResponse;
+    if (root.document) {
+      const submitted = await fetch('/api/compile/jobs', request);
+      const job = await submitted.json();
+      if (!submitted.ok) throw new Error(job.error || '動畫更新排隊失敗');
+      const deadline = Date.now() + 420000;
+      for (;;) {
+        if (Date.now() > deadline) throw new Error('動畫更新等待逾時，請稍後重試');
+        await new Promise(resolve => setTimeout(resolve, 750));
+        const response = await fetch(job.statusUrl, { cache: 'no-store' });
+        const state = await response.json();
+        if (!response.ok || ['failed', 'cancelled'].includes(state.state)) throw new Error(state.error?.message || state.error || '動畫更新失敗');
+        if (state.state === 'completed') { compileResponse = await fetch(job.resultUrl); break; }
+      }
+    } else compileResponse = await fetch('/compile', request);
     const compiled = await compileResponse.json().catch(() => ({}));
     if (!compileResponse.ok || compiled.error || !compiled.traceDocument?.frames?.length) {
       throw new Error(compiled.error || compiled.traceWarning || 'RUN 未能產生可播放的追蹤畫面');
     }
+    if(compiled.cache?.executableId)compiled.traceDocument.executableRef={id:compiled.cache.executableId};
     return compiled.traceDocument;
   }
 
@@ -566,24 +453,14 @@
   // 可用快取便直接套用，否則呼叫編譯 API；每張投影片的結果透過 callback 即時交給載入頁。
   // -----------------------------------------------------------------------------
   async function rebuildAnimation(animation) {
+    if (root.document) await root.ASMTraceProvenance.ready();
     if (!animation?.rebuild?.view || !animation.code?.trim()) throw new Error('演算法動畫缺少重建設定或原始碼。');
     if (animation.traceDocument?.frames?.length
       && root.ASMTraceProvenance.status(animation.traceDocument, animation.code, animation.input || '').kind === 'current') {
       return { ...animation, traceDocument: clone(animation.traceDocument), rebuild: undefined, cacheKind: 'prebuilt' };
     }
-    const exact = `exact:${await animationKey(animation)}`;
-    const cached = await cacheGet(exact);
-    if (cached?.frames?.length && root.ASMTraceProvenance.status(cached, animation.code, animation.input).kind === 'current') {
-      return { ...animation, traceDocument: cached, rebuild: undefined, cacheKind: 'exact' };
-    }
-    const base = `base:${await baseKey(animation)}`;
-    let rawTrace = await cacheGet(base);
-    const cacheKind = rawTrace?.frames?.length ? 'base' : 'run';
-    if (!rawTrace?.frames?.length) rawTrace = await runTrace(animation);
-    const trace = applyPresentation(rawTrace, animation);
-    await cachePut(base, rawTrace);
-    await cachePut(exact, trace);
-    return { ...animation, traceDocument: trace, rebuild: undefined, cacheKind };
+    const rawTrace=await runTrace(animation),trace=applyPresentation(rawTrace,animation);
+    return {...animation,executableRef:trace.executableRef||animation.executableRef,traceDocument:trace,cacheKind:'run'};
   }
 
   async function rebuildMissingAnimation(animation) {
@@ -601,7 +478,7 @@
     const restored = { ...raw, ...saved, studio: { ...raw.studio, ...saved.studio } };
     source.rebuild = presentationFor(restored);
     const trace = applyPresentation(raw, source);
-    return { ...source, traceDocument: trace, rebuild: undefined, cacheKind: 'run' };
+    return { ...source, executableRef: trace.executableRef || source.executableRef, traceDocument: trace, rebuild: undefined, cacheKind: 'run' };
   }
 
   async function rebuildDeck(compactDeck, onProgress = () => {}, onResult = () => {}) {
@@ -625,7 +502,7 @@
     return deck;
   }
 
-  return { project, encode, decode, readCover, readCoverURL, rebuildAnimation, rebuildMissingAnimation, rebuildDeck, cachePut, cacheGet, clearCache, trimCache,
+  return { presentationFor, project, encode, decode, readCover, readCoverURL, rebuildAnimation, rebuildMissingAnimation, rebuildDeck, cachePut, cacheGet, clearCache, trimCache,
     cacheLimitMB, setCacheLimitMB, sha256,
     animationKey, baseKey, engineVersion, MAGIC, COVER_MAGIC, PACKAGE_VERSION };
 });

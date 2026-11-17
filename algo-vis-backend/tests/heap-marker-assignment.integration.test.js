@@ -322,7 +322,7 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
     'the scalar cell remains controlled by the same declaration event');
 });
 
-test('for initializer assignment is pointer motion without an assignment value box', async () => {
+test('unpaired for initializer assignment retains its value and pointer movement clocks', async () => {
   const { window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() { vector<int> arr = {3, 2, 1}; // @frame arr
@@ -351,9 +351,10 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
     1, 520, new Map(), placements, elements
   );
   assert.equal(timeline.length, 1);
-  assert.equal(timeline[0].animation, 'position');
-  assert.equal(timeline[0].markerAssignment, false,
-    'position-only initialization cannot create the assignment popup');
+  assert.equal(timeline[0].animation, 'assign');
+  assert.ok(timeline[0].markerAssignment, 'initialization must animate its assigned value');
+  assert.equal(timeline[0].duration, 2280);
+  assert.equal(timeline[0].actionPlan.durationMs, 2280);
 
   const legacyInitializer = {
     ...initializer,
@@ -372,12 +373,13 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
     { id: 'legacy-frame-init', events: [legacyInitializer], state: {} },
     1, 520, new Map(), placements, elements
   );
-  assert.equal(legacyTimeline[0].animation, 'position',
+  assert.equal(legacyTimeline[0].animation, 'assign',
     'older saved traces infer the same initializer mode from their AST span');
-  assert.equal(legacyTimeline[0].markerAssignment, false);
+  assert.ok(legacyTimeline[0].markerAssignment);
+  assert.equal(legacyTimeline[0].duration, 2280);
 });
 
-test('a declared marker with an initializer enters unresolved before assignment moves it', async () => {
+test('a constant initialized marker joins declaration entry at the target', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -410,14 +412,20 @@ int main() {
   ]);
   assert.equal(
     window.ASMTraceFrameTween.markerTargetBeforeFrameEvents(trace, initializerFrame, marker),
-    `unresolved:${Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr')}`,
-    'the declaration entrance starts at unresolved parking before the initializer assignment'
+    `${Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr')}#0`,
+    'constant initialization enters directly at the known target cell'
   );
+  const declaration = initializerFrame.events.find(event => event.type === 'declare'
+    && event.targets?.some(target => target.variableId === initializer.targets[0].variableId));
+  assert.ok(declaration);
   const timeline = window.ASMTraceFrameTween.buildEventTimeline(
-    trace, { id: 'declared-marker', events: [initializer], state: {} },
+    trace, { id: 'declared-marker', events: [declaration, initializer], state: {} },
     1, 520, new Map(), placements, elements
   );
-  assert.equal(timeline[0]?.animation, 'position');
+  assert.equal(timeline.length, 1);
+  assert.equal(timeline[0]?.animation, 'declare');
+  assert.equal(timeline[0]?.declarationInitializerDirect, true);
+  assert.equal(timeline[0]?.duration, 220);
   assert.equal(timeline[0]?.markerAssignment, false,
     'the initialized entrance must not create a falling assignment value box');
 });
@@ -632,8 +640,8 @@ int main() {
     'an enabled comparison still needs visible operands for its canvas animation');
   assert.equal(comparison.canvasRenderable, false);
   assert.equal(comparison.autoAnimationUnavailableReason, 'missing-target');
-  assert.equal(window.ASMTraceEvents.showInspector(event, trace), false,
-    'initialization metadata shares its declaration row instead of duplicating it');
+  assert.equal(window.ASMTraceEvents.showInspector(event, trace), true,
+    'declaration and assignment keep independent inspector controls');
   const declaration = trace.frames.flatMap(frame => frame.events || []).find(e => e.type === 'declare' && e.name === 'i');
   assert.ok(declaration);
   assert.equal(window.ASMTraceEvents.showInspector(declaration, trace), true);

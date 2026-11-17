@@ -35,47 +35,32 @@
   }
   // -----------------------------------------------------------------------------
   // Deck 清單對帳
-  // 移除已不存在的 deck，新增的 id 放入未分類區；每個 id 在整個 layout 中只出現一次。
+  // 移除已不存在的 deck，新增的 id 放入未分類區。每份投影片只屬於一個分類：
+  // 舊資料若同一 id 出現在多個資料夾，保留第一個資料夾、其餘移除（下次儲存時寫回）。
   // -----------------------------------------------------------------------------
   function reconcile(value, ids) {
     let layout;
     try { layout = validate(value); } catch { layout = { folders: [], unfiled: [] }; }
     const allowed = new Set(ids), used = new Set();
-    function keep(list) { return list.filter(id => { if (!allowed.has(id)) return false; used.add(id); return true; }); }
+    function keep(list) { return list.filter(id => { if (!allowed.has(id) || used.has(id)) return false; used.add(id); return true; }); }
     layout.folders.forEach(folder => { folder.deckIds = keep(folder.deckIds); });
     layout.unfiled = keep(layout.unfiled);
     layout.unfiled.push(...ids.filter(id => !used.has(id)));
     return layout;
   }
-  function assign(layout, id, folderIds) {
-    const next = validate(layout), selected = new Set(folderIds);
-    if (folderIds.some(folderId => !next.folders.some(folder => folder.id === folderId))) throw new Error('找不到分類');
-    next.folders.forEach(folder => {
-      if (selected.has(folder.id)) { if (!folder.deckIds.includes(id)) folder.deckIds.push(id); }
-      else folder.deckIds = folder.deckIds.filter(item => item !== id);
-    });
-    next.unfiled = next.unfiled.filter(item => item !== id);
-    if (!selected.size) next.unfiled.push(id);
-    return validate(next);
-  }
   // -----------------------------------------------------------------------------
   // 搬移與資料夾刪除
-  // move 先從所有容器移除來源，再依 before 插入目的地；純函式回傳新版供 UI 提交。
+  // move 先從所有容器移除該投影片（唯一分類），再依 before 插入目的地；純函式回傳新版供 UI 提交。
+  // source 參數保留給舊呼叫端，不再影響結果。
   // -----------------------------------------------------------------------------
   function move(layout, id, destination, before = null, source = null) {
     const next = validate(layout);
-    const target = destination ? next.folders.find(folder => folder.id === destination)?.deckIds : next.unfiled;
-    if (!target || ![...next.unfiled, ...next.folders.flatMap(folder => folder.deckIds)].includes(id)) throw new Error('找不到投影片或資料夾');
-    if (before === id && source === destination) return next;
-    if (!destination) {
-      next.folders.forEach(folder => { folder.deckIds = folder.deckIds.filter(item => item !== id); });
-    } else if (source && source !== destination) {
-      const origin = next.folders.find(folder => folder.id === source);
-      if (origin) origin.deckIds = origin.deckIds.filter(item => item !== id);
-    }
-    if (destination) next.unfiled = next.unfiled.filter(item => item !== id);
-    if (before === id && target.includes(id)) return validate(next);
-    const existing = target.indexOf(id); if (existing >= 0) target.splice(existing, 1);
+    const container = () => destination ? next.folders.find(folder => folder.id === destination)?.deckIds : next.unfiled;
+    if (!container() || ![...next.unfiled, ...next.folders.flatMap(folder => folder.deckIds)].includes(id)) throw new Error('找不到投影片或資料夾');
+    if (before === id) return next;
+    next.folders.forEach(folder => { folder.deckIds = folder.deckIds.filter(item => item !== id); });
+    next.unfiled = next.unfiled.filter(item => item !== id);
+    const target = container();
     const index = before ? target.indexOf(before) : -1;
     target.splice(index < 0 ? target.length : index, 0, id);
     return validate(next);
@@ -87,5 +72,5 @@
     next.unfiled.push(...(removed?.deckIds || []).filter(id => !remaining.has(id) && !next.unfiled.includes(id)));
     return validate(next);
   }
-  return { validate, reconcile, assign, move, removeFolder };
+  return { validate, reconcile, move, removeFolder };
 });

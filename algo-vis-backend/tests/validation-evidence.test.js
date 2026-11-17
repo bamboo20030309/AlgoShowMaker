@@ -2,8 +2,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
-const { captureEvidence, reconcileEvidence } = require('../scripts/validation-evidence');
-const { animationCases, inventory } = require('../scripts/validation-manifest');
+const { captureEvidence, reconcileEvidence } = require('../scripts/validation/validation-evidence');
+const { animationCases, inventory } = require('../scripts/validation/validation-manifest');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'asm-evidence-'));
@@ -65,4 +65,16 @@ test('browser evidence covers dynamic frontend files, including newly added scri
   f.put('public/vendor/fabric.js', 'updated dependency');
   assert.notEqual(f.capture().tests['tests/a.test.js'], beforeVendor.tests['tests/a.test.js']);
   assert.equal(f.capture().tests['tests/b.test.js'], beforeVendor.tests['tests/b.test.js']);
+});
+
+test('named Trace index follows payload dependencies when deciding whether evidence is reusable', t => {
+  const f = fixture(t);
+  f.put('tests/a.test.js', "const chromium=require('playwright');");
+  f.put('public/sample.js', "fetch('/deck-traces/index.json');");
+  f.put('public/deck-traces/index.json', JSON.stringify({ traces: { a: { file: 'sample-01.json' } } }));
+  f.put('public/deck-traces/sample-01.json', 'first');
+  f.state.evidence = f.capture();
+  f.put('public/deck-traces/sample-01.json', 'changed');
+  reconcileEvidence(f.state, f.capture());
+  assert.deepEqual(f.state.passedFiles, ['tests/b.test.js']);
 });

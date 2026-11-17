@@ -14,8 +14,10 @@
   if (!editor) return;
 
   const commands = [
-    { id: 'pointer', label: '@pointer', effect: '獨立指標：綁定陣列、矩陣.row/.column或layout節點（root、current、nodes、leaves、children、level、side），可加color指定顏色；省略索引時使用指標變數值，越界時隱藏', code: '// @pointer i at arr', examples: [
+    { id: 'pointer', label: '@pointer', effect: '獨立指標：指標與目標可用逗點列多項，兩邊多項採全部組合；綁定陣列、矩陣.row/.column或layout節點，可加color共用顏色；省略索引時使用指標值，越界時隱藏', code: '// @pointer i at arr', examples: [
       '// @pointer i at arr color AV_blue',
+      '// @pointer j,j+1 at arr color AV_blue',
+      '// @pointer i,j at arr,temp',
       '// @pointer i at dp.row\n// @pointer j at dp.column color AV_red',
       '// @pointer i at merge_tree.children[0]\n// @pointer j at merge_tree.children[1]',
       '// @pointer i at arr[i]',
@@ -29,6 +31,9 @@
     { id: 'enddefault', label: '@enddefault', effect: '結束全域呈現預設區塊', code: '// @enddefault', examples: ['// @default\n// @camera auto\n// @enddefault'] },
     { id: 'frame', label: '@frame', effect: '擷取此刻的動畫幀並選擇要顯示的變數', code: '// @frame arr', examples: [
       '// @frame arr',
+      '// @frame arr[1:n-1]',
+      '// @frame arr[:]',
+      '// @frame dp[1:n][1:m]',
       "// @frame arr,key\n// @pointer i at arr\n// @pointer j at arr\n// @style arr[i] highlight",
       "// @frame char(s)\n// @pointer i at s\n// @pointer j at s\n// @style s[i] highlight",
       '// @frame bits(mask, 8) with labels(none), symbols("", "♕")',
@@ -47,6 +52,8 @@
     { id: 'endpreset', label: '@endpreset', effect: '結束目前的可重用視圖預設區塊', code: '// @endpreset', examples: ['// @preset sieve_view\n// @object isprime\n// @endpreset'] },
     { id: 'object', label: '@object', effect: '在同一個 @frame 加入另一個獨立設定的物件', code: '// @object prime', examples: [
       '// @frame\n// @object prime',
+      '// @frame\n// @object arr[l:r]',
+      '// @frame\n// @object char(s)[1:]',
       '// @frame\n// @object char(s) with labels(value,index)',
       '// @frame when i%v==0\n// @object isprime with columns(10), labels(index)\n// @object prime with labels(value)',
       '// @frame\n// @object isprime with range(1,n), columns(10), labels(index)\n// @object prime with columns(10), labels(value)\n// @place prime.top-left at isprime.bottom-left offset(0,60)',
@@ -96,8 +103,9 @@
       '// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)',
       "// @frame arr\n// @pointer i at arr\n// @segment arr[low:high]\n// @text \"處理目前區間\" at arr.bottom"
     ] },
-    { id: 'place', label: '@place', effect: '把同幀物件的外框錨點綁到另一物件', code: '// @place pivot at arr.right offset(16,0)', examples: [
+    { id: 'place', label: '@place', effect: '把同幀物件的外框錨點綁到另一物件；來源可用逗點列多項，共用一個目的地', code: '// @place pivot at arr.right offset(16,0)', examples: [
       '// @place pivot at arr.right',
+      '// @place a.top,b.top at canvas.top offset(0,60)',
       '// @place pivot at arr.right offset(16,0)',
       '// @frame arr,pivot\n// @place pivot at arr.right offset(16,0)\n// @text "基準值" at pivot.bottom'
     ] },
@@ -124,7 +132,9 @@
       '// @loop as "sieve_loop"\nfor(int j=0;j<n;j++){ }',
       '// @loop as "scan"\nwhile(j<n){j++;}'
     ] },
-    { id: 'arrow', label: '@arrow', effect: '連接物件或格子；for 可按範圍或實際迴圈值展開多支箭頭', code: '// @arrow from arr[0] to arr[1]', examples: [
+    { id: 'arrow', label: '@arrow', effect: '連接物件或格子；from/to 可用逗點列多項，兩邊多項採全部組合；for 可按範圍或實際迴圈值展開', code: '// @arrow from arr[0] to arr[1]', examples: [
+      '// @arrow from arr[i],arr[j] to temp[0] color AV_green',
+      '// @arrow from a[0],a[1] to b[0],b[1] as "links"',
       '// @arrow for k in [0:n-1] step 2 from arr[0].bottom to arr[k].top as "links"',
       '// @arrow for j from arr[0] to arr[j]',
       '// @arrow for j in "sieve_loop" from prime[j] to isprime[i*prime[j]]',
@@ -202,6 +212,7 @@
     arrow: [['as', 'as', '為箭頭命名', ' as "relation"'], ['in', 'in', '把跨排版箭頭放入 linear', ' in scene'], ['when', 'when', '條件成立才顯示箭頭', ' when i >= 0']],
     layout: [
       ['layout-direction', 'direction', '在下一行明確指定排版 ID 與生長方向', '\n// @layout quick_tree direction top-down'],
+      ['layout-arrow-direction', 'arrow-direction', '設定樹連線箭頭方向，不改變節點排版', '\n// @layout quick_tree arrow-direction up'],
       ['layout-gap', 'gap', '設定 linear 內各排版的間距', '\n// @layout scene gap 64'],
       ['layout-order', 'order', '在下一行明確指定排版 ID 與 preorder／inorder／postorder', '\n// @layout quick_tree order preorder'],
       ['layout-flow-arrows', 'flow-arrows', '顯示 DFS 進入與返回的彎曲輔助箭頭', '\n// @layout quick_tree flow-arrows on'],
@@ -279,12 +290,6 @@
     const preferredY = y + height + 8 <= window.innerHeight ? y : y - height - 24;
     popup.style.left = `${Math.max(8, Math.min(x, window.innerWidth - width - 8))}px`;
     popup.style.top = `${Math.max(8, Math.min(preferredY, window.innerHeight - height - 8))}px`;
-  }
-
-  function cursorPosition() {
-    const cursor = editor.getCursorPosition();
-    const screen = editor.renderer.textToScreenCoordinates(cursor.row, cursor.column);
-    return { x: screen.pageX - window.scrollX, y: screen.pageY - window.scrollY + 22 };
   }
 
   // ---------------------------------------------------------------------------

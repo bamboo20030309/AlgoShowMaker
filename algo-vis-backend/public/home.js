@@ -20,10 +20,12 @@
   const accountArea = document.getElementById('accountArea');
   const accountName = document.getElementById('accountName');
   const logoutBtn = document.getElementById('logoutBtn');
-  const headerSlidesLink = document.getElementById('headerSlidesLink');
-  const headerExamplesLink = document.getElementById('headerExamplesLink');
-  const workspaceSlidesNav = document.getElementById('workspaceSlidesNav');
-  const workspaceExamplesNav = document.getElementById('workspaceExamplesNav');
+  const headerLoginBtn = document.getElementById('headerLoginBtn');
+  const authPanel = document.querySelector('.auth-panel');
+  const galleryPanel = document.querySelector('.guest-gallery');
+  const workspaceMinePanel = document.getElementById('workspaceMinePanel');
+  const workspaceExamplesPanel = document.getElementById('workspaceExamplesPanel');
+  const workspaceTabControls = [...document.querySelectorAll('[data-workspace-tab]')];
   const authTitle = document.getElementById('authTitle');
   const authSubtitle = document.getElementById('authSubtitle');
   const authTabs = document.getElementById('authTabs');
@@ -31,6 +33,7 @@
   const registerTab = document.getElementById('registerTab');
   const authForm = document.getElementById('authForm');
   const emailInput = document.getElementById('emailInput');
+  const emailLabel = document.querySelector('label[for="emailInput"]');
   const passwordInput = document.getElementById('passwordInput');
   const passwordField = document.getElementById('passwordField');
   const confirmPasswordField = document.getElementById('confirmPasswordField');
@@ -47,13 +50,6 @@
   const deckCount = document.getElementById('deckCount');
   const emptyState = document.getElementById('emptyState');
   const libraryMessage = document.getElementById('libraryMessage');
-  const deckDialog = document.getElementById('deckDialog');
-  const deckDialogForm = document.getElementById('deckDialogForm');
-  const deckTitleInput = document.getElementById('deckTitleInput');
-  const deckDialogMessage = document.getElementById('deckDialogMessage');
-  const closeDeckDialogBtn = document.getElementById('closeDeckDialogBtn');
-  const cancelDeckDialogBtn = document.getElementById('cancelDeckDialogBtn');
-  const deleteDeckBtn = document.getElementById('deleteDeckBtn');
   const deleteDeckDialog = document.getElementById('deleteDeckDialog');
   const deleteDeckForm = document.getElementById('deleteDeckForm');
   const deleteDeckName = document.getElementById('deleteDeckName');
@@ -64,7 +60,9 @@
   const organizer = window.ASMLibraryOrganizer({
     container: deckGrid, nav: document.getElementById('libraryFolderNav'),
     createButton: document.getElementById('createFolderBtn'),
-    message: document.getElementById('libraryLayoutMessage'), api, createCard: createDeckCard
+    // 資料夾與排序只在失敗時顯示訊息，共用投影片清單的訊息列（不另設一列）。
+    message: libraryMessage, api, createCard: createDeckCard,
+    onDelete: deck => openDeleteDeckDialog(deck)
   });
 
   // -----------------------------------------------------------------------------
@@ -101,43 +99,118 @@
     state.user = null;
   }
 
-  function setNavigationActive(element, active) {
-    if (!element) return;
-    element.classList.toggle('is-active', active);
-    if (active) element.setAttribute('aria-current', 'page');
-    else element.removeAttribute('aria-current');
+  // -----------------------------------------------------------------------------
+  // 工作區分頁：我的投影片 / 範例投影片
+  // 進入首頁預設「我的投影片」；只有網址帶 examples=1 才開範例分頁。分頁同步寫回網址，
+  // 重新整理停在同一分頁，但不跨次造訪記憶，確保一進來就看到自己的投影片。
+  // -----------------------------------------------------------------------------
+  function examplesRequested() {
+    return new URLSearchParams(location.search).get('examples') === '1';
   }
 
-  function syncHomeNavigation() {
-    const examplesActive = new URLSearchParams(location.search).get('examples') === '1';
-    setNavigationActive(headerSlidesLink, !examplesActive);
-    setNavigationActive(headerExamplesLink, examplesActive);
-    setNavigationActive(workspaceSlidesNav, !examplesActive);
-    setNavigationActive(workspaceExamplesNav, examplesActive);
+  function setWorkspaceTab(tab, { updateUrl = true, focus = false } = {}) {
+    const examples = tab === 'examples';
+    workspaceMinePanel.hidden = examples;
+    workspaceExamplesPanel.hidden = !examples;
+    workspaceTabControls.forEach(control => {
+      const active = control.dataset.workspaceTab === tab;
+      control.classList.toggle('is-active', active);
+      control.setAttribute('aria-selected', String(active));
+      control.tabIndex = active ? 0 : -1;
+      if (active && focus) control.focus();
+    });
+    if (!updateUrl) return;
+    const url = new URL(location.href);
+    if (examples) url.searchParams.set('examples', '1');
+    else url.searchParams.delete('examples');
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
+  workspaceTabControls.forEach(control => {
+    control.addEventListener('click', () => setWorkspaceTab(control.dataset.workspaceTab));
+  });
+
+  document.querySelector('.workspace-tabs')?.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
+    const current = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? tabs.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    setWorkspaceTab(tabs[next].dataset.workspaceTab, { focus: true });
+  });
+
+  // 已在投影片模式時再點「投影片」不重新載入：工作區回到「我的投影片」分頁，訪客首頁維持不動。
+  // 訪客的範例全頁是另一個畫面，仍照常回到首頁登入框。新分頁開啟（Ctrl／中鍵）不攔截。
+  document.querySelectorAll('.mode-nav .nav-link').forEach(link => {
+    link.addEventListener('click', event => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      if (new URL(link.href).pathname !== location.pathname) return;
+      if (!dashboardView.hidden) {
+        event.preventDefault();
+        setWorkspaceTab('mine');
+        return;
+      }
+      if (document.body.classList.contains('examples-view')) return;
+      event.preventDefault();
+    });
+  });
+
+  // The public gallery is one component. Guests see it beside the login form;
+  // signed-in users see the same element inside the examples tab.
+  function placeGallery(signedIn) {
+    if (!galleryPanel) return;
+    if (signedIn) workspaceExamplesPanel.append(galleryPanel);
+    else guestView.insertBefore(galleryPanel, authPanel);
+  }
+
+  // 只接受站內路徑。瀏覽器把 "/\host" 當成 "//host"，控制字元也可能被剝除後變成外部網址，
+  // 因此排除第二個字元是 / 或 \ 的值，並以 URL 解析確認仍在同一個 origin。
   function safeNextPath() {
     const next = new URLSearchParams(location.search).get('next');
-    return next && next.startsWith('/') && !next.startsWith('//') ? next : '';
+    if (!next || !next.startsWith('/') || /^\/[\/\\]/.test(next) || /[\u0000-\u001f\\]/.test(next)) return '';
+    try {
+      const target = new URL(next, location.origin);
+      return target.origin === location.origin ? `${target.pathname}${target.search}${target.hash}` : '';
+    } catch {
+      return '';
+    }
   }
 
   function showGuest() {
-    syncHomeNavigation();
+    placeGallery(false);
     guestView.hidden = false;
     dashboardView.hidden = true;
     accountArea.hidden = true;
+    headerLoginBtn.hidden = false;
     setAuthMode(new URLSearchParams(location.search).has('reset_token') ? 'reset' : 'login');
   }
 
   async function showDashboard(user) {
-    syncHomeNavigation();
+    document.body.classList.remove('examples-view');
+    placeGallery(true);
+    setWorkspaceTab(examplesRequested() ? 'examples' : 'mine', { updateUrl: false });
     state.user = user;
     guestView.hidden = true;
     dashboardView.hidden = false;
     accountArea.hidden = false;
+    headerLoginBtn.hidden = true;
     accountName.textContent = user.username;
     await loadDecks();
   }
+
+  // 訪客：在範例全頁模式回到首頁登入框；一般首頁則捲動並聚焦到登入框。
+  headerLoginBtn.addEventListener('click', () => {
+    if (document.body.classList.contains('examples-view')) {
+      location.href = '/';
+      return;
+    }
+    setAuthMode('login');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    authPanel.scrollIntoView({ behavior: reduce ? 'instant' : 'smooth', block: 'start' });
+    emailInput.focus({ preventScroll: true });
+  });
 
   // -----------------------------------------------------------------------------
   // 登入與註冊表單
@@ -152,6 +225,12 @@
 
     authTabs.hidden = isForgot || isReset;
     passwordField.hidden = isForgot;
+    // 忘記密碼只填 Email：隱藏的密碼欄若仍是 required，瀏覽器會擋下送出且不顯示任何提示。
+    passwordInput.required = !isForgot;
+    // 重設密碼由連結裡的 token 認帳號，不需要 Email；顯示了也用不到，還會被 required 擋下。
+    emailInput.hidden = isReset;
+    if (emailLabel) emailLabel.hidden = isReset;
+    emailInput.required = !isReset;
     confirmPasswordField.hidden = !isRegister;
     confirmPasswordInput.required = isRegister;
     forgotPasswordBtn.hidden = !isLogin;
@@ -164,7 +243,7 @@
     passwordInput.placeholder = isReset ? '輸入新的密碼' : '至少 8 個字元';
 
     const copy = {
-      login: ['登入 AlgoShowMaker', '開啟你的投影片，繼續上次的編輯。', '登入'],
+      login: ['登入 AlgoShowMaker', '儲存或上傳你的動畫與投影片', '登入'],
       register: ['建立個人工作區', '註冊後，投影片會安全地存放在你的帳號中。', '建立帳號'],
       forgot: ['重設密碼', '輸入註冊 Email，我們會寄送重設連結。', '寄送重設連結'],
       reset: ['設定新密碼', '為你的 AlgoShowMaker 帳號設定新密碼。', '更新密碼']
@@ -197,7 +276,8 @@
       if (state.authMode === 'forgot') {
         const data = await api('/api/auth/forgot-password', {
           method: 'POST',
-          body: JSON.stringify({ username })
+          // 帶上 next：信裡的重設連結會保留它，重設並登入後回到原本的頁面（例如程式碼頁）。
+          body: JSON.stringify({ username, next: safeNextPath() || undefined })
         });
         setMessage(authMessage, data.message || '重設連結已寄出，請檢查信箱。', true);
         return;
@@ -209,7 +289,8 @@
           method: 'POST',
           body: JSON.stringify({ token: resetToken, newPassword: password })
         });
-        history.replaceState({}, document.title, '/');
+        const next = safeNextPath();
+        history.replaceState({}, document.title, next ? `/?next=${encodeURIComponent(next)}` : '/');
         setAuthMode('login');
         setMessage(authMessage, data.message || '密碼已更新，請重新登入。', true);
         passwordInput.value = '';
@@ -248,7 +329,9 @@
   togglePasswordBtn.addEventListener('click', () => {
     const show = passwordInput.type === 'password';
     passwordInput.type = show ? 'text' : 'password';
-    togglePasswordBtn.textContent = show ? '隱藏' : '顯示';
+    // 閉眼＝密碼隱藏中，開眼＝密碼顯示中；文字說明放在 aria-label 與 title。
+    togglePasswordBtn.classList.toggle('is-revealed', show);
+    togglePasswordBtn.setAttribute('aria-pressed', String(show));
     togglePasswordBtn.setAttribute('aria-label', show ? '隱藏密碼' : '顯示密碼');
     togglePasswordBtn.title = show ? '隱藏密碼' : '顯示密碼';
   });
@@ -256,6 +339,11 @@
   logoutBtn.addEventListener('click', () => {
     clearSession();
     state.decks = [];
+    // 登出回到一般訪客首頁（範例＋登入框），不沿用工作區分頁的 examples 參數。
+    const url = new URL(location.href);
+    url.searchParams.delete('examples');
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    document.body.classList.remove('examples-view');
     showGuest();
   });
 
@@ -304,9 +392,11 @@
       : `共 ${state.decks.length} 份`;
     emptyState.hidden = state.decks.length !== 0 || Boolean(query);
 
+    // 這一列也顯示資料夾儲存／讀取失敗等錯誤，因此只清除本函式與載入時自己寫入的提示。
+    const ownMessages = ['找不到符合名稱的投影片', '正在讀取投影片...'];
     if (query && decks.length === 0) {
-      setMessage(libraryMessage, '找不到符合名稱的投影片');
-    } else {
+      setMessage(libraryMessage, ownMessages[0]);
+    } else if (ownMessages.includes(libraryMessage.textContent)) {
       setMessage(libraryMessage);
     }
 
@@ -341,27 +431,22 @@
       info.className = 'deck-info';
       const copy = document.createElement('div');
       copy.className = 'deck-copy';
-      const title = document.createElement('button');
-      title.className = 'deck-title deck-title-button';
-      title.type = 'button';
+      // 雙擊標題直接在卡片上改名（鍵盤：聚焦後按 F2 或 Enter）。
+      const title = document.createElement('span');
+      title.className = 'deck-title deck-title-editable';
+      title.tabIndex = 0;
       title.textContent = deck.title;
-      title.title = 'Rename presentation';
-      title.setAttribute('aria-label', `Rename ${deck.title}`);
-      title.addEventListener('click', () => openDeckDialog(deck));
+      title.title = '雙擊以重新命名';
+      title.addEventListener('dblclick', event => { event.preventDefault(); startRename(deck, title); });
+      title.addEventListener('keydown', event => {
+        if (event.key === 'F2' || event.key === 'Enter') { event.preventDefault(); startRename(deck, title); }
+      });
       const meta = document.createElement('span');
       meta.className = 'deck-meta';
       meta.textContent = `更新於 ${formatUpdatedAt(deck.updated_at)}`;
       copy.append(title, meta);
 
-      const settings = document.createElement('button');
-      settings.className = 'deck-settings';
-      settings.type = 'button';
-      settings.textContent = '⋯';
-      settings.title = '投影片設定';
-      settings.setAttribute('aria-label', `${deck.title} 設定`);
-      settings.addEventListener('click', () => openDeckDialog(deck));
-
-      info.append(copy, settings);
+      info.append(copy);
       card.append(openButton, info);
       return card;
   }
@@ -432,8 +517,9 @@
 
   window.ASMDeckFileDrop.bind({
     previewOnly: true,
-    selector: '#createDeckBtn, #emptyCreateBtn',
-    allowed: () => !dashboardView.hidden && Boolean(state.user),
+    // 把投影片檔拖到「我的投影片」頁面任何地方就直接新增，不必對準按鈕。
+    selector: '#dashboardView',
+    allowed: () => !dashboardView.hidden && !workspaceMinePanel.hidden && Boolean(state.user),
     onFile: createDeckFromFile,
     onError: error => setMessage(libraryMessage, `匯入失敗：${error.message}`)
   });
@@ -444,29 +530,63 @@
     location.href = `/slides.html?deck=${encodeURIComponent(deckUid)}`;
   }
 
-  function openDeckDialog(deck) {
-    state.activeDeckUid = deck.deck_uid;
-    deckTitleInput.value = deck.title;
-    setMessage(deckDialogMessage);
-    deckDialog.showModal();
-    requestAnimationFrame(() => {
-      deckTitleInput.focus();
-      deckTitleInput.select();
+  // -----------------------------------------------------------------------------
+  // 卡片上直接改名
+  // 雙擊標題就在卡片下方改成輸入框；離開輸入框或按 Enter 自動儲存，Esc 放棄修改。
+  // 空白或未改動的名稱不送出；儲存失敗時恢復原名並顯示訊息。
+  // -----------------------------------------------------------------------------
+  function startRename(deck, titleElement) {
+    if (titleElement.dataset.editing === 'true') return;
+    titleElement.dataset.editing = 'true';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'deck-title-input';
+    input.value = deck.title;
+    input.maxLength = 120;
+    input.setAttribute('aria-label', `重新命名 ${deck.title}`);
+    titleElement.replaceWith(input);
+    input.focus();
+    input.select();
+    let finished = false;
+    const restore = () => { if (input.isConnected) input.replaceWith(titleElement); delete titleElement.dataset.editing; };
+    async function finish(save) {
+      if (finished) return;
+      finished = true;
+      const title = input.value.trim();
+      if (!save || !title || title === deck.title) { restore(); return; }
+      input.disabled = true;
+      try {
+        const data = await api(`/api/slides/${encodeURIComponent(deck.deck_uid)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ title })
+        });
+        const index = state.decks.findIndex(item => item.deck_uid === deck.deck_uid);
+        if (index >= 0) state.decks[index] = { ...state.decks[index], ...data.slide };
+        setMessage(libraryMessage);
+        renderDecks();
+      } catch (error) {
+        restore();
+        setMessage(libraryMessage, `重新命名失敗：${error.message}`);
+      }
+    }
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      else if (event.key === 'Escape') { event.preventDefault(); finish(false); }
     });
-  }
-
-  function closeDeckDialog() {
-    state.activeDeckUid = null;
-    deckDialog.close();
+    input.addEventListener('blur', () => finish(true));
+    // Clicking inside the input must not start a card drag or open the deck.
+    input.addEventListener('pointerdown', event => event.stopPropagation());
+    input.addEventListener('click', event => event.stopPropagation());
   }
 
   function closeDeleteDeckDialog() {
     if (deleteDeckDialog.open) deleteDeckDialog.close();
+    state.activeDeckUid = null;
   }
 
-  function openDeleteDeckDialog() {
-    const deck = state.decks.find(item => item.deck_uid === state.activeDeckUid);
+  function openDeleteDeckDialog(deck) {
     if (!deck) return;
+    state.activeDeckUid = deck.deck_uid;
     deleteDeckName.textContent = deck.title;
     setMessage(deleteDeckMessage);
     deleteDeckDialog.showModal();
@@ -475,32 +595,15 @@
 
   createDeckBtn.addEventListener('click', createDeck);
   emptyCreateBtn.addEventListener('click', createDeck);
-  searchInput.addEventListener('input', renderDecks);
-  closeDeckDialogBtn.addEventListener('click', closeDeckDialog);
-  cancelDeckDialogBtn.addEventListener('click', closeDeckDialog);
+  // 搜尋：放大鏡點開後輸入框向左展開（與範例投影片共用 library-ui.js 的行為）。
+  window.ASMLibraryUI.bindExpandingSearch({
+    box: document.querySelector('#workspaceMinePanel .library-search'),
+    input: searchInput,
+    button: document.getElementById('searchToggleBtn'),
+    onChange: renderDecks
+  });
   closeDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
   cancelDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
-
-  deckDialogForm.addEventListener('submit', async event => {
-    event.preventDefault();
-    const title = deckTitleInput.value.trim();
-    if (!title || !state.activeDeckUid) return;
-
-    try {
-      const data = await api(`/api/slides/${encodeURIComponent(state.activeDeckUid)}`, {
-        method: 'PUT',
-        body: JSON.stringify({ title })
-      });
-      const index = state.decks.findIndex(deck => deck.deck_uid === state.activeDeckUid);
-      if (index >= 0) state.decks[index] = { ...state.decks[index], ...data.slide };
-      renderDecks();
-      closeDeckDialog();
-    } catch (error) {
-      setMessage(deckDialogMessage, error.message);
-    }
-  });
-
-  deleteDeckBtn.addEventListener('click', openDeleteDeckDialog);
 
   deleteDeckForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -514,7 +617,6 @@
       state.decks = state.decks.filter(item => item.deck_uid !== deck.deck_uid);
       renderDecks();
       closeDeleteDeckDialog();
-      closeDeckDialog();
     } catch (error) {
       setMessage(deleteDeckMessage, error.message);
     } finally {
@@ -527,29 +629,36 @@
   // 首頁啟動
   // 先解析網址模式與現有 token，再選擇訪客或工作區，避免兩個視圖同時發出資料請求。
   // -----------------------------------------------------------------------------
+  // 訪客的 /?examples=1 維持原本的範例全頁；已登入者改在工作區的範例分頁開啟。
+  function showGuestHome() {
+    document.body.classList.toggle('examples-view', examplesRequested());
+    showGuest();
+  }
+
   async function initialize() {
-    if (new URLSearchParams(location.search).get('examples') === '1') {
-      document.body.classList.add('examples-view');
-      showGuest();
-      return;
-    }
     const resetMode = new URLSearchParams(location.search).has('reset_token');
-    if (resetMode) {
+    if (resetMode && !examplesRequested()) {
       showGuest();
       return;
     }
 
     if (!token()) {
-      showGuest();
+      showGuestHome();
       return;
     }
 
     try {
       const data = await api('/api/auth/me');
+      // 已登入卻帶著 ?next=（例如其他分頁登入後，程式碼頁仍顯示「登入」）：直接回原頁。
+      const next = safeNextPath();
+      if (next) {
+        location.replace(next);
+        return;
+      }
       await showDashboard(data.user);
     } catch {
       clearSession();
-      showGuest();
+      showGuestHome();
     }
   }
 
