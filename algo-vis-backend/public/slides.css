@@ -2989,6 +2989,17 @@ body.custom-overview-open .reveal .controls {
   height: 22px;
 }
 
+.animation-editor-panel input[type="range"],
+.widget-editor-panel input[type="range"] {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .shape-standard-slider,
 .shape-radius-slider {
   width: 150px;
