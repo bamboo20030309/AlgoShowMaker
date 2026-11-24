@@ -8,7 +8,33 @@
     const frames = new Set(), documents = new WeakSet();
     const frameStyles = new URL('slide-presentation-controls.css?v=6', document.baseURI).href;
     let presentationMode = false;
-    let accumulated = 0, previousDirection = 0, lastWheel = 0, lockedUntil = 0;
+    let accumulated = 0, previousDirection = 0, previousAxis = '', lastWheel = 0, lockedUntil = 0;
+    let heldButtons = 0, wheelButtons = 0, suppressClickUntil = 0;
+    const buttonMask = event => event.button === 2 ? 2 : event.button === 0 ? 1 : 0;
+    const suppressWheelClick = event => {
+      if (!(wheelButtons & buttonMask(event)) || performance.now() > suppressClickUntil) return false;
+      event.preventDefault();
+      // mouseup still reaches the canvas to finish its drag bookkeeping.
+      if (event.type !== 'mouseup' && event.type !== 'pointerup') event.stopImmediatePropagation();
+      return true;
+    };
+    function trackButtons(view) {
+      view.addEventListener('pointerdown', event => {
+        heldButtons = event.buttons & 3; wheelButtons = 0; suppressClickUntil = 0;
+      }, true);
+      view.addEventListener('pointerup', event => {
+        heldButtons = event.buttons & 3;
+        if (wheelButtons & buttonMask(event)) suppressClickUntil = performance.now() + 400;
+        suppressWheelClick(event);
+      }, true);
+      view.addEventListener('mouseup', suppressWheelClick, true);
+      view.addEventListener('click', suppressWheelClick, true);
+      view.addEventListener('auxclick', suppressWheelClick, true);
+      const reset = () => { heldButtons = wheelButtons = 0; suppressClickUntil = 0; };
+      view.addEventListener('blur', reset);
+      view.addEventListener('pointercancel', reset, true);
+    }
+    trackButtons(window);
     const modalOpen = () => !!document.querySelector('dialog[open], #algorithmEditorModal:not([hidden]), #codeEditorModal:not([hidden])');
     const available = () => reveal.isReady() && !overviewOpen() && !reveal.isOverview() && !reveal.isPaused() && !modalOpen();
     const presenting = () => available() && !document.body.classList.contains('asm-edit-mode');
@@ -38,6 +64,7 @@
       clearTimeout(menuTimer); menuTimer = setTimeout(() => { menu.hidden = true; menu.classList.remove('is-closing'); }, 150);
     }
     function contextMenu(event, frame = null) {
+      if (suppressWheelClick(event)) return;
       if (!presenting() || (frame ? !activeFrame(frame) : !event.target.closest?.('body > .reveal'))) return;
       // In an animation the laser-mode right click remains the next-step
       // shortcut; the slide background still offers the mode menu to exit it.
@@ -76,10 +103,17 @@
       return false;
     }
 
-    function navigate(direction) {
+    function navigate(direction, axis = 'linear') {
       const sizes = groupSizes(), indices = reveal.getIndices();
       let h = indices.h, v = indices.v || 0;
-      if (direction > 0) {
+      if (axis === 'horizontal') {
+        h += direction;
+        if (h < 0 || h >= sizes.length) return;
+        v = 0;
+      } else if (axis === 'vertical') {
+        v += direction;
+        if (v < 0 || v >= sizes[h]) return;
+      } else if (direction > 0) {
         if (v + 1 < sizes[h]) v++;
         else if (h + 1 < sizes.length) { h++; v = 0; }
         else return;
@@ -95,10 +129,12 @@
       if (!available() || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
         || !event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       if (frame ? !activeFrame(frame) : !event.target.closest?.('body > .reveal')) return;
+      const buttons = (event.buttons || heldButtons) & 3;
+      const axis = buttons & 2 ? 'horizontal' : buttons & 1 ? 'vertical' : 'linear';
       // 動畫畫布實際拖曳選取後才擁有滾輪縮放；未選取時沿用投影片切頁。
       // iframe 內的播放列等其他區域仍沿用投影片切頁操作。
       if (frame && event.target.closest?.('#canvasWrapper, #arraySvg')
-        && frame.contentWindow.isCanvasWheelZoomSelected?.()) {
+        && axis === 'linear' && frame.contentWindow.isCanvasWheelZoomSelected?.()) {
         accumulated = 0;
         return;
       }
@@ -107,8 +143,13 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       const now = performance.now(), direction = Math.sign(event.deltaY);
+      if (buttons) {
+        wheelButtons |= buttons; suppressClickUntil = now + 1000;
+        closeMenu();
+      }
       const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
-      if (now - lastWheel > 180 || direction !== previousDirection) accumulated = 0;
+      if (now - lastWheel > 180 || direction !== previousDirection || axis !== previousAxis) accumulated = 0;
+      previousAxis = axis;
       previousDirection = direction;
       lastWheel = now;
       if (now < lockedUntil) { accumulated = 0; return; }
@@ -116,8 +157,17 @@
       if (Math.abs(accumulated) < 40) return;
       accumulated = 0;
       lockedUntil = now + 450;
-      navigate(direction);
+      navigate(direction, axis);
     }
+
+    const horizontalControl = event => {
+      const control = event.target.closest?.('body > .reveal .controls .navigate-left, body > .reveal .controls .navigate-right');
+      if (!control || control.disabled || !available()) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      navigate(control.classList.contains('navigate-right') ? 1 : -1, 'horizontal');
+    };
+    document.addEventListener('click', horizontalControl, true);
+    document.addEventListener('touchstart', horizontalControl, { capture: true, passive: false });
 
     function attach(frame) {
       if (!frame.matches?.('iframe.algorithm-slide-frame')) return;
@@ -127,6 +177,7 @@
       if (!child?.documentElement) return;
       if (!documents.has(child)) {
         documents.add(child);
+        trackButtons(child.defaultView);
         const link = child.createElement('link');
         link.rel = 'stylesheet'; link.href = frameStyles;
         (child.head || child.documentElement).appendChild(link);

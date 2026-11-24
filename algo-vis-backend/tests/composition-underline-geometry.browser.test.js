@@ -15,5 +15,5 @@ test('composition underline follows painted glyph bounds rather than line spacin
    const result={options,ink:bounds(ink.c),line:bounds(line.c)};o.inCompositionMode=false;delete o.hiddenTextarea;return result;
   });
  });
- for(const r of results){assert.ok(r.line.top-r.ink.bottom>=1&&r.line.top-r.ink.bottom<=4,'underline stays just below painted glyphs: '+JSON.stringify(r));assert.ok(Math.abs(r.line.left-r.ink.left)<=3&&Math.abs(r.line.right-r.ink.right)<=3,'underline length matches glyph ink: '+JSON.stringify(r));}
+ for(const r of results){assert.ok(r.line.top-r.ink.bottom>=0&&r.line.top-r.ink.bottom<=2,'underline touches the painted glyph bottom without extra gap: '+JSON.stringify(r));assert.ok(Math.abs(r.line.left-r.ink.left)<=3&&Math.abs(r.line.right-r.ink.right)<=3,'underline length matches glyph ink: '+JSON.stringify(r));}
 });

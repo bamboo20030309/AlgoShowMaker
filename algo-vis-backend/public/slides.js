@@ -4069,7 +4069,7 @@
               x1 = Math.min(start, finish); x2 = Math.max(start, finish);
               bottom = baseline;
             }
-            const y = bottom + 1 + ctx.lineWidth / 2;
+            const y = bottom + ctx.lineWidth / 2;
             ctx.beginPath();
             ctx.moveTo(x1, y);
             ctx.lineTo(x2, y);
@@ -7092,11 +7092,6 @@
   }
 
   function updateStructureCellSelectionOverlay(widgetEl, cell) {
-    if (activeStructureInlineEditor?.context.mode === 'table'
-      && activeStructureInlineEditor.context.widgetId === widgetEl?.dataset.widgetId) {
-      hideStructureCellSelectionOverlay();
-      return;
-    }
     const slideId = widgetEl?.closest?.('.asm-slide')?.dataset.slideId;
     const frame = widgetEl?.closest?.('.asm-slide-frame-content');
     const target = cell?.querySelector?.(':scope > rect:first-of-type') || cell;
@@ -7127,7 +7122,6 @@
       const origin = new DOMPoint(bounds.x, bounds.y).matrixTransform(matrix);
       let overlay = boxes[index];
       if (!overlay) { overlay = box.cloneNode(false); box.parentElement.appendChild(overlay); }
-      overlay.dataset.tableCell = String(getWidget(widgetEl.dataset.widgetId).widget?.type === 'table');
       overlay.style.left = `${(origin.x - frameRect.left) * scaleX}px`;
       overlay.style.top = `${(origin.y - frameRect.top) * scaleY}px`;
       overlay.style.width = `${bounds.width}px`;
@@ -7153,6 +7147,10 @@
   function selectStructureCell(widgetEl, cell, modifiers = {}) {
     const details = structureCellContext(widgetEl, cell);
     if (!details) return null;
+    if (details.widget.type === 'table') {
+      clearStructureCellSelection();
+      return details;
+    }
     closeStructureStyleHoverPicker();
     const previous = selectedStructureCell?.widgetId === details.widget.id ? selectedStructureCell : null;
     const items = [...widgetEl.querySelectorAll('[data-structure-item-index]')]
@@ -7247,7 +7245,8 @@
     structureCellClickTimer = null;
     closeStructureInlineEditor(true);
     selectWidget(details.widget.id);
-    const selected = selectStructureCell(widgetEl, cell) || details;
+    if (details.widget.type === 'table') clearStructureCellSelection();
+    const selected = details.widget.type === 'table' ? details : selectStructureCell(widgetEl, cell) || details;
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'structure-inline-value-input';
@@ -9184,6 +9183,7 @@
       if (modifierCell && additiveCanvasSelectionGesture) return;
       if (event.shiftKey) return;
       const selectedStructureCellHit = widgetEl.classList.contains('structure-widget')
+        && getWidget(widgetEl.dataset.widgetId).widget?.type !== 'table'
         && widgetEl.classList.contains('is-selected')
         && !!structureCellFromEvent(event, widgetEl);
       if (!selectedStructureCellHit) {
@@ -9472,7 +9472,8 @@
       const pointerSelection = widgetPointerSelection;
       widgetPointerSelection = null;
       const structureCell = structureCellFromEvent(event, widgetEl);
-      if (structureCell && widgetEl.classList.contains('structure-widget') && isAdditiveCellSelection(widgetEl)
+      if (structureCell && getWidget(widgetEl.dataset.widgetId).widget?.type !== 'table'
+        && widgetEl.classList.contains('structure-widget') && isAdditiveCellSelection(widgetEl)
         && (event.shiftKey || event.ctrlKey || event.metaKey)) {
         closeStructureInlineEditor(true);
         selectWidget(widgetEl.dataset.widgetId);
@@ -9488,6 +9489,11 @@
         return;
       }
       if (structureCell && widgetEl.classList.contains('structure-widget')) {
+        if (getWidget(widgetEl.dataset.widgetId).widget?.type === 'table') {
+          clearStructureCellSelection();
+          selectWidget(widgetEl.dataset.widgetId);
+          return;
+        }
         const wasSelected = pointerSelection?.widgetId === widgetEl.dataset.widgetId
           ? pointerSelection.wasSelected
           : widgetEl.classList.contains('is-selected');
@@ -9500,10 +9506,6 @@
         selectStructureCell(widgetEl, structureCell);
         if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
         const widgetId = widgetEl.dataset.widgetId;
-        if (getWidget(widgetId).widget?.type === 'table') {
-          hideStructureContextMenu();
-          return;
-        }
         structureCellClickTimer = setTimeout(() => {
           structureCellClickTimer = null;
           if (activeStructureInlineEditor || selectedStructureCell?.widgetId !== widgetId) return;

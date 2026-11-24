@@ -121,7 +121,7 @@
     const shortcutsEnabled = () => document.documentElement.classList.contains('asm-slide-laser-frame')
       && !window.isDrawingMode;
     const shortcut = e => {
-      if (!shortcutsEnabled()) return;
+      if (e.defaultPrevented || !shortcutsEnabled()) return;
       const button = { 0: 'prevBtn', 1: 'playToggleBtn', 2: 'nextBtn' }[e.button];
       if (button) window.ASMPlaybackNavigation?.invokeButton?.(button);
     };

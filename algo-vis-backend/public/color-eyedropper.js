@@ -98,7 +98,7 @@
   }
   function install(parent, capture) {
     const row = document.createElement('div'); row.className = 'asm-eyedropper-row';
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'asm-eyedropper-button'; button.title = '滴管取色（Esc 取消）'; button.setAttribute('aria-label', '滴管取色'); button.innerHTML = icon + '<span>滴管</span>';
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'asm-eyedropper-button'; button.title = '滴管取色（Esc 取消）'; button.setAttribute('aria-label', '滴管取色'); button.innerHTML = icon;
     const status = document.createElement('span'); status.className = 'asm-eyedropper-status'; status.setAttribute('role', 'status'); row.append(button, status); parent.prepend(row);
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', async event => {
