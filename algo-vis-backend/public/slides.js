@@ -4024,28 +4024,52 @@
         const end = this.get2DCursorLocation(selectionEnd);
         const startLine = start.lineIndex;
         const endLine = end.lineIndex;
-        let topOffset = boundaries.topOffset;
+        // Cursor offsets can refer to the end of a multi-line composition.
+        // Derive each line's own baseline, not the cursor's line-box bottom.
+        let topOffset = 0;
+        for (let i = 0; i < startLine; i++) topOffset += this.getHeightOfLine(i);
         ctx.save();
         ctx.strokeStyle = this.compositionColor || '#1d8f83';
         ctx.lineWidth = Math.max(1, 1 / ((this.scaleX || 1) * (this.canvas?.getZoom?.() || 1)));
         ctx.setLineDash([1, 2]);
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = this.direction === 'rtl' ? 'right' : 'left';
+        ctx.direction = this.direction;
         for (let i = startLine; i <= endLine; i++) {
           const lineOffset = this._getLineLeftOffset(i) || 0;
           const lineHeight = this.getHeightOfLine(i);
           const startChar = i === startLine ? Math.max(0, start.charIndex) : 0;
-          const endChar = i === endLine ? Math.max(0, end.charIndex) : (this.__charBounds[i]?.length || 0);
+          const endChar = i === endLine ? Math.max(0, end.charIndex) : (this._textLines[i]?.length || 0);
           const lineBounds = this.__charBounds[i] || [];
           const first = lineBounds[startChar] || lineBounds[0];
           const last = endChar > 0 ? lineBounds[endChar - 1] : first;
-          if (first && last) {
-            let x1 = boundaries.left + lineOffset + first.left;
-            let x2 = boundaries.left + lineOffset + last.left + last.width;
-            if (this.direction === 'rtl') {
-              const width = x2 - x1;
-              x1 = this.width - x1 - width;
-              x2 = x1 + width;
+          if (first && last && endChar > startChar) {
+            const sign = this.direction === 'rtl' ? -1 : 1;
+            const left = boundaries.left + lineOffset;
+            const baseline = boundaries.top + topOffset
+              + lineHeight / this.lineHeight * (1 - this._fontSizeFraction);
+            let x1 = Infinity, x2 = -Infinity, bottom = -Infinity;
+            for (let j = startChar; j < endChar; j++) {
+              const box = lineBounds[j], character = this._textLines[i]?.[j];
+              if (!box || !character) continue;
+              const style = this.getCompleteStyleDeclaration(i, j);
+              ctx.font = this._getFontDeclaration(style);
+              const metrics = ctx.measureText(character);
+              if (!(metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight > 0)) continue;
+              const origin = left + sign * box.left;
+              x1 = Math.min(x1, origin - metrics.actualBoundingBoxLeft);
+              x2 = Math.max(x2, origin + metrics.actualBoundingBoxRight);
+              bottom = Math.max(bottom, baseline + (Number(style.deltaY) || 0) + metrics.actualBoundingBoxDescent);
             }
-            const y = boundaries.top + topOffset + lineHeight;
+            // Whitespace has an advance but no painted glyph. Keep its range
+            // visible without including the final character-spacing allowance.
+            if (!Number.isFinite(bottom)) {
+              const start = left + sign * first.left;
+              const finish = left + sign * (last.left + last.width - this._getWidthOfCharSpacing());
+              x1 = Math.min(start, finish); x2 = Math.max(start, finish);
+              bottom = baseline;
+            }
+            const y = bottom + 1 + ctx.lineWidth / 2;
             ctx.beginPath();
             ctx.moveTo(x1, y);
             ctx.lineTo(x2, y);
