@@ -3,6 +3,7 @@
 // text object cannot also lift old backgrounds above every widget.
 (function () {
   function install(canvas, getWidgets, bleed) {
+    const currentBleed = () => canvas.__asmBleed ?? bleed;
     const layers = new Map();
     const renderObjects = canvas._renderObjects;
     const renderBackground = canvas._renderBackground;
@@ -26,6 +27,7 @@
           left: `${-bleed}px`, top: `${-bleed}px`, zIndex: '100001' });
         host.parentElement.appendChild(editingLayer);
       }
+      editingLayer.style.left = editingLayer.style.top = `${-currentBleed()}px`;
       editingLayer.style.width = `${canvas.width}px`; editingLayer.style.height = `${canvas.height}px`;
       if (editingLayer.width !== canvas.lowerCanvasEl.width || editingLayer.height !== canvas.lowerCanvasEl.height) {
         editingLayer.width = canvas.lowerCanvasEl.width; editingLayer.height = canvas.lowerCanvasEl.height;
@@ -103,6 +105,7 @@
           host.parentElement.appendChild(layer); layers.set(key, layer);
         }
         layer.style.zIndex = String(band.level);
+        layer.style.left = layer.style.top = `${-currentBleed()}px`;
         layer.style.width = `${this.width}px`; layer.style.height = `${this.height}px`;
         if (layer.width !== this.lowerCanvasEl.width || layer.height !== this.lowerCanvasEl.height) {
           layer.width = this.lowerCanvasEl.width; layer.height = this.lowerCanvasEl.height;

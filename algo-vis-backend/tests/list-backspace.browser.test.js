@@ -33,7 +33,7 @@ test('list changes keep native editing input synchronized', { timeout: 120000 },
     await page.addInitScript(deck => localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(deck)), deck);
     await page.goto(base + '/slides.html');
     await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
-    const point = await page.evaluate(() => { const rect = document.querySelector('#fabric-s1').getBoundingClientRect(); const scale = rect.width / 1640; return { x: rect.left + 620 * scale, y: rect.top + 425 * scale }; });
+    const point = await page.evaluate(() => { const el = document.querySelector('#fabric-s1'), rect = el.getBoundingClientRect(), width = parseFloat(getComputedStyle(el).width), bleed = (width - 1280) / 2, scale = rect.width / width; return { x: rect.left + (bleed + 440) * scale, y: rect.top + (bleed + 245) * scale }; });
     await page.mouse.dblclick(point.x, point.y);
     await page.waitForFunction(() => document.activeElement?.tagName === 'TEXTAREA');
     const value = () => page.evaluate(() => document.activeElement.value);

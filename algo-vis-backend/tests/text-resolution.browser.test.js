@@ -62,7 +62,7 @@ test('slide text backing density follows display zoom while preserving editable 
       assert.equal(snapshot.jpeg, true); assert.equal(snapshot.width, 640); assert.equal(snapshot.height, 360);
       await page.locator('#slideOrderToggleBtn').click();
       await page.waitForTimeout(500);
-      const point = await page.evaluate(() => { const el = document.querySelector('#fabric-s1'); const rect = el.getBoundingClientRect(); const scale = rect.width / 1640; return { x: rect.left + (180 + 440) * scale, y: rect.top + (180 + 245) * scale }; });
+      const point = await page.evaluate(() => { const el = document.querySelector('#fabric-s1'), rect = el.getBoundingClientRect(); const width = parseFloat(getComputedStyle(el).width), bleed = (width - 1280) / 2, scale = rect.width / width; return { x: rect.left + (bleed + 440) * scale, y: rect.top + (bleed + 245) * scale }; });
       await page.mouse.dblclick(point.x, point.y);
       await page.waitForFunction(() => document.activeElement?.tagName === 'TEXTAREA');
       await page.keyboard.press('Control+A'); await page.keyboard.type('Editable text remains sharp');

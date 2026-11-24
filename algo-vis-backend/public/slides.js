@@ -3860,22 +3860,46 @@
   function refreshFabricResolution() {
     if (!revealReady) return;
     const active = currentFabricCanvas();
+    let viewportChanged = false;
     for (const canvas of fabricCanvases.values()) {
-      const rect = canvas.lowerCanvasEl.getBoundingClientRect();
-      const displayScale = rect.width / canvas.width;
+      const host = canvas.lowerCanvasEl.closest('.fabric-host');
+      const frame = host?.parentElement;
+      const rect = frame?.getBoundingClientRect();
+      const workspace = document.querySelector('body > .reveal')?.getBoundingClientRect();
+      const displayScale = rect?.width / SLIDE_W || 1;
+      let bleed = FABRIC_BLEED;
+      if (canvas === active && document.body.classList.contains('asm-edit-mode')
+        && !isOverviewEditing() && rect?.width && workspace) {
+        const scaleY = rect.height / SLIDE_H;
+        const outside = Math.max(FABRIC_BLEED,
+          (rect.left - workspace.left) / displayScale, (workspace.right - rect.right) / displayScale,
+          (rect.top - workspace.top) / scaleY, (workspace.bottom - rect.bottom) / scaleY);
+        bleed = Math.ceil((outside + 32) / 64) * 64;
+      }
+      // Avoid changing Fabric's pointer coordinate system in mid-object-drag.
+      if (canvas._currentTransform) bleed = canvas.__asmBleed ?? FABRIC_BLEED;
+      const previousBleed = canvas.__asmBleed ?? FABRIC_BLEED;
+      const width = SLIDE_W + bleed * 2, height = SLIDE_H + bleed * 2;
       const required = canvas === active ? Math.max(1, displayScale * (window.devicePixelRatio || 1)) : 1;
       // At most 32 million pixels per backing canvas; only the visible slide is dense.
-      const limit = Math.min(8192 / canvas.width, 8192 / canvas.height,
-        Math.sqrt(32000000 / (canvas.width * canvas.height)));
+      const limit = Math.min(8192 / width, 8192 / height, Math.sqrt(32000000 / (width * height)));
       const scale = Math.min(limit, Math.ceil(required * 4) / 4);
-      if (Math.abs(canvas.getRetinaScaling() - scale) < 0.01) continue;
+      if (previousBleed === bleed && Math.abs(canvas.getRetinaScaling() - scale) < 0.01) continue;
+      const viewport = canvas.viewportTransform.slice();
+      viewport[4] += bleed - previousBleed; viewport[5] += bleed - previousBleed;
+      canvas.__asmBleed = bleed;
+      frame?.style.setProperty('--fabric-bleed', `${bleed}px`);
       canvas.__asmRasterScale = scale;
-      canvas.setDimensions({ width: canvas.width, height: canvas.height });
+      canvas.setDimensions({ width, height });
+      canvas.setViewportTransform(viewport);
+      canvas.calcOffset();
+      viewportChanged ||= previousBleed !== bleed;
       canvas.lowerCanvasEl.dataset.rasterScale = String(scale);
       // Resizing clears the bitmap. Paint in this same task so the compositor
       // never presents an empty canvas between resizing and the next RAF.
       canvas.renderAll();
     }
+    if (viewportChanged) updateAlignmentToolbar();
   }
 
   function scheduleFabricResolution(settleZoom = false) {
@@ -4298,6 +4322,7 @@
         obj.__asmShiftLockAxis = null;
       });
       updateObjectToolbar(canvas.getActiveObject(), canvas);
+      scheduleFabricResolution();
     });
     canvas.on('text:selection:changed', e => updateObjectToolbar(e.target, canvas));
     canvas.on('text:editing:entered', e => {
@@ -8317,6 +8342,7 @@
     style.setProperty('--slide-pan-x', `${slideViewportPan.x}px`);
     style.setProperty('--slide-pan-y', `${slideViewportPan.y}px`);
     if (!customOverviewOpen) refreshSlideZoomControls(slideViewportZoom);
+    scheduleFabricResolution();
   }
 
   function slideViewportParentScale(frame) {
@@ -12124,7 +12150,10 @@
   function slideCanvasDataUrl(slide) {
     const canvas = fabricCanvases.get(slide.id);
     try {
-      if (canvas && canvas.toDataURL) return canvas.toDataURL({ format: 'png' });
+      if (canvas && canvas.toDataURL) {
+        const bleed = canvas.__asmBleed ?? FABRIC_BLEED;
+        return canvas.toDataURL({ format: 'png', left: bleed, top: bleed, width: SLIDE_W, height: SLIDE_H });
+      }
       const el = document.getElementById(`fabric-${slide.id}`);
       if (el && el.toDataURL) return el.toDataURL('image/png');
     } catch (err) {

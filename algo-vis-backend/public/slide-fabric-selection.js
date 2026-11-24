@@ -33,8 +33,12 @@
     const element = document.createElement('canvas');
     const host = main.lowerCanvasEl.closest('.fabric-host');
     host.parentElement.appendChild(element);
-    const canvas = new fabric.Canvas(element, { width: main.width, height: main.height,
+    const canvas = new fabric.Canvas(element, { width: 1, height: 1,
       selection: false, preserveObjectStacking: true, renderOnAddRemove: false });
+    canvas.getRetinaScaling = () => main.getRetinaScaling();
+    canvas._isRetinaScaling = () => canvas.getRetinaScaling() !== 1;
+    if (main.__asmRasterScale !== undefined) canvas._initRetinaScaling = main._initRetinaScaling.bind(canvas);
+    let backingScale = null;
     installDragThreshold(canvas);
     canvas.wrapperEl.classList.add('asm-native-selection-controls');
     Object.assign(canvas.wrapperEl.style, { position:'absolute', left:`${-bleed}px`, top:`${-bleed}px`, zIndex:'100002', pointerEvents:'none' });
@@ -51,6 +55,12 @@
     }));
     function sync(items) {
       if (editing) return;
+      const currentBleed = main.__asmBleed ?? bleed;
+      canvas.wrapperEl.style.left = canvas.wrapperEl.style.top = `${-currentBleed}px`;
+      if (canvas.width !== main.width || canvas.height !== main.height || backingScale !== main.getRetinaScaling()) {
+        backingScale = main.getRetinaScaling();
+        canvas.setDimensions({ width: main.width, height: main.height });
+      }
       canvas.setViewportTransform(main.viewportTransform.slice());
       enabled = items.some(item => item.kind === 'widget') && document.body.classList.contains('asm-edit-mode');
       canvas.wrapperEl.hidden = !enabled;
@@ -59,7 +69,7 @@
       canvas.uniformScaling = !(items.length === 1 && items[0].kind === 'widget'
         && items[0].widget.type === 'code');
       const key = fingerprint(items);
-      if (key === signature) return;
+      if (key === signature) { canvas.requestRenderAll(); return; }
       signature = key;
       canvas.discardActiveObject(); canvas.clear();
       const proxies = items.map(item => {
