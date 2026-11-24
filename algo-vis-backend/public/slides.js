@@ -4121,7 +4121,11 @@
     try {
       await new Promise(resolve => {
         canvas.loadFromJSON(json, () => {
-          canvas.setViewportTransform([1, 0, 0, 1, FABRIC_BLEED, FABRIC_BLEED]);
+          // Undo/reload restores objects into an existing canvas. Its workspace
+          // bleed may already have changed while images were being enlivened;
+          // use the current value rather than the initial construction padding.
+          const bleed = canvas.__asmBleed ?? FABRIC_BLEED;
+          canvas.setViewportTransform([1, 0, 0, 1, bleed, bleed]);
           canvas.getObjects().forEach(configureObject);
           canvas.renderAll();
           resolve();
