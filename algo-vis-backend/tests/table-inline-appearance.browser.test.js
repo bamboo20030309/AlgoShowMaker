@@ -6,8 +6,19 @@ test('table editing preserves fitted text appearance, inserts a caret and saves 
  await page.goto(base+'/slides.html');await page.waitForFunction(()=>document.body.dataset.fabricBuild?.startsWith('ready'));if(!await page.locator('body').evaluate(e=>e.classList.contains('asm-edit-mode')))await page.locator('#modeToggleBtn').click();
  const table=page.locator('[data-widget-id="table"]'),cell=table.locator('[data-matrix-row="0"][data-matrix-column="0"]'),text=cell.locator(':scope > text');await table.click();
  const before=await text.evaluate(e=>{const s=getComputedStyle(e),m=e.getScreenCTM();return{size:s.fontSize,family:s.fontFamily,weight:s.fontWeight,color:s.fill,scale:Math.hypot(m.c,m.d),value:e.textContent};});
+ const clip=await cell.boundingBox();
+ const ink=async(bounds=clip)=>page.evaluate(async base64=>{
+  const img=new Image();img.src='data:image/png;base64,'+base64;await img.decode();const c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+  const ctx=c.getContext('2d');ctx.drawImage(img,0,0);const pixels=ctx.getImageData(0,0,c.width,c.height).data;let left=c.width,right=-1,top=c.height,bottom=-1;
+  for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++){const i=(y*c.width+x)*4,r=pixels[i],g=pixels[i+1],b=pixels[i+2];if(r>=90&&r<=140&&g>=20&&g<=65&&b>=65&&b<=115&&b-g>25){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}}
+  return{left,right,top,bottom};
+ },(await page.screenshot({clip:bounds})).toString('base64'));
+ const beforeInk=await ink();assert.ok(beforeInk.bottom>=beforeInk.top,'visible table glyphs are measured');
  await cell.click();assert.equal(await table.evaluate(e=>e.classList.contains('is-selected')),true);assert.equal(await table.locator('.is-structure-cell-selected').count(),0);assert.equal(await page.locator('.asm-structure-cell-selection-box:not([hidden])').count(),0,'single click selects the table, not a cell');
  await cell.dblclick();const input=table.locator('.structure-inline-value-input');await input.waitFor();
+ await input.evaluate(e=>e.style.caretColor='transparent');
+ const editingInk=await ink();
+ for(const edge of ['top','bottom'])assert.ok(Math.abs(editingInk[edge]-beforeInk[edge])<=1,`table glyph ${edge} moved: ${JSON.stringify({beforeInk,editingInk})}`);
  assert.equal(await page.locator('.asm-structure-cell-selection-box:not([hidden])').count(),0,'caret editing has no cell selection overlay behind the text');
  const editing=await input.evaluate(e=>{const s=getComputedStyle(e);return{size:s.fontSize,family:s.fontFamily,weight:s.fontWeight,color:s.color,background:s.backgroundColor,border:s.borderTopWidth,start:e.selectionStart,end:e.selectionEnd,value:e.value};});
  assert.equal(editing.start,editing.end,'editing starts with a caret, not select-all');assert.equal(editing.value,before.value);assert.equal(editing.size,before.size);assert.equal(editing.family,before.family);assert.equal(editing.weight,before.weight);assert.equal(editing.color,before.color);assert.equal(editing.background,'rgba(0, 0, 0, 0)');assert.equal(editing.border,'0px');
@@ -16,6 +27,10 @@ test('table editing preserves fitted text appearance, inserts a caret and saves 
  await input.press('End');await page.keyboard.insertText('追加');await input.press('Enter');await page.waitForFunction(()=>document.body.dataset.localDeckSave==='saved');
  await page.reload();await page.waitForFunction(()=>document.body.dataset.fabricBuild?.startsWith('ready'));assert.match(await text.textContent(),/追加/);
  const saved=await page.evaluate(async()=>{const d=await ASMSlideStorage.create(indexedDB,localStorage).loadDeck('asm_reveal_fabric_deck_v5');return d.groups[0].slides[0].widgets[0];});assert.equal(saved.tableTextColor,'#6f245a');assert.equal(saved.tableHeaderColumn,false);assert.equal(saved.fragmentEnabled,false);
- await table.click();await table.locator('[data-matrix-row="1"][data-matrix-column="0"]').dblclick();await input.press('End');await page.keyboard.type('x');assert.equal(await input.inputValue(),'Valuex');assert.equal(await table.locator('.is-structure-cell-selected').count(),0,'double click enters a caret without creating a cell selection');assert.equal(await input.evaluate(e=>e.selectionStart===e.selectionEnd),true);await input.press('Enter');
+ for(let i=0;i<5;i++)await page.locator('#slideZoomInBtn').click();await page.waitForTimeout(500);
+ await table.click();const bodyCell=table.locator('[data-matrix-row="1"][data-matrix-column="0"]'),bodyClip=await bodyCell.boundingBox(),bodyBefore=await ink(bodyClip);
+ await bodyCell.dblclick();await input.evaluate(e=>e.style.caretColor='transparent');const bodyEditing=await ink(bodyClip);
+ for(const edge of ['top','bottom'])assert.ok(Math.abs(bodyEditing[edge]-bodyBefore[edge])<=1,`scaled body glyph ${edge} moved: ${JSON.stringify({bodyBefore,bodyEditing})}`);
+ await input.press('End');await page.keyboard.type('x');assert.equal(await input.inputValue(),'Valuex');assert.equal(await table.locator('.is-structure-cell-selected').count(),0,'double click enters a caret without creating a cell selection');assert.equal(await input.evaluate(e=>e.selectionStart===e.selectionEnd),true);await input.press('Enter');
  await page.locator('#exitTableEditorBtn').click();await page.locator('[data-tool="table"]').click();const added=page.locator('.table-widget').last();await added.locator('[data-matrix-row="1"][data-matrix-column="1"]').dblclick();assert.equal(await added.locator('.structure-inline-value-input').evaluate(e=>e.selectionStart===e.selectionEnd),true);await added.locator('.structure-inline-value-input').press('Escape');assert.deepEqual(errors,[]);
 });

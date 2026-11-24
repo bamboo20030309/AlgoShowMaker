@@ -7250,6 +7250,31 @@
         textAlign: style.textAnchor === 'start' ? 'left' : style.textAnchor === 'end' ? 'right' : 'center'
       });
       host.appendChild(editor); cell.appendChild(host);
+      if (text) {
+        // Resolve SVG's middle baseline to an alphabetic baseline using the
+        // actual font (including CJK fallbacks). A native input exposes its
+        // baseline through an adjacent zero-height inline marker.
+        const svgProbe = text.cloneNode(true);
+        svgProbe.textContent ||= 'Mg';
+        svgProbe.style.visibility = 'hidden';
+        cell.appendChild(svgProbe);
+        const middleY = svgProbe.getBBox().y;
+        svgProbe.style.dominantBaseline = 'alphabetic';
+        const baseline = Number(text.getAttribute('y')) + middleY - svgProbe.getBBox().y;
+        svgProbe.remove();
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:fixed;left:-10000px;top:0;white-space:nowrap;visibility:hidden';
+        const native = editor.cloneNode(false);
+        native.value = editor.value || 'Mg';
+        Object.assign(native.style, { display: 'inline-block', verticalAlign: 'baseline',
+          width: `${Number(host.getAttribute('width'))}px`, height: `${Number(host.getAttribute('height'))}px` });
+        const marker = document.createElement('span');
+        marker.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+        probe.append(native, marker); document.body.appendChild(probe);
+        const nativeBaseline = marker.getBoundingClientRect().top - native.getBoundingClientRect().top;
+        probe.remove();
+        host.setAttribute('y', String(baseline - nativeBaseline));
+      }
       const visibility = text?.style.visibility || '';
       if (text) text.style.visibility = 'hidden';
       return { host, text, visibility };
