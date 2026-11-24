@@ -4418,7 +4418,6 @@
     if (obj.__asmArrowRendererInstalled) return;
     obj._render = function (ctx) {
       const Fabric = f();
-      Fabric.Line.prototype._render.call(this, ctx);
       const points = this.calcLinePoints();
       const size = Math.max(6, Math.min(80, Number(this.arrowHeadSize) || 24));
       const style = ['open', 'triangle', 'diamond', 'circle'].includes(this.arrowHeadStyle)
@@ -4434,6 +4433,23 @@
       const tip = point(0, 0);
       const upper = point(size, size * 0.52);
       const lower = point(size, -size * 0.52);
+      // 實心箭頭的線身停在頭部後緣；裁切也會截掉 round/square 線帽，
+      // 避免粗線穿過尖端。只裁切繪製，不改動選取端點或儲存幾何。
+      ctx.save();
+      if (style !== 'open') {
+        const back = style === 'triangle' ? size : style === 'diamond' ? size * 1.35 : size * 0.68;
+        const rear = point(back);
+        const extent = (Math.hypot(points.x2 - points.x1, points.y2 - points.y1) + size + (Number(this.strokeWidth) || 1)) * 4;
+        ctx.beginPath();
+        ctx.moveTo(rear.x - sin * extent, rear.y + cos * extent);
+        ctx.lineTo(rear.x + sin * extent, rear.y - cos * extent);
+        ctx.lineTo(rear.x + sin * extent - cos * extent, rear.y - cos * extent - sin * extent);
+        ctx.lineTo(rear.x - sin * extent - cos * extent, rear.y + cos * extent - sin * extent);
+        ctx.closePath();
+        ctx.clip();
+      }
+      Fabric.Line.prototype._render.call(this, ctx);
+      ctx.restore();
       ctx.save();
       ctx.beginPath();
       ctx.lineWidth = Math.max(0.5, Number(this.strokeWidth) || 1);
