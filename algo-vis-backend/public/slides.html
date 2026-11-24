@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=animation-sidebar-3" />
+  <link rel="stylesheet" href="slides.css?v=arrow-picker-1" />
   <link rel="stylesheet" href="slide-presentation-controls.css?v=6" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-7" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
@@ -734,19 +734,16 @@
         </div>
         <div id="shapeArrowControls" class="shape-arrow-controls" hidden>
           <label class="shape-style-label" for="shapeArrowSizeInput">
-            <span>Arrow size</span>
+            <span>箭頭大小</span>
             <output id="shapeArrowSizeValue">24</output>
           </label>
           <input id="shapeArrowSizeInput" class="shape-standard-slider" type="range" min="6" max="80" step="1" value="24" />
-          <label class="shape-style-label" for="shapeArrowStyleSelect">
-            <span>Arrowhead</span>
-          </label>
-          <select id="shapeArrowStyleSelect" class="shape-arrow-style-select">
-            <option value="open">Open</option>
-            <option value="triangle">Triangle</option>
-            <option value="diamond">Diamond</option>
-            <option value="circle">Circle</option>
-          </select>
+          <div id="shapeArrowStyleChoices" class="shape-arrow-style-choices" role="group" aria-label="箭頭樣式">
+            <button type="button" data-arrow-head-style="open" aria-label="開放箭頭" title="開放箭頭" aria-pressed="true"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M3 12H28M20 5L28 12L20 19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button type="button" data-arrow-head-style="triangle" aria-label="三角箭頭" title="三角箭頭" aria-pressed="false"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M3 12H19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M29 12L18 5V19Z" fill="currentColor"/></svg></button>
+            <button type="button" data-arrow-head-style="diamond" aria-label="菱形箭頭" title="菱形箭頭" aria-pressed="false"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M3 12H15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M29 12L22 5L15 12L22 19Z" fill="currentColor"/></svg></button>
+            <button type="button" data-arrow-head-style="circle" aria-label="圓形箭頭" title="圓形箭頭" aria-pressed="false"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M3 12H16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="22" cy="12" r="6" fill="currentColor"/></svg></button>
+          </div>
         </div>
       </div>
     </div>
@@ -883,7 +880,7 @@
   <script src="slide-fabric-selection.js?v=8"></script>
   <script src="color-picker-policy.js?v=4"></script>
   <script src="slide-presentation-controls.js?v=9"></script>
-  <script src="slides.js?v=slides-396"></script>
+  <script src="slides.js?v=slides-397"></script>
   <script src="mobile-ui.js?v=mobile-7"></script>
 </body>
 

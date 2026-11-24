@@ -475,7 +475,7 @@
   const shapeArrowControls = document.getElementById('shapeArrowControls');
   const shapeArrowSizeInput = document.getElementById('shapeArrowSizeInput');
   const shapeArrowSizeValue = document.getElementById('shapeArrowSizeValue');
-  const shapeArrowStyleSelect = document.getElementById('shapeArrowStyleSelect');
+  const shapeArrowStyleChoices = document.getElementById('shapeArrowStyleChoices');
   if (iroPopup && iroPopup.parentElement !== document.body) document.body.appendChild(iroPopup);
   const shapeMenu = document.getElementById('shapeMenu');
   const shapeMenuBtn = document.getElementById('shapeMenuBtn');
@@ -8761,7 +8761,10 @@
       applyShapeStyle({ arrowHeadSize: Number(shapeArrowSizeInput.value) || 24 }, { history: false });
       scheduleHistorySnapshot();
     });
-    shapeArrowStyleSelect.addEventListener('change', () => applyShapeStyle({ arrowHeadStyle: shapeArrowStyleSelect.value }));
+    shapeArrowStyleChoices.addEventListener('click', event => {
+      const button = event.target.closest('[data-arrow-head-style]');
+      if (button) applyShapeStyle({ arrowHeadStyle: button.dataset.arrowHeadStyle });
+    });
     shapeStrokeWidthInput.addEventListener('change', commitPendingColorHistory);
     shapeCornerRadiusInput.addEventListener('change', commitPendingColorHistory);
     shapeArrowSizeInput.addEventListener('change', commitPendingColorHistory);
@@ -9756,7 +9759,10 @@
       shapeArrowControls.hidden = !arrow;
       shapeArrowSizeInput.value = String(arrowHeadSize);
       shapeArrowSizeValue.value = String(arrowHeadSize);
-      shapeArrowStyleSelect.value = ['open', 'triangle', 'diamond', 'circle'].includes(obj.arrowHeadStyle) ? obj.arrowHeadStyle : 'open';
+      const arrowHeadStyle = ['open', 'triangle', 'diamond', 'circle'].includes(obj.arrowHeadStyle) ? obj.arrowHeadStyle : 'open';
+      for (const button of shapeArrowStyleChoices.querySelectorAll('[data-arrow-head-style]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.arrowHeadStyle === arrowHeadStyle));
+      }
     }
     const rect = fabricSlideRect(canvas);
     const bounds = obj.getBoundingRect(true, true);
