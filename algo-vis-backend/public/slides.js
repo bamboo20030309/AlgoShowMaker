@@ -8380,6 +8380,8 @@
   }
 
   function applySlideViewportPan() {
+    // A view at or below its normal size always belongs at the page center.
+    if (slideViewportZoom <= 1) slideViewportPan = { x: 0, y: 0 };
     const style = document.documentElement.style;
     style.setProperty('--slide-pan-x', `${slideViewportPan.x}px`);
     style.setProperty('--slide-pan-y', `${slideViewportPan.y}px`);
@@ -8400,19 +8402,29 @@
     const before = frame?.getBoundingClientRect();
     const viewport = document.querySelector('body > .reveal')?.getBoundingClientRect();
     const point = anchor || (viewport && { x: viewport.left + viewport.width / 2, y: viewport.top + viewport.height / 2 });
+    const previousZoom = slideViewportZoom;
     slideViewportZoom = Math.round(clampSlideViewportZoom(value) * 100) / 100;
     document.documentElement.style.setProperty('--slide-user-zoom', String(slideViewportZoom));
     document.documentElement.style.setProperty('--edit-slide-zoom-scale', String(EDIT_SLIDE_BASE_SCALE * slideViewportZoom));
     document.body.dataset.slideZoom = String(slideViewportZoom);
-    if (before?.width && point) {
+    if (slideViewportZoom <= 1) {
+      slideViewportPan = { x: 0, y: 0 };
+    } else if (slideViewportZoom < previousZoom && previousZoom > 1) {
+      // Reduce the remaining offset with the remaining magnification, so
+      // zooming out converges continuously to the centered 100% view even
+      // after manually panning or moving the mouse to another anchor.
+      const remaining = (slideViewportZoom - 1) / (previousZoom - 1);
+      slideViewportPan.x *= remaining;
+      slideViewportPan.y *= remaining;
+    } else if (before?.width && point) {
       const after = frame.getBoundingClientRect();
       const scale = slideViewportParentScale(frame);
       // Keep the same logical slide point under the cursor. Pan is in slide
       // coordinates, independent of Reveal's responsive outer scale.
       slideViewportPan.x += (point.x - after.left - (point.x - before.left) * after.width / before.width) / scale;
       slideViewportPan.y += (point.y - after.top - (point.y - before.top) * after.height / before.height) / scale;
-      applySlideViewportPan();
     }
+    applySlideViewportPan();
     refreshSlideZoomControls(slideViewportZoom);
     clearSnapGuides();
     scheduleFabricResolution(true);
@@ -8457,6 +8469,7 @@
       if (event.button === 2 && !document.body.classList.contains('asm-edit-mode')) return;
       if (event.button === 2 && cellContextTarget(event)) return;
       if (event.button !== 1 && event.button !== 2 && !(event.button === 0 && slideViewportSpace)) return;
+      if (slideViewportZoom <= 1) return;
       const frame = currentSlideViewportFrame();
       if (!frame) return;
       event.preventDefault();

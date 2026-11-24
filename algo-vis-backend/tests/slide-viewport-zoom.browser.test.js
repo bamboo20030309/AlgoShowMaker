@@ -90,6 +90,30 @@ test('slide zoom anchors to cursor, pans without editing objects, and repaints r
   assert.ok(raster.paints.every(Boolean), 'each cleared bitmap is repainted before returning to the browser');
   assert.ok(raster.loads && raster.members, 'zoom preserves canvas and object identities');
   assert.ok(raster.structure, 'zoom does not rebuild the structure SVG');
+  const view = () => page.evaluate(() => ({zoom:Number(document.body.dataset.slideZoom),
+    x:parseFloat(document.documentElement.style.getPropertyValue('--slide-pan-x'))||0,
+    y:parseFloat(document.documentElement.style.getPropertyValue('--slide-pan-y'))||0}));
+  // Moving the mouse while zooming out must not pull the page away from center.
+  for (let i=0;i<10;i++) {
+    const previous=await view();
+    await page.mouse.move(300+i*5,150+i*3);
+    await page.locator('#slideZoomOutBtn').click();
+    const current=await view(),remaining=Math.max(0,current.zoom-1)/(previous.zoom-1);
+    assert.ok(Math.abs(current.x-previous.x*remaining)<.001);
+    assert.ok(Math.abs(current.y-previous.y*remaining)<.001);
+  }
+  assert.deepEqual(await view(),{zoom:1,x:0,y:0});
+  for(let i=0;i<5;i++) {
+    await page.locator('#slideZoomOutBtn').click();
+    const current=await rect();
+    assert.ok(Math.abs(current.x+current.width/2-before.x-before.width/2)<1);
+    assert.ok(Math.abs(current.y+current.height/2-before.y-before.height/2)<1);
+    const center={x:current.x+current.width/2,y:current.y+current.height/2};
+    await page.mouse.move(center.x,center.y);await page.mouse.down({button:'middle'});
+    await page.mouse.move(center.x+40,center.y+30,{steps:3});await page.mouse.up({button:'middle'});
+    const state=await view();assert.equal(state.x,0);assert.equal(state.y,0);
+  }
+  assert.deepEqual(await geometry(),original,'centering and locked small views leave objects untouched');
   await page.keyboard.press('Control+0');
   const reset = await rect();
   assert.ok(Math.abs(reset.x - before.x) < 1 && Math.abs(reset.width - before.width) < 1);
@@ -107,6 +131,13 @@ test('slide zoom anchors to cursor, pans without editing objects, and repaints r
   const presentZoom = await rect();
   assert.ok(Math.abs(presentZoom.x + presentZoom.width * .3 - presentAnchor.x) < 1);
   assert.ok(Math.abs(presentZoom.y + presentZoom.height * .4 - presentAnchor.y) < 1);
+  for(let i=0;i<2;i++) {
+    await page.locator('#slideZoomOutBtn').click();
+    const current=await rect();
+    assert.ok(Math.abs(current.x+current.width/2-present.x-present.width/2)<1);
+    assert.ok(Math.abs(current.y+current.height/2-present.y-present.height/2)<1);
+    const state=await view();assert.equal(state.x,0);assert.equal(state.y,0);
+  }
   assert.deepEqual(await geometry(), original, 'presentation zoom is also a view-only transform');
   assert.deepEqual(errors, []);
 });
