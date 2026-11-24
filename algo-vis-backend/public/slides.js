@@ -7139,6 +7139,26 @@
 
   function positionStructureInlineEditor(editor, widgetEl, cell, widget) {
     const cellRectElement = cell.querySelector(':scope > rect') || cell.querySelector('rect') || cell;
+    if (widget.type === 'table') {
+      const text = cell.querySelector(':scope > text');
+      const style = text && getComputedStyle(text);
+      const host = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+      // Keep the editor in the cell's SVG coordinates so fitted font sizes,
+      // resizing and rotation match the rendered table instead of an enlarged
+      // HTML overlay measured from a screen-space bounding rectangle.
+      for (const name of ['x', 'y', 'width', 'height']) host.setAttribute(name, cellRectElement.getAttribute(name) || '0');
+      editor.classList.add('table-inline-value-input');
+      if (style) Object.assign(editor.style, {
+        fontFamily: style.fontFamily, fontSize: style.fontSize,
+        fontWeight: style.fontWeight, fontStyle: style.fontStyle,
+        letterSpacing: style.letterSpacing, color: style.fill,
+        textAlign: style.textAnchor === 'start' ? 'left' : style.textAnchor === 'end' ? 'right' : 'center'
+      });
+      host.appendChild(editor); cell.appendChild(host);
+      const visibility = text?.style.visibility || '';
+      if (text) text.style.visibility = 'hidden';
+      return { host, text, visibility };
+    }
     const cellRect = cellRectElement.getBoundingClientRect();
     const hostRect = editor.parentElement.getBoundingClientRect();
     const scaleX = widget.w / Math.max(1, hostRect.width);
@@ -7178,6 +7198,10 @@
     activeStructureInlineEditor = null;
     const value = editor.input.value;
     editor.input.remove();
+    if (editor.appearance) {
+      editor.appearance.host.remove();
+      if (editor.appearance.text) editor.appearance.text.style.visibility = editor.appearance.visibility;
+    }
     if (!commit) return;
     const found = getWidget(editor.context.widgetId);
     if (!found.widget) return;
@@ -7200,8 +7224,8 @@
     input.value = selected.context.value;
     input.setAttribute('aria-label', 'Edit structure value');
     (widgetEl.querySelector('.structure-content') || widgetEl).appendChild(input);
-    positionStructureInlineEditor(input, widgetEl, selected.cell, selected.widget);
-    const editor = { input, context: selected.context, key: selected.key, closing: false };
+    const appearance = positionStructureInlineEditor(input, widgetEl, selected.cell, selected.widget);
+    const editor = { input, appearance, context: selected.context, key: selected.key, closing: false };
     activeStructureInlineEditor = editor;
     ['mousedown', 'pointerdown', 'click', 'dblclick'].forEach(type => {
       input.addEventListener(type, event => event.stopPropagation());
@@ -7214,7 +7238,8 @@
     });
     input.addEventListener('blur', () => closeStructureInlineEditor(true));
     input.focus();
-    input.select();
+    if (selected.widget.type === 'table') input.setSelectionRange(input.value.length, input.value.length);
+    else input.select();
     if (Number.isFinite(caretClientX)) {
       const rect = input.getBoundingClientRect();
       const style = getComputedStyle(input);

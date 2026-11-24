@@ -3724,6 +3724,19 @@ body.asm-edit-mode .slide-widget.fragment {
   user-select: text;
 }
 
+.structure-inline-value-input.table-inline-value-input {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: normal;
+  caret-color: currentColor;
+}
+
 
 
 .code-widget .code-frame {
