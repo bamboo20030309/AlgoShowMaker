@@ -31,6 +31,15 @@ test('sidebar remembers arrow head and line type, updates icons and preserves sa
  assert.equal(await page.locator('[data-shape-choice="arrow"]').getAttribute('data-cached-line-style'),'solid');
  assert.deepEqual(await page.evaluate(id=>fixtureArrow.canvas.getObjects().find(o=>o.ttsObjectId===id).strokeDashArray,originalId),[60,40]);
  await add('arrow');assert.equal(await page.evaluate(()=>fixtureArrow.arrowHeadStyle),'triangle');assert.equal(await page.evaluate(()=>fixtureArrow.strokeDashArray),null);
+ // Selection changes only the preview; it must not overwrite creation defaults.
+ await page.evaluate(id=>{const c=fixtureArrow.canvas,old=c.getObjects().find(o=>o.ttsObjectId===id);old.arrowHeadStyle='circle';old.set('strokeDashArray',[60,40]);c.setActiveObject(old);c.requestRenderAll();},originalId);
+ assert.equal(await page.locator('[data-shape-choice="arrow"]').getAttribute('data-preview-arrow-head-style'),'circle');
+ assert.equal(await page.locator('[data-shape-choice="arrow"]').getAttribute('data-preview-line-style'),'dashed');
+ assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('asm_slide_shape_preferences_v1'))),{arrowHeadStyle:'triangle',lineStyle:'solid'});
+ await page.evaluate(()=>fixtureArrow.canvas.discardActiveObject());
+ assert.equal(await page.locator('[data-shape-choice="arrow"]').getAttribute('data-preview-arrow-head-style'),'triangle');
+ assert.equal(await page.locator('[data-shape-choice="arrow"]').getAttribute('data-preview-line-style'),'solid');
+ await page.evaluate(()=>fixtureArrow.canvas.setActiveObject(fixtureArrow));
  await page.locator('#shapeStrokeBtn').click();assert.equal(await page.locator('#iroPopup').isVisible(),true);assert.equal(await page.locator('#shapeStyleControls').isVisible(),true);const popupBox=await page.locator('#iroPopup').boundingBox(),sidebarBox=await page.locator('#editorChrome').boundingBox();assert.ok(popupBox.x>=sidebarBox.x+sidebarBox.width,'color picker must not cover sidebar settings');await page.locator('#shapeLineControls .shape-style-label').click();assert.equal(await page.locator('#iroPopup').isVisible(),false);
  await page.evaluate(()=>{const c=fixtureArrow.canvas;c.getObjects().filter(o=>['line','arrow'].includes(o.asmShapeType)).forEach((a,i)=>{a.setPositionByOrigin(new fabric.Point(640,180+i*110),'center','center');a.setCoords();});c.requestRenderAll();});
  await fs.mkdir(path.join(__dirname,'../test-results/shape-preferences'),{recursive:true});await page.screenshot({path:path.join(__dirname,'../test-results/shape-preferences/sidebar.png')});

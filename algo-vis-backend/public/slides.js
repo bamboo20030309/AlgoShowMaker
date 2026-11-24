@@ -581,15 +581,19 @@
     shapePreferences = { ...shapePreferences, ...patch };
     try { localStorage.setItem(SHAPE_PREFERENCES_KEY, JSON.stringify(shapePreferences)); }
     catch (error) { console.warn('無法保存圖形偏好，本次選擇仍生效', error); }
-    refreshShapeChoiceIcons();
+    refreshShapeChoiceIcons(currentFabricCanvas()?.getActiveObject());
   }
 
   function shapeDashArray(style, width = 1) {
     return style === 'dashed' ? [Math.max(8, width * 3), Math.max(6, width * 2)] : null;
   }
 
-  function refreshShapeChoiceIcons() {
-    const head = shapePreferences.arrowHeadStyle;
+  function refreshShapeChoiceIcons(selected = null) {
+    const selectedType = selected ? shapeType(selected) : null;
+    const head = selectedType === 'arrow' && ['open', 'triangle', 'diamond', 'circle'].includes(selected.arrowHeadStyle)
+      ? selected.arrowHeadStyle : shapePreferences.arrowHeadStyle;
+    const lineStyle = ['arrow', 'line'].includes(selectedType)
+      ? (selected.strokeDashArray?.some(value => Number(value) > 0) ? 'dashed' : 'solid') : shapePreferences.lineStyle;
     const heads = {
       open: '<path d="M18 5L27 12L18 19"/>',
       triangle: '<path d="M28 12L17 5V19Z" fill="currentColor" stroke="none"/>',
@@ -601,10 +605,18 @@
         const svg = button.querySelector('svg');
         if (!svg) continue;
         const end = type === 'line' ? 29 : head === 'open' ? 27 : head === 'triangle' ? 17 : head === 'diamond' ? 15 : 17;
-        svg.setAttribute('viewBox', '0 0 32 24');
-        svg.innerHTML = `<path d="M3 12H${end}"${shapePreferences.lineStyle === 'dashed' ? ' stroke-dasharray="4 3"' : ''}/>${type === 'arrow' ? heads[head] : ''}`;
+        const preview = `${type}:${head}:${lineStyle}`;
+        if (svg.dataset.shapePreview !== preview) {
+          svg.setAttribute('viewBox', '0 0 32 24');
+          svg.innerHTML = `<path d="M3 12H${end}"${lineStyle === 'dashed' ? ' stroke-dasharray="4 3"' : ''}/>${type === 'arrow' ? heads[head] : ''}`;
+          svg.dataset.shapePreview = preview;
+        }
         button.dataset.cachedLineStyle = shapePreferences.lineStyle;
-        if (type === 'arrow') button.dataset.cachedArrowHeadStyle = head;
+        button.dataset.previewLineStyle = lineStyle;
+        if (type === 'arrow') {
+          button.dataset.cachedArrowHeadStyle = shapePreferences.arrowHeadStyle;
+          button.dataset.previewArrowHeadStyle = head;
+        }
       }
     }
   }
@@ -7695,6 +7707,7 @@
   function showAnimationEditor(source) {
     if (!animationEditorPanel || !source) return;
     const animation = normalizeAnimationSettings(source);
+    refreshShapeChoiceIcons(source);
     animationEditorPanel.hidden = false;
     if (shapeEditorControls) shapeEditorControls.hidden = !isShapeObject(source);
     shapeChoiceButtons.forEach(button => {
@@ -7710,6 +7723,7 @@
   }
 
   function hideAnimationEditor() {
+    refreshShapeChoiceIcons();
     if (animationEditorPanel) animationEditorPanel.hidden = true;
     layerButtonList().forEach(button => { button.disabled = true; });
   }
@@ -9759,6 +9773,7 @@
   }
 
   function updateObjectToolbar(obj, canvas) {
+    refreshShapeChoiceIcons(obj);
     if (!obj || !document.body.classList.contains('asm-edit-mode')) {
       hideObjectToolbar();
       return;
@@ -10388,6 +10403,7 @@
     if (!structureStylePickerHoverMode || structureStylePickerPointerActive) return;
     cancelStructureStylePickerClose();
     structureStylePickerCloseTimer = setTimeout(() => {
+      if (iroPopup.querySelector('.asm-eyedropper-button[aria-busy="true"]')) return;
       const activeButton = activeStructureStylePickerButton();
       if (iroPopup.matches(':hover') || activeButton?.matches(':hover')) return;
       closeStructureStyleHoverPicker();
@@ -10415,6 +10431,18 @@
     populateAvColorSwatches();
     refreshLastColorSwatch();
     if (!iroPicker) {
+      ASMColorEyedropper.install(iroPopup, () => {
+        const target = activeColorTarget, object = currentFabricCanvas()?.getActiveObject(), widget = selectedWidgetId;
+        const cell = JSON.stringify(activeStructureStyleCell);
+        const selection = textSelection ? { ...textSelection } : null;
+        return value => {
+          if (activeColorTarget !== target || currentFabricCanvas()?.getActiveObject() !== object
+            || selectedWidgetId !== widget || JSON.stringify(activeStructureStyleCell) !== cell) return;
+          textSelection = selection;
+          iroPicker.color.set(value);
+          rememberCustomColor(iroPicker.color); populateAvColorSwatches(); commitPendingColorHistory();
+        };
+      });
       iroPicker = new window.iro.ColorPicker('#iroPicker', {
         width: 150,
         color: 'rgba(31, 40, 45, 1)',

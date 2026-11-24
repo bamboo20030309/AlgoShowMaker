@@ -2936,6 +2936,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (iroPicker) {
     const refresh = ASMColorPickerPolicy.swatches(document.getElementById('v3-color-picker').parentElement,
       (alias, value) => iroPicker.color.set(value));
+    ASMColorEyedropper.install(document.getElementById('v3-color-picker').parentElement, () => value => {
+      iroPicker.color.set(value); ASMColorPickerPolicy.remember(value, true); refresh();
+    });
     iroPicker.on('input:end', color => { ASMColorPickerPolicy.remember(color.rgbaString, true); refresh(); });
   }
   if (colorToggleBtn && slidersPopup) {

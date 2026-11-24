@@ -75,6 +75,16 @@
         { component: window.iro.ui.Slider, options: { sliderType: 'alpha', sliderHeight: 18, handleRadius: 7 } }
       ]
     });
+    ASMColorEyedropper.install(popup, () => {
+      const control = activeControl;
+      return value => {
+        if (activeControl !== control || !control?.isConnected) return;
+        syncingPicker = true;
+        try { picker.color.set(value); } finally { syncingPicker = false; }
+        activeDirty = true; updateControl(control, value, true);
+        ASMColorPickerPolicy.remember(value, true); refreshSwatches(); commitActiveControl();
+      };
+    });
     picker.on('color:change', color => {
       if (!activeControl || syncingPicker) return;
       activeDirty = true;

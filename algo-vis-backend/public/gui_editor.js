@@ -2531,6 +2531,10 @@
           { component: iro.ui.Slider, options: { sliderType: 'alpha' } }
         ]
       });
+      ASMColorEyedropper.install(palette, () => value => {
+        if (!palette.isConnected) return;
+        picker.color.set(value); onSelect(value, value, true); refreshSwatches();
+      });
 
       picker.on('color:change', (color) => {
         // 即時預覽：isFinal = false

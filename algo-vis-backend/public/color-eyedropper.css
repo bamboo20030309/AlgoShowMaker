@@ -1,0 +1,9 @@
+.asm-eyedropper-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: #263237; }
+.iro-popup .asm-eyedropper-row, .trace-iro-popup .asm-eyedropper-row { color: #edf3f3; }
+.asm-eyedropper-button { display: inline-flex; align-items: center; gap: 5px; min-width: 64px; padding: 5px 8px; border: 1px solid #879496; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.asm-eyedropper-button svg { width: 18px; height: 18px; }
+.asm-eyedropper-button:focus-visible { outline: 2px solid #1d8f83; outline-offset: 2px; }
+.asm-eyedropper-button:disabled { opacity: .6; cursor: wait; }
+.asm-eyedropper-status { flex: 1; min-width: 0; font-size: 11px; overflow-wrap: anywhere; }
+.asm-eyedropper-overlay { position: fixed; inset: 0; z-index: 2147483647; background: transparent; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24'%3E%3Cpath d='m14 4 6 6m-7-2L4 17v3h3l9-9m-3-3 5-5a2.1 2.1 0 0 1 3 3l-5 5' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='m14 4 6 6m-7-2L4 17v3h3l9-9m-3-3 5-5a2.1 2.1 0 0 1 3 3l-5 5' fill='none' stroke='%23222' stroke-width='1.8'/%3E%3C/svg%3E") 4 23, crosshair; }
+.asm-eyedropper-hint { position: fixed; top: 12px; left: 12px; padding: 6px 9px; border-radius: 5px; background: #222; color: white; font: 12px sans-serif; pointer-events: none; }
