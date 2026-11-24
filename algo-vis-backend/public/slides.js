@@ -6537,12 +6537,14 @@
       cut: false,
       token: randomId()
     };
-    // Mark native clipboard copies so a later external text copy cannot be
-    // mistaken for our older in-memory object selection.
+    // Carry the serialized objects, not just a tab-local lookup token. The
+    // plain-text envelope also survives clipboard bridges that strip custom MIME.
+    const payload = JSON.stringify({ format: 'AlgoShowMaker.objects', version: 1,
+      token: objectClipboard.token, fabric: objectClipboard.fabric, widgets: objectClipboard.widgets });
     const write = event => {
       if (!event.clipboardData) return;
-      event.clipboardData.setData('application/x-algoshowmaker-objects', objectClipboard.token);
-      event.clipboardData.setData('text/plain', `AlgoShowMaker objects:${objectClipboard.token}`);
+      event.clipboardData.setData('application/x-algoshowmaker-objects', payload);
+      event.clipboardData.setData('text/plain', `AlgoShowMaker objects:${payload}`);
       if (!objectClipboard.widgets.length && objectClipboard.fabric.length
         && objectClipboard.fabric.every(object => object.type === 'image')) {
         event.clipboardData.setData('application/x-algoshowmaker-images', JSON.stringify({ version: 1, images: objectClipboard.fabric }));
@@ -6568,22 +6570,22 @@
     deleteCurrentObjectSelection();
   }
 
-  async function pasteCurrentObjects() {
+  async function pasteCurrentObjects(clipboard = objectClipboard) {
     const canvas = currentFabricCanvas();
     const slide = getSlide();
-    if (!slide || (!objectClipboard.fabric.length && !objectClipboard.widgets.length)) return;
+    if (!slide || (!clipboard.fabric.length && !clipboard.widgets.length)) return;
     // Rebase the unified selection together so interleaved Fabric/widget layers
     // retain their relative order instead of placing every widget over the text.
     const ordered = [
-      ...objectClipboard.fabric.map((object, index) => ({ kind: 'fabric', index, layer: Number(object.layerIndex) || FABRIC_LAYER_INDEX })),
-      ...objectClipboard.widgets.map((widget, index) => ({ kind: 'widget', index, layer: Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE }))
+      ...clipboard.fabric.map((object, index) => ({ kind: 'fabric', index, layer: Number(object.layerIndex) || FABRIC_LAYER_INDEX })),
+      ...clipboard.widgets.map((widget, index) => ({ kind: 'widget', index, layer: Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE }))
     ].sort((a, b) => a.layer - b.layer);
     const pasteLayers = { fabric: [], widget: [] };
     const baseLayer = nextUnifiedLayerIndex(slide, canvas);
     ordered.forEach((item, index) => { pasteLayers[item.kind][item.index] = baseLayer + index * STACK_LAYER_STEP; });
     let changed = false;
-    if (canvas && objectClipboard.fabric.length) {
-      const objects = await enlivenFabricObjects(objectClipboard.fabric);
+    if (canvas && clipboard.fabric.length) {
+      const objects = await enlivenFabricObjects(clipboard.fabric);
       suppressCanvasSave = true;
       try {
         objects.forEach((obj, index) => {
@@ -6607,13 +6609,13 @@
       updateObjectToolbar(canvas.getActiveObject(), canvas);
       changed = objects.length > 0;
     }
-    if (objectClipboard.widgets.length) {
+    if (clipboard.widgets.length) {
       slide.widgets = normalizeWidgets(slide.widgets);
-      const pastedWidgets = objectClipboard.widgets.map((widget, index) => ({
+      const pastedWidgets = clipboard.widgets.map((widget, index) => ({
         ...clone(widget), id: randomId(), layerIndex: pasteLayers.widget[index]
       }));
       slide.widgets.push(...pastedWidgets);
-      selectedWidgetId = pastedWidgets.length === 1 && !objectClipboard.fabric.length ? pastedWidgets[0].id : null;
+      selectedWidgetId = pastedWidgets.length === 1 && !clipboard.fabric.length ? pastedWidgets[0].id : null;
       appendWidgetsToCurrentSlide(pastedWidgets);
       pastedWidgets.forEach(widget => {
         selectedWidgetKeys.add(widget.id);
@@ -6630,7 +6632,7 @@
       saveDeck();
       updateAlignmentToolbar();
     }
-    objectClipboard.cut = false;
+    if (objectClipboard === clipboard) objectClipboard.cut = false;
   }
 
   function deleteCurrentObjectSelection() {
@@ -9610,6 +9612,45 @@
       const textEditing = object?.isEditing && event.target === object.hiddenTextarea;
       const cellEditing = event.target.closest?.('.structure-inline-value-input');
       if (isEditableDomTarget(event) && !textEditing && !cellEditing) return;
+      const data = event.clipboardData;
+      const custom = data?.getData('application/x-algoshowmaker-objects');
+      const text = data?.getData('text/plain') || '';
+      const prefix = 'AlgoShowMaker objects:';
+      if (!custom && !text.startsWith(prefix)) return;
+      const encoded = custom || text.slice(prefix.length);
+      let payload;
+      try { payload = JSON.parse(encoded); } catch {}
+      const valid = payload?.format === 'AlgoShowMaker.objects' && payload.version === 1
+        && Array.isArray(payload.fabric) && Array.isArray(payload.widgets)
+        && payload.fabric.length + payload.widgets.length > 0
+        && [...payload.fabric, ...payload.widgets].every(item => item && typeof item === 'object'
+          && !Array.isArray(item) && typeof item.type === 'string' && item.type.length > 0);
+      const legacy = encoded === objectClipboard.token
+        && objectClipboard.fabric.length + objectClipboard.widgets.length > 0;
+      // Old image copies already carry their full image data in a separate MIME.
+      if (!valid && !legacy && data?.getData('application/x-algoshowmaker-images')) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (!valid && !legacy) {
+        setCloudStatus('error', '無法貼上物件：剪貼簿資料已失效或不完整，請回到原投影片重新複製。');
+        return;
+      }
+      if (!canvas || getSlide()?.kind === 'algorithm-animation') {
+        setCloudStatus('error', '請切換到一般投影片後再貼上物件。');
+        return;
+      }
+      if (valid) objectClipboard = { fabric: clone(payload.fabric), widgets: clone(payload.widgets),
+        token: payload.token || randomId(), cut: false, nativeCopied: true };
+      if (textEditing) object.exitEditing();
+      if (cellEditing) closeStructureInlineEditor(true);
+      exitWidgetEditorIfNeeded();
+      void pasteCurrentObjects().catch(error => setCloudStatus('error', `物件貼上失敗：${error?.message || '請重新複製後再試'}`));
+    }, true);
+    document.addEventListener('paste', event => {
+      if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing()) return;
+      const canvas = currentFabricCanvas(), object = canvas?.getActiveObject();
+      const textEditing = object?.isEditing && event.target === object.hiddenTextarea;
+      const cellEditing = event.target.closest?.('.structure-inline-value-input');
+      if (isEditableDomTarget(event) && !textEditing && !cellEditing) return;
       const clipboard = event.clipboardData;
       let images = null;
       try {
@@ -9723,14 +9764,7 @@
       const clipboard = event.clipboardData;
       const token = clipboard?.getData('application/x-algoshowmaker-objects');
       const text = clipboard?.getData('text/plain');
-      // Clipboard bridges can strip custom MIME data. An exact plain-text token
-      // preserves object paste without mistaking unrelated copied text for objects.
-      const plainObjectToken = objectClipboard.token && text === `AlgoShowMaker objects:${objectClipboard.token}`;
-      if ((token && token === objectClipboard.token) || plainObjectToken) {
-        event.preventDefault();
-        void pasteCurrentObjects();
-        return;
-      }
+      // Object envelopes (including legacy tokens) were handled in capture.
       if (text && cellInteractions.paste(text)) {
         event.preventDefault();
         return;
@@ -9830,7 +9864,7 @@
             cutCurrentObjects();
             return;
           }
-          // Native paste decides between external text/images and our object token.
+          // Native paste decides between external text/images and complete object data.
         }
       }
 
