@@ -3609,6 +3609,10 @@ body:not(.asm-edit-mode) .asm-selection-overlay-layer,
   background: rgba(147, 197, 253, 0.16);
 }
 
+.asm-structure-cell-selection-box[data-table-cell="true"] {
+  background: transparent;
+}
+
 .fabric-fragment-proxy {
   position: absolute;
   left: 0;

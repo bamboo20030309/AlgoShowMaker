@@ -7068,6 +7068,11 @@
   }
 
   function updateStructureCellSelectionOverlay(widgetEl, cell) {
+    if (activeStructureInlineEditor?.context.mode === 'table'
+      && activeStructureInlineEditor.context.widgetId === widgetEl?.dataset.widgetId) {
+      hideStructureCellSelectionOverlay();
+      return;
+    }
     const slideId = widgetEl?.closest?.('.asm-slide')?.dataset.slideId;
     const frame = widgetEl?.closest?.('.asm-slide-frame-content');
     const target = cell?.querySelector?.(':scope > rect:first-of-type') || cell;
@@ -7098,6 +7103,7 @@
       const origin = new DOMPoint(bounds.x, bounds.y).matrixTransform(matrix);
       let overlay = boxes[index];
       if (!overlay) { overlay = box.cloneNode(false); box.parentElement.appendChild(overlay); }
+      overlay.dataset.tableCell = String(getWidget(widgetEl.dataset.widgetId).widget?.type === 'table');
       overlay.style.left = `${(origin.x - frameRect.left) * scaleX}px`;
       overlay.style.top = `${(origin.y - frameRect.top) * scaleY}px`;
       overlay.style.width = `${bounds.width}px`;
@@ -7227,6 +7233,10 @@
     const appearance = positionStructureInlineEditor(input, widgetEl, selected.cell, selected.widget);
     const editor = { input, appearance, context: selected.context, key: selected.key, closing: false };
     activeStructureInlineEditor = editor;
+    if (selected.widget.type === 'table') {
+      hideStructureCellSelectionOverlay();
+      window.getSelection()?.removeAllRanges();
+    }
     ['mousedown', 'pointerdown', 'click', 'dblclick'].forEach(type => {
       input.addEventListener(type, event => event.stopPropagation());
     });
@@ -7240,7 +7250,8 @@
     input.focus();
     if (selected.widget.type === 'table') input.setSelectionRange(input.value.length, input.value.length);
     else input.select();
-    if (Number.isFinite(caretClientX)) {
+    const placeCaret = clientX => {
+      if (!Number.isFinite(clientX)) return;
       const rect = input.getBoundingClientRect();
       const style = getComputedStyle(input);
       const ctx = document.createElement('canvas').getContext('2d');
@@ -7250,7 +7261,7 @@
       const contentWidth = input.clientWidth - padding - (parseFloat(style.paddingRight) || 0);
       const offset = style.textAlign === 'center' ? (contentWidth - width) / 2
         : style.textAlign === 'right' ? contentWidth - width : 0;
-      const x = (caretClientX - rect.left) * input.offsetWidth / rect.width - padding - offset;
+      const x = (clientX - rect.left) * input.offsetWidth / rect.width - padding - offset;
       let position = 0, distance = Math.abs(x);
       for (let index = 0; index < input.value.length;) {
         index += String.fromCodePoint(input.value.codePointAt(index)).length;
@@ -7258,6 +7269,17 @@
         if (next < distance) { position = index; distance = next; }
       }
       input.setSelectionRange(position, position);
+    };
+    placeCaret(caretClientX);
+    if (selected.widget.type === 'table') {
+      // Repeated double-clicks also mean "place the caret", not the browser's
+      // default select-word action. Ordinary drag-selection remains available.
+      const caretOnly = event => {
+        if (event.type === 'mousedown' && event.detail < 2) return;
+        event.preventDefault(); placeCaret(event.clientX);
+      };
+      input.addEventListener('mousedown', caretOnly);
+      input.addEventListener('dblclick', caretOnly);
     }
     return true;
   }
