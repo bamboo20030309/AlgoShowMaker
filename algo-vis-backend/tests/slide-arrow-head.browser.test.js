@@ -9,11 +9,11 @@ test('legacy arrow defaults and explicit custom or disabled animation settings s
  const {base}=await startIsolatedServer(t);const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());const page=await browser.newPage();
  const source=await fs.readFile(path.join(__dirname,'../public/slides.js'),'utf8');
  await page.route('**/slides.js*',r=>r.fulfill({contentType:'application/javascript',body:source.replace('function installArrowRenderer(obj) {','function installArrowRenderer(obj) { (window.fixtureArrows ||= {})[obj.ttsObjectId] = obj;')}));
- await page.addInitScript(()=>{if(sessionStorage.getItem('legacyArrow'))return;sessionStorage.setItem('legacyArrow','1');const line={type:'line',x1:-100,y1:0,x2:100,y2:0,left:400,top:200,stroke:'#ff0055',strokeWidth:16,asmShapeType:'arrow'};localStorage.setItem('asm_reveal_fabric_deck_v5',JSON.stringify({groups:[{id:'g',slides:[{id:'s',widgets:[],canvas:{objects:[{...line,ttsObjectId:'old'},{...line,ttsObjectId:'hidden',top:300,arrowHeadStyle:'triangle',arrowHeadSize:37,fragmentEnabled:false}]}}]}]}));});
+ await page.addInitScript(()=>{if(sessionStorage.getItem('legacyArrow'))return;sessionStorage.setItem('legacyArrow','1');localStorage.setItem('asm_slide_shape_preferences_v1',JSON.stringify({arrowHeadStyle:'circle',lineStyle:'dashed'}));const line={type:'line',x1:-100,y1:0,x2:100,y2:0,left:400,top:200,stroke:'#ff0055',strokeWidth:16,asmShapeType:'arrow'};localStorage.setItem('asm_reveal_fabric_deck_v5',JSON.stringify({groups:[{id:'g',slides:[{id:'s',widgets:[],canvas:{objects:[{...line,ttsObjectId:'old'},{...line,ttsObjectId:'hidden',top:300,arrowHeadStyle:'triangle',arrowHeadSize:37,fragmentEnabled:false,strokeDashArray:[3,9]}]}}]}]}));});
  for(let pass=0;pass<2;pass++){
   if(pass)await page.reload();else await page.goto(base+'/slides.html');
   await page.waitForFunction(()=>document.body.dataset.fabricBuild?.startsWith('ready')&&window.fixtureArrows?.old);
-  assert.deepEqual(await page.evaluate(()=>{const a=fixtureArrows.old,b=fixtureArrows.hidden;return{defaultStyle:a.arrowHeadStyle,defaultSize:a.arrowHeadSize,stroke:a.stroke,width:a.strokeWidth,fragment:b.fragmentEnabled,style:b.arrowHeadStyle,size:b.arrowHeadSize};}),{defaultStyle:'open',defaultSize:24,stroke:'#ff0055',width:16,fragment:false,style:'triangle',size:37});
+  assert.deepEqual(await page.evaluate(()=>{const a=fixtureArrows.old,b=fixtureArrows.hidden;return{defaultStyle:a.arrowHeadStyle,defaultSize:a.arrowHeadSize,stroke:a.stroke,width:a.strokeWidth,fragment:b.fragmentEnabled,style:b.arrowHeadStyle,size:b.arrowHeadSize,oldDash:a.strokeDashArray,customDash:b.strokeDashArray};}),{defaultStyle:'open',defaultSize:24,stroke:'#ff0055',width:16,fragment:false,style:'triangle',size:37,oldDash:null,customDash:[3,9]});
   await page.waitForFunction(()=>document.body.dataset.localDeckSave==='saved');
  }
 });
@@ -47,7 +47,8 @@ test('slide arrow shafts stop at filled head rear after creation and saved-objec
  // Persist custom arrow settings through the actual editor controls and reopen.
  const center=await page.evaluate(()=>{const a=fixtureArrow,c=a.canvas,p=fabric.util.transformPoint(a.getCenterPoint(),c.viewportTransform),r=c.upperCanvasEl.getBoundingClientRect();return{x:r.left+p.x*r.width/c.width,y:r.top+p.y*r.height/c.height};});
  await page.mouse.click(center.x,center.y);
- await page.locator('#shapeStrokeBtn').click();
+ assert.equal(await page.locator('#shapeEditorControls #shapeArrowStyleChoices').count(),1);
+ assert.equal(await page.locator('#objectToolbar #shapeStyleControls').count(),0);
  assert.equal(await page.locator('#shapeArrowStyleSelect').count(),0);assert.match(await page.locator('#shapeArrowControls').innerText(),/箭頭大小/);assert.doesNotMatch(await page.locator('#shapeArrowControls').innerText(),/Arrowhead|Arrow size/);
  for(const style of ['diamond','circle','open','triangle']){await page.locator(`[data-arrow-head-style="${style}"]`).click();assert.equal(await page.evaluate(()=>fixtureArrow.arrowHeadStyle),style);assert.equal(await page.locator('#shapeArrowStyleChoices [aria-pressed="true"]').count(),1);assert.equal(await page.locator(`[data-arrow-head-style="${style}"]`).getAttribute('aria-pressed'),'true');}
  await page.locator('#shapeArrowSizeInput').focus();await page.locator('#shapeArrowSizeInput').press('End');
@@ -59,7 +60,7 @@ test('slide arrow shafts stop at filled head rear after creation and saved-objec
  assert.equal(await page.evaluate(()=>fixtureArrow.arrowHeadStyle),'triangle');assert.equal(await page.evaluate(()=>fixtureArrow.arrowHeadSize),80);
  await page.evaluate(()=>{const a=fixtureArrow;a.set({x1:105,x2:-105,arrowHeadSize:48,stroke:'#a65b23',strokeWidth:8});a.setPositionByOrigin(new fabric.Point(640,360),'center','center');a.setCoords();a.canvas.discardActiveObject();a.canvas.requestRenderAll();});
  await fs.mkdir(path.join(__dirname,'../test-results/slide-arrow-head'),{recursive:true});await page.screenshot({path:path.join(__dirname,'../test-results/slide-arrow-head/left-fixed.png')});
- const reopenedCenter=await page.evaluate(()=>{const a=fixtureArrow,c=a.canvas,p=fabric.util.transformPoint(a.getCenterPoint(),c.viewportTransform),r=c.upperCanvasEl.getBoundingClientRect();return{x:r.left+p.x*r.width/c.width,y:r.top+p.y*r.height/c.height};});await page.mouse.click(reopenedCenter.x,reopenedCenter.y);await page.locator('#shapeStrokeBtn').click();
+ const reopenedCenter=await page.evaluate(()=>{const a=fixtureArrow,c=a.canvas,p=fabric.util.transformPoint(a.getCenterPoint(),c.viewportTransform),r=c.upperCanvasEl.getBoundingClientRect();return{x:r.left+p.x*r.width/c.width,y:r.top+p.y*r.height/c.height};});await page.mouse.click(reopenedCenter.x,reopenedCenter.y);
  await page.screenshot({path:path.join(__dirname,'../test-results/slide-arrow-head/icon-picker.png')});
  assert.deepEqual(errors,[]);
 });

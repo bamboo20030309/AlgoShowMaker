@@ -466,7 +466,6 @@
   const shapeColorBtn = document.getElementById('shapeColorBtn');
   const iroPopup = document.getElementById('iroPopup');
   const avColorSwatches = document.getElementById('avColorSwatches');
-  const shapeStyleControls = document.getElementById('shapeStyleControls');
   const shapeStrokeWidthInput = document.getElementById('shapeStrokeWidthInput');
   const shapeStrokeWidthValue = document.getElementById('shapeStrokeWidthValue');
   const shapeCornerRadiusControls = document.getElementById('shapeCornerRadiusControls');
@@ -476,6 +475,7 @@
   const shapeArrowSizeInput = document.getElementById('shapeArrowSizeInput');
   const shapeArrowSizeValue = document.getElementById('shapeArrowSizeValue');
   const shapeArrowStyleChoices = document.getElementById('shapeArrowStyleChoices');
+  const shapeLineStyleChoices = document.getElementById('shapeLineStyleChoices');
   if (iroPopup && iroPopup.parentElement !== document.body) document.body.appendChild(iroPopup);
   const shapeMenu = document.getElementById('shapeMenu');
   const shapeMenuBtn = document.getElementById('shapeMenuBtn');
@@ -569,6 +569,45 @@
   const layerToBottomBtn = document.getElementById('layerToBottomBtn');
   const shapeEditorControls = document.getElementById('shapeEditorControls');
   const shapeChoiceButtons = Array.from(document.querySelectorAll('[data-shape-choice]'));
+  const SHAPE_PREFERENCES_KEY = 'asm_slide_shape_preferences_v1';
+  let shapePreferences = { arrowHeadStyle: 'open', lineStyle: 'solid' };
+  try {
+    const saved = JSON.parse(localStorage.getItem(SHAPE_PREFERENCES_KEY) || '{}');
+    if (['open', 'triangle', 'diamond', 'circle'].includes(saved.arrowHeadStyle)) shapePreferences.arrowHeadStyle = saved.arrowHeadStyle;
+    if (['solid', 'dashed'].includes(saved.lineStyle)) shapePreferences.lineStyle = saved.lineStyle;
+  } catch (error) { console.warn('無法讀取圖形偏好，使用預設樣式', error); }
+
+  function rememberShapePreferences(patch) {
+    shapePreferences = { ...shapePreferences, ...patch };
+    try { localStorage.setItem(SHAPE_PREFERENCES_KEY, JSON.stringify(shapePreferences)); }
+    catch (error) { console.warn('無法保存圖形偏好，本次選擇仍生效', error); }
+    refreshShapeChoiceIcons();
+  }
+
+  function shapeDashArray(style, width = 1) {
+    return style === 'dashed' ? [Math.max(8, width * 3), Math.max(6, width * 2)] : null;
+  }
+
+  function refreshShapeChoiceIcons() {
+    const head = shapePreferences.arrowHeadStyle;
+    const heads = {
+      open: '<path d="M18 5L27 12L18 19"/>',
+      triangle: '<path d="M28 12L17 5V19Z" fill="currentColor" stroke="none"/>',
+      diamond: '<path d="M29 12L22 5L15 12L22 19Z" fill="currentColor" stroke="none"/>',
+      circle: '<circle cx="23" cy="12" r="6" fill="currentColor" stroke="none"/>'
+    };
+    for (const type of ['arrow', 'line']) {
+      for (const button of document.querySelectorAll(`[data-shape-choice="${type}"], [data-shape="${type}"]`)) {
+        const svg = button.querySelector('svg');
+        if (!svg) continue;
+        const end = type === 'line' ? 29 : head === 'open' ? 27 : head === 'triangle' ? 17 : head === 'diamond' ? 15 : 17;
+        svg.setAttribute('viewBox', '0 0 32 24');
+        svg.innerHTML = `<path d="M3 12H${end}"${shapePreferences.lineStyle === 'dashed' ? ' stroke-dasharray="4 3"' : ''}/>${type === 'arrow' ? heads[head] : ''}`;
+        button.dataset.cachedLineStyle = shapePreferences.lineStyle;
+        if (type === 'arrow') button.dataset.cachedArrowHeadStyle = head;
+      }
+    }
+  }
   const transitionIdInput = document.getElementById('transitionIdInput');
   const fragmentEnabledInput = document.getElementById('fragmentEnabledInput');
   const fragmentStyleSelect = document.getElementById('fragmentStyleSelect');
@@ -5596,7 +5635,8 @@
         stroke: '#344247',
         strokeWidth: 1,
         strokeLineCap: 'round',
-        asmShapeType: 'line'
+        asmShapeType: 'line',
+        strokeDashArray: shapeDashArray(shapePreferences.lineStyle)
       });
     }
     if (shape === 'arrow') {
@@ -5612,7 +5652,8 @@
         strokeLineJoin: 'round',
         asmShapeType: 'arrow',
         arrowHeadSize: 24,
-        arrowHeadStyle: 'open'
+        arrowHeadStyle: shapePreferences.arrowHeadStyle,
+        strokeDashArray: shapeDashArray(shapePreferences.lineStyle)
       });
     }
     const fill = shape === 'triangle' ? '#fff2d8' : (shape === 'rect' ? '#dff4ef' : '#eee7fb');
@@ -8763,8 +8804,19 @@
     });
     shapeArrowStyleChoices.addEventListener('click', event => {
       const button = event.target.closest('[data-arrow-head-style]');
-      if (button) applyShapeStyle({ arrowHeadStyle: button.dataset.arrowHeadStyle });
+      if (button) {
+        applyShapeStyle({ arrowHeadStyle: button.dataset.arrowHeadStyle });
+        rememberShapePreferences({ arrowHeadStyle: button.dataset.arrowHeadStyle });
+      }
     });
+    shapeLineStyleChoices.addEventListener('click', event => {
+      const button = event.target.closest('[data-line-style]');
+      const active = currentFabricCanvas()?.getActiveObject();
+      if (!button || !isShapeObject(active)) return;
+      applyShapeStyle({ strokeDashArray: shapeDashArray(button.dataset.lineStyle, Number(active.strokeWidth) || 1) });
+      rememberShapePreferences({ lineStyle: button.dataset.lineStyle });
+    });
+    refreshShapeChoiceIcons();
     shapeStrokeWidthInput.addEventListener('change', commitPendingColorHistory);
     shapeCornerRadiusInput.addEventListener('change', commitPendingColorHistory);
     shapeArrowSizeInput.addEventListener('change', commitPendingColorHistory);
@@ -9590,6 +9642,11 @@
     if (!active || isTextObject(active) || isImageObject(active)) return;
     const patch = { ...style };
     if ('strokeWidth' in patch) {
+      const oldPattern = shapeDashArray('dashed', Number(active.strokeWidth) || 1);
+      if (Array.isArray(active.strokeDashArray) && active.strokeDashArray.length === oldPattern.length
+        && active.strokeDashArray.every((value, index) => value === oldPattern[index])) {
+        patch.strokeDashArray = shapeDashArray('dashed', Number(patch.strokeWidth) || 1);
+      }
       applyInwardShapeStrokeWidth(active, patch.strokeWidth);
       delete patch.strokeWidth;
     }
@@ -9632,6 +9689,9 @@
       stroke: active.stroke,
       strokeWidth: Number(active.strokeWidth) || 0,
       strokeUniform: true,
+      strokeDashArray: ['line', 'arrow'].includes(type)
+        ? shapeDashArray(shapePreferences.lineStyle, Number(active.strokeWidth) || 1)
+        : (Array.isArray(active.strokeDashArray) ? [...active.strokeDashArray] : active.strokeDashArray),
       angle: Number(active.angle) || 0,
       opacity: Number.isFinite(Number(active.opacity)) ? Number(active.opacity) : 1,
       ...animation,
@@ -9651,7 +9711,7 @@
     if (type === 'arrow') {
       replacement.set({
         arrowHeadSize: Math.max(6, Math.min(80, Number(active.arrowHeadSize) || 24)),
-        arrowHeadStyle: ['open', 'triangle', 'diamond', 'circle'].includes(active.arrowHeadStyle) ? active.arrowHeadStyle : 'open'
+        arrowHeadStyle: shapePreferences.arrowHeadStyle
       });
     }
     configureObject(replacement);
@@ -9763,12 +9823,16 @@
       for (const button of shapeArrowStyleChoices.querySelectorAll('[data-arrow-head-style]')) {
         button.setAttribute('aria-pressed', String(button.dataset.arrowHeadStyle === arrowHeadStyle));
       }
+      const lineStyle = obj.strokeDashArray?.some(value => Number(value) > 0) ? 'dashed' : 'solid';
+      for (const button of shapeLineStyleChoices.querySelectorAll('[data-line-style]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.lineStyle === lineStyle));
+      }
     }
     const rect = fabricSlideRect(canvas);
     const bounds = obj.getBoundingRect(true, true);
     const scaleX = rect.width / SLIDE_W;
     const scaleY = rect.height / SLIDE_H;
-    objectToolbar.hidden = false;
+    objectToolbar.hidden = isShapeObject(obj);
     const toolbarHeight = objectToolbar.offsetHeight || 44;
     const toolbarWidth = objectToolbar.offsetWidth || 44;
     const rotationControlClearance = 56 * scaleY;
@@ -10350,7 +10414,6 @@
     }
     populateAvColorSwatches();
     refreshLastColorSwatch();
-    shapeStyleControls.hidden = activeColorTarget !== 'shape-stroke';
     if (!iroPicker) {
       iroPicker = new window.iro.ColorPicker('#iroPicker', {
         width: 150,
@@ -10428,6 +10491,10 @@
         const leftSide = rect.left - popupWidth - 8;
         if (right + popupWidth <= window.innerWidth - 8) left = right;
         else if (leftSide >= 8) left = leftSide;
+      }
+      if (anchor.closest('#shapeEditorControls')) {
+        const sidebarRight = editorChrome.getBoundingClientRect().right;
+        left = Math.max(8, Math.min(sidebarRight + 8, window.innerWidth - popupWidth - 8));
       }
       iroPopup.style.left = `${left}px`;
       iroPopup.style.top = `${top}px`;
