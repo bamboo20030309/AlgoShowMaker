@@ -3860,6 +3860,7 @@
     if (!revealReady) return;
     const active = currentFabricCanvas();
     let viewportChanged = false;
+    let controlsChanged = false;
     for (const canvas of fabricCanvases.values()) {
       const host = canvas.lowerCanvasEl.closest('.fabric-host');
       const frame = host?.parentElement;
@@ -3883,7 +3884,12 @@
       // At most 32 million pixels per backing canvas; only the visible slide is dense.
       const limit = Math.min(8192 / width, 8192 / height, Math.sqrt(32000000 / (width * height)));
       const scale = Math.min(limit, Math.ceil(required * 4) / 4);
-      if (previousBleed === bleed && Math.abs(canvas.getRetinaScaling() - scale) < 0.01) continue;
+      const changed = syncSelectionControlMetrics(canvas.getActiveObject(), canvas);
+      controlsChanged ||= changed;
+      if (previousBleed === bleed && Math.abs(canvas.getRetinaScaling() - scale) < 0.01) {
+        if (changed) canvas.renderAll();
+        continue;
+      }
       const viewport = canvas.viewportTransform.slice();
       viewport[4] += bleed - previousBleed; viewport[5] += bleed - previousBleed;
       canvas.__asmBleed = bleed;
@@ -3898,7 +3904,7 @@
       // never presents an empty canvas between resizing and the next RAF.
       canvas.renderAll();
     }
-    if (viewportChanged) updateAlignmentToolbar();
+    if (viewportChanged || controlsChanged) updateAlignmentToolbar();
   }
 
   function scheduleFabricResolution(settleZoom = false) {
@@ -4336,6 +4342,7 @@
           cursorDuration: 500,
           compositionColor: '#1d8f83'
         });
+        syncSelectionControlMetrics(e.target, canvas);
         e.target.setCoords?.();
         const textarea = e.target.hiddenTextarea;
         // Composition updates stay in the lightweight text session and commit
@@ -4390,6 +4397,23 @@
     });
   }
 
+  function syncSelectionControlMetrics(obj, canvas = obj?.canvas) {
+    if (!obj?.set) return false;
+    const frame = canvas?.upperCanvasEl?.closest('.asm-slide-frame-content') || currentSlideViewportFrame();
+    const displayScale = (frame?.getBoundingClientRect().width || SLIDE_W) / SLIDE_W;
+    // Specify sizes at the UI's 100% view, then convert back to canvas units.
+    // The canvas backing density is unrelated to the displayed handle size.
+    const factor = slideViewportZoom / displayScale;
+    const values = { cornerSize: 8 * factor, touchCornerSize: 14 * factor, borderScaleFactor: factor };
+    if (Object.entries(values).every(([key, value]) => Math.abs(obj[key] - value) < .001)) return false;
+    obj.set(values);
+    if (isSegmentObject(obj)) Object.values(obj.controls || {}).forEach(control => {
+      control.touchSizeX = control.touchSizeY = 18 * factor;
+    });
+    obj.setCoords?.();
+    return true;
+  }
+
   function configureSelectionControls(obj) {
     if (!obj?.set) return;
     obj.set({
@@ -4405,6 +4429,7 @@
       cornerDashArray: null,
       borderScaleFactor: 1
     });
+    syncSelectionControlMetrics(obj);
     if (isSegmentObject(obj)) configureSegmentControls(obj);
     obj.setCoords?.();
   }
@@ -4482,11 +4507,11 @@
     };
   }
 
-  function renderSegmentControl(ctx, left, top) {
+  function renderSegmentControl(ctx, left, top, styleOverride, obj) {
     ctx.save();
     ctx.translate(left, top);
     ctx.beginPath();
-    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.arc(0, 0, (styleOverride?.cornerSize || obj?.cornerSize || 8) / 2, 0, Math.PI * 2);
     ctx.fillStyle = '#1d8f83';
     ctx.fill();
     ctx.restore();
@@ -4519,8 +4544,8 @@
         cursorStyle: 'crosshair',
         render: renderSegmentControl,
         cornerSize: 8,
-        touchSizeX: 18,
-        touchSizeY: 18
+        touchSizeX: 18 * obj.cornerSize / 8,
+        touchSizeY: 18 * obj.cornerSize / 8
       }),
       end: new Fabric.Control({
         positionHandler: segmentControlPosition('end'),
@@ -4529,8 +4554,8 @@
         cursorStyle: 'crosshair',
         render: renderSegmentControl,
         cornerSize: 8,
-        touchSizeX: 18,
-        touchSizeY: 18
+        touchSizeX: 18 * obj.cornerSize / 8,
+        touchSizeY: 18 * obj.cornerSize / 8
       })
     };
     if (shapeType(obj) === 'arrow') installArrowRenderer(obj);

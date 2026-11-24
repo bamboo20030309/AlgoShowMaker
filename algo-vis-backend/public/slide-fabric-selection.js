@@ -69,6 +69,7 @@
       canvas.uniformScaling = !(items.length === 1 && items[0].kind === 'widget'
         && items[0].widget.type === 'code');
       const key = fingerprint(items);
+      if (canvas.getActiveObject()) adapter.configure(canvas.getActiveObject());
       if (key === signature) { canvas.requestRenderAll(); return; }
       signature = key;
       canvas.discardActiveObject(); canvas.clear();
