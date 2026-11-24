@@ -4452,6 +4452,17 @@
       Object.defineProperty(obj, '__asmSegmentNormalized', { value: true, configurable: true });
     }
     obj.set({ hasBorders: false, padding: 0 });
+    if (!obj.__asmSegmentHitTestInstalled) {
+      obj.containsPoint = function (point, _lines, absolute) {
+        const Fabric = f();
+        const scenePoint = !absolute && this.group
+          ? Fabric.util.transformPoint(point, this.group.calcTransformMatrix())
+          : !absolute && this.canvas
+            ? Fabric.util.transformPoint(point, Fabric.util.invertTransform(this.canvas.viewportTransform)) : point;
+        return segmentContainsScenePoint(this, scenePoint);
+      };
+      Object.defineProperty(obj, '__asmSegmentHitTestInstalled', { value: true });
+    }
     obj.controls = {
       start: new Fabric.Control({
         positionHandler: segmentControlPosition('start'),
@@ -4477,14 +4488,11 @@
     if (shapeType(obj) === 'arrow') installArrowRenderer(obj);
   }
 
-  function installArrowRenderer(obj) {
-    if (obj.__asmArrowRendererInstalled) return;
-    obj._render = function (ctx) {
-      const Fabric = f();
-      const points = this.calcLinePoints();
-      const size = Math.max(6, Math.min(80, Number(this.arrowHeadSize) || 24));
-      const style = ['open', 'triangle', 'diamond', 'circle'].includes(this.arrowHeadStyle)
-        ? this.arrowHeadStyle
+  function arrowHeadGeometry(obj) {
+      const points = obj.calcLinePoints();
+      const size = Math.max(6, Math.min(80, Number(obj.arrowHeadSize) || 24));
+      const style = ['open', 'triangle', 'diamond', 'circle'].includes(obj.arrowHeadStyle)
+        ? obj.arrowHeadStyle
         : 'open';
       const angle = Math.atan2(points.y2 - points.y1, points.x2 - points.x1);
       const cos = Math.cos(angle);
@@ -4496,6 +4504,51 @@
       const tip = point(0, 0);
       const upper = point(size, size * 0.52);
       const lower = point(size, -size * 0.52);
+      return { points, size, style, cos, sin, point, tip, upper, lower };
+  }
+
+  function segmentContainsScenePoint(obj, scenePoint) {
+    const Fabric = f(), canvas = obj.canvas, vpt = canvas?.viewportTransform || [1, 0, 0, 1, 0, 0];
+    const box = canvas?.upperCanvasEl?.getBoundingClientRect();
+    const rx = box?.width && canvas.width ? box.width / canvas.width : 1;
+    const ry = box?.height && canvas.height ? box.height / canvas.height : 1;
+    const screen = point => {
+      const p = Fabric.util.transformPoint(point, vpt);
+      return { x: p.x * rx, y: p.y * ry };
+    };
+    const matrix = obj.calcTransformMatrix(), project = point => screen(Fabric.util.transformPoint(point, matrix));
+    const hit = screen(scenePoint), geometry = arrowHeadGeometry(obj), { points, style, size, point } = geometry;
+    const distance = (p, a, b) => {
+      const dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy;
+      const t = length ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length)) : 0;
+      return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+    };
+    const origin = project({ x: 0, y: 0 }), normal = project({ x: -geometry.sin, y: geometry.cos });
+    const halfStroke = Math.max(.25, Number(obj.strokeWidth) / 2 || .5) * Math.hypot(normal.x - origin.x, normal.y - origin.y);
+    // Work in displayed CSS pixels: the extra two pixels stay useful at any zoom.
+    if (distance(hit, project({ x: points.x1, y: points.y1 }), project({ x: points.x2, y: points.y2 })) <= halfStroke + 2) return true;
+    if (shapeType(obj) !== 'arrow') return false;
+    // Sample the circle in local coordinates before transforming, so scaled
+    // groups remain elliptical. Polygon heads use the exact rendered vertices.
+    const vertices = style === 'circle'
+      ? Array.from({ length: 48 }, (_, i) => point(size * .34 + Math.cos(i * Math.PI / 24) * size * .34, Math.sin(i * Math.PI / 24) * size * .34))
+      : style === 'diamond' ? [geometry.tip, geometry.upper, point(size * 1.35), geometry.lower]
+        : [geometry.tip, geometry.upper, geometry.lower];
+    const polygon = vertices.map(project), padding = 2 + (style === 'open' ? halfStroke : 0);
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[j], b = polygon[i];
+      if (distance(hit, a, b) <= padding) return true;
+      if ((a.y > hit.y) !== (b.y > hit.y) && hit.x < (b.x - a.x) * (hit.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  }
+
+  function installArrowRenderer(obj) {
+    if (obj.__asmArrowRendererInstalled) return;
+    obj._render = function (ctx) {
+      const Fabric = f();
+      const { points, size, style, cos, sin, point, tip, upper, lower } = arrowHeadGeometry(this);
       // 實心箭頭的線身停在頭部後緣；裁切也會截掉 round/square 線帽，
       // 避免粗線穿過尖端。只裁切繪製，不改動選取端點或儲存幾何。
       ctx.save();
@@ -9940,6 +9993,7 @@
     const y = ((event.clientY - rect.top) / rect.height) * SLIDE_H;
     return (objects || canvas.getObjects()).slice().reverse().find(obj => {
       if (!obj.visible) return false;
+      if (isSegmentObject(obj)) return segmentContainsScenePoint(obj, new (f().Point)(x, y));
       const point = f().util.transformPoint(new (f().Point)(x, y), f().util.invertTransform(obj.calcTransformMatrix()));
       const halfWidth = (obj.width + (obj.strokeWidth || 0)) / 2;
       const halfHeight = (obj.height + (obj.strokeWidth || 0)) / 2;
