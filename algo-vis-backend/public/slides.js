@@ -5838,26 +5838,28 @@
     });
   }
 
-  function insertImageFromDataUrl(src, left, top) {
-    const canvas = currentFabricCanvas();
+  function insertImageFromDataUrl(src, left, top, destination = null) {
+    const canvas = destination?.canvas || currentFabricCanvas();
+    const slide = destination?.slide || getSlide();
     const Fabric = f();
     const ImageClass = Fabric.FabricImage || Fabric.Image;
-    if (!canvas || !ImageClass) return;
+    if (!canvas || !slide || !ImageClass) return;
 
     const img = new Image();
     img.onload = () => {
       const obj = new ImageClass(img, { left, top });
       obj.scaleToWidth(320);
       configureObject(obj);
-      const slide = getSlide();
       obj.set({ layerIndex: nextUnifiedLayerIndex(slide, canvas) });
       canvas.add(obj);
-      canvas.setActiveObject(obj);
+      if (canvas === currentFabricCanvas()) canvas.setActiveObject(obj);
       canvas.requestRenderAll();
-      syncCurrentSlideCanvas();
+      slide.canvas = serializeFabricCanvas(canvas);
+      saveDeck();
       syncUnifiedLayerStyles(slide, canvas);
-      updateObjectToolbar(obj, canvas);
+      if (canvas === currentFabricCanvas()) updateObjectToolbar(obj, canvas);
     };
+    img.onerror = () => setCloudStatus('error', '圖片貼上失敗：格式無法解碼或來源不允許讀取，請重新複製圖片後再試');
     img.src = src;
   }
 
@@ -6517,6 +6519,16 @@
       if (!event.clipboardData) return;
       event.clipboardData.setData('application/x-algoshowmaker-objects', objectClipboard.token);
       event.clipboardData.setData('text/plain', `AlgoShowMaker objects:${objectClipboard.token}`);
+      if (!objectClipboard.widgets.length && objectClipboard.fabric.length
+        && objectClipboard.fabric.every(object => object.type === 'image')) {
+        event.clipboardData.setData('application/x-algoshowmaker-images', JSON.stringify({ version: 1, images: objectClipboard.fabric }));
+        // Other browser pages can still understand a copied single image when
+        // custom clipboard formats are removed by the browser/OS bridge.
+        if (objectClipboard.fabric.length === 1) {
+          const image = document.createElement('img'); image.src = objectClipboard.fabric[0].src;
+          event.clipboardData.setData('text/html', image.outerHTML);
+        }
+      }
       event.preventDefault();
       event.stopImmediatePropagation();
     };
@@ -9569,6 +9581,60 @@
     });
 
     const richTextMime = 'application/x-algoshowmaker-rich-text';
+    document.addEventListener('paste', event => {
+      if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing()) return;
+      const canvas = currentFabricCanvas(), object = canvas?.getActiveObject();
+      const textEditing = object?.isEditing && event.target === object.hiddenTextarea;
+      const cellEditing = event.target.closest?.('.structure-inline-value-input');
+      if (isEditableDomTarget(event) && !textEditing && !cellEditing) return;
+      const clipboard = event.clipboardData;
+      let images = null;
+      try {
+        const payload = JSON.parse(clipboard?.getData('application/x-algoshowmaker-images') || 'null');
+        if (payload?.version === 1 && Array.isArray(payload.images) && payload.images.length
+          && payload.images.every(image => image?.type === 'image' && typeof image.src === 'string'
+            && /^(data:image\/|blob:|https?:\/\/)/i.test(image.src))) images = payload.images;
+      } catch {}
+      const file = Array.from(clipboard?.items || []).find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile()
+        || Array.from(clipboard?.files || []).find(file => file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i.test(file.name));
+      let source = null;
+      if (!images && !file) {
+        const html = clipboard?.getData('text/html');
+        if (html) {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const candidates = doc.querySelectorAll('img[src]');
+          if (candidates.length === 1 && !doc.body.textContent.trim()) {
+            const value = candidates[0].getAttribute('src');
+            if (/^(data:image\/|blob:|https?:\/\/)/i.test(value)) source = value;
+          }
+        }
+      }
+      if (!images && !file && !source) return;
+      if (getSlide()?.kind === 'algorithm-animation' || !canvas) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (textEditing) object.exitEditing();
+      if (cellEditing) closeStructureInlineEditor(true);
+      exitWidgetEditorIfNeeded();
+      const fail = error => setCloudStatus('error', `圖片貼上失敗：${error?.message || '無法讀取圖片，請重新複製圖片後再試'}`);
+      if (images) {
+        objectClipboard = { fabric: clone(images), widgets: [], token: randomId(), cut: false, nativeCopied: true };
+        void pasteCurrentObjects().catch(fail);
+        return;
+      }
+      const destination = { canvas, slide: getSlide() };
+      const insert = blob => {
+        const reader = new FileReader();
+        reader.onerror = () => fail(reader.error);
+        reader.onload = () => insertImageFromDataUrl(reader.result, SLIDE_W / 2 - 160, SLIDE_H / 2 - 100, destination);
+        reader.readAsDataURL(blob);
+      };
+      if (file) insert(file);
+      else if (source.startsWith('data:image/')) insertImageFromDataUrl(source, SLIDE_W / 2 - 160, SLIDE_H / 2 - 100, destination);
+      else void fetch(source).then(response => {
+        if (!response.ok) throw new Error('圖片來源無法讀取，請使用「複製圖片」再試');
+        return response.blob();
+      }).then(insert).catch(fail);
+    }, true);
     const textStyleFields = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fill',
       'stroke', 'strokeWidth', 'underline', 'overline', 'linethrough', 'textBackgroundColor', 'deltaY'];
     const pickTextStyle = source => Object.fromEntries(textStyleFields
@@ -9646,31 +9712,20 @@
         event.preventDefault();
         return;
       }
-      const items = Array.from(event.clipboardData && event.clipboardData.items || []);
-      const imageItem = items.find(item => item.type && item.type.startsWith('image/'));
-      if (!imageItem) {
-        if (text && window.ASMSlideVideo.looksLikeYouTubeUrl(text) && getSlide()?.kind !== 'algorithm-animation') {
-          event.preventDefault();
-          exitWidgetEditorIfNeeded();
-          addVideoWidget(text.trim());
-          return;
-        }
-        if (text) {
-          event.preventDefault();
-          exitWidgetEditorIfNeeded();
-          addObject('text', { x: SLIDE_W / 2, y: SLIDE_H / 2 }, text.replace(/\r\n?/g, '\n'));
-        } else if (!token && objectClipboard.nativeCopied === false) {
-          event.preventDefault();
-          void pasteCurrentObjects();
-        }
+      if (text && window.ASMSlideVideo.looksLikeYouTubeUrl(text) && getSlide()?.kind !== 'algorithm-animation') {
+        event.preventDefault();
+        exitWidgetEditorIfNeeded();
+        addVideoWidget(text.trim());
         return;
       }
-      event.preventDefault();
-      const file = imageItem.getAsFile();
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => insertImageFromDataUrl(reader.result, SLIDE_W / 2 - 160, SLIDE_H / 2 - 100);
-      reader.readAsDataURL(file);
+      if (text) {
+        event.preventDefault();
+        exitWidgetEditorIfNeeded();
+        addObject('text', { x: SLIDE_W / 2, y: SLIDE_H / 2 }, text.replace(/\r\n?/g, '\n'));
+      } else if (!token && objectClipboard.nativeCopied === false) {
+        event.preventDefault();
+        void pasteCurrentObjects();
+      }
     });
 
     document.addEventListener('keydown', event => {
