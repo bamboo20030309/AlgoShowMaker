@@ -4225,13 +4225,25 @@
       canvas.__asmWidgetMarquee.end = end;
       updateMarqueeSelectionOverlay(slide.id, canvas.__asmWidgetMarquee.start, end);
     });
+    canvas.on('before:transform', ({ transform }) => {
+      const obj = transform?.target;
+      if (!isTextObject(obj) || transform.action !== 'resizing') return;
+      // A width change can add/remove wrapped lines. Pin the visible top edge,
+      // even for saved textboxes whose stored vertical origin is center/bottom.
+      transform.__asmTextWidthAnchor = obj.getPointByOrigin(transform.originX, 'top');
+    });
     const onTextOrObjectResize = e => {
       enableTextInteractionCache(e.target);
       canvas.__asmInteractionDirty = true;
       keepShapeStrokeUniform(e.target, canvas);
-      normalizeTextBoxResize(e.target, canvas);
+      const widthOnly = e.transform?.action === 'resizing';
+      normalizeTextBoxResize(e.target, canvas, widthOnly);
       applyFabricResizeSnap(e, canvas);
-      normalizeTextBoxResize(e.target, canvas);
+      normalizeTextBoxResize(e.target, canvas, widthOnly);
+      if (e.transform?.__asmTextWidthAnchor) {
+        e.target.setPositionByOrigin(e.transform.__asmTextWidthAnchor, e.transform.originX, 'top');
+        e.target.setCoords();
+      }
       updateObjectToolbar(e.target, canvas);
     };
     canvas.on('object:scaling', onTextOrObjectResize);
@@ -5364,7 +5376,7 @@
 
   function naturalTextContentWidth(obj) {
     const Fabric = f();
-    const TextClass = Fabric?.Text || Fabric?.IText;
+    const TextClass = Fabric?.Textbox || Fabric?.Text || Fabric?.IText;
     if (!obj || !TextClass) return Math.max(40, Number(obj?.width) || 40);
     const metricProperties = [
       'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant',
@@ -5378,11 +5390,24 @@
     if (!text) return 40;
     const probe = new TextClass(text, {
       ...properties,
+      width: 1000000,
+      splitByGrapheme: obj.splitByGrapheme,
       styles: clone(obj.styles || {})
     });
-    probe.initDimensions?.();
-    const width = Number(probe.width) || 0;
-    return Math.max(40, Math.ceil(width + 10));
+    // Textbox wraps words differently from Text (word-boundary kerning, tabs
+    // and per-character styles). Measure with the same layout engine, then
+    // verify the fitted result rather than trusting a raw canvas string width.
+    const sourceLines = text.split(/\r?\n/).length;
+    const width = Math.max(0, ...probe._textLines.map((_, i) => probe.getLineWidth(i)));
+    let room = 10, nextWidth = Math.max(40, Math.ceil(width + room));
+    for (let attempt = 0; attempt < 12; attempt++) {
+      probe.set({ width: nextWidth, dynamicMinWidth: 0 });
+      probe.initDimensions?.();
+      if (probe.textLines.length <= sourceLines) return Math.max(nextWidth, Math.ceil(probe.width));
+      room *= 2;
+      nextWidth = Math.max(nextWidth + room, Math.ceil(probe.width + room));
+    }
+    return nextWidth;
   }
 
   function fitAutoTextWidth(obj, canvas) {
@@ -5390,26 +5415,32 @@
     obj.asmTextWidthMode = 'auto';
     const nextWidth = naturalTextContentWidth(obj);
     if (Math.abs((Number(obj.width) || 0) - nextWidth) < 0.5) return false;
+    const topLeft = obj.getPointByOrigin('left', 'top');
     obj.set({ width: nextWidth, dynamicMinWidth: 0 });
     obj.initDimensions?.();
     obj.set({ width: nextWidth });
+    obj.setPositionByOrigin(topLeft, 'left', 'top');
     obj.dirty = true;
     obj.setCoords?.();
     canvas?.requestRenderAll?.();
     return true;
   }
 
-  function normalizeTextBoxResize(obj, canvas) {
+  function normalizeTextBoxResize(obj, canvas, widthOnly = false) {
     if (!isTextObject(obj)) return;
     const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX : 1;
     const minWidth = obj.__asmTextResizeMinWidth || 40;
-    const nextWidth = Math.max(40, minWidth, (obj.width || 40) * scaleX);
-    if (Math.abs(scaleX - 1) < 0.001 && Math.abs((obj.scaleY || 1) - 1) < 0.001
+    const nextWidth = Math.max(40, minWidth, (obj.width || 40) * (widthOnly ? 1 : scaleX));
+    if (widthOnly) {
+      obj.asmTextWidthMode = 'fixed';
+      if (Math.abs(nextWidth - obj.width) < 0.001) return;
+    }
+    if (!widthOnly && Math.abs(scaleX - 1) < 0.001 && Math.abs((obj.scaleY || 1) - 1) < 0.001
       && Math.abs(nextWidth - obj.width) < 0.001) return;
     obj.set({
       width: nextWidth,
-      scaleX: 1,
-      scaleY: 1,
+      scaleX: widthOnly ? obj.scaleX : 1,
+      scaleY: widthOnly ? obj.scaleY : 1,
       asmTextWidthMode: 'fixed'
     });
     if (obj.initDimensions) obj.initDimensions();
