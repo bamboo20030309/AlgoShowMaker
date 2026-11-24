@@ -1348,7 +1348,6 @@
       } else {
         await importDeckJsonText(await file.text());
       }
-      flashHint('Done');
       return true;
     } catch (error) {
       console.error('Failed to import deck', error);
@@ -8872,7 +8871,6 @@
         shapeMenu.hidden = true;
         if (structureMenu) structureMenu.hidden = true;
         addObject(tool, { x: SLIDE_W / 2, y: SLIDE_H / 2 });
-        flashHint('Done');
       });
     });
 
@@ -12279,7 +12277,6 @@
       if (!document.body.classList.contains('asm-edit-mode')) return;
       overviewChrome.hidden = false;
       hideObjectToolbar();
-      flashHint('Done');
       fabricCanvases.forEach(canvas => {
         canvas.skipTargetFind = true;
         canvas.discardActiveObject();
@@ -12313,7 +12310,7 @@
     if (!slideOrderToggleBtn) return;
     slideOrderToggleBtn.setAttribute('aria-pressed', String(customOverviewOpen));
     slideOrderToggleBtn.classList.toggle('is-armed', customOverviewOpen);
-    slideOrderToggleBtn.title = customOverviewOpen ? '返回投影片編輯' : '調整投影片順序';
+    slideOrderToggleBtn.title = customOverviewOpen ? '返回投影片編輯 (Esc)' : '調整投影片順序 (Esc)';
     slideOrderToggleBtn.setAttribute('aria-label', customOverviewOpen ? '返回投影片編輯' : '調整投影片順序');
   }
 
@@ -13326,15 +13323,6 @@
   // 診斷資訊與啟動流程
   // 診斷只讀目前 deck/DOM 供開發檢查；bootstrap 依序載入來源、建立 Reveal、接線事件並啟動儲存。
   // -----------------------------------------------------------------------------
-  function flashHint(text) {
-    const hint = document.getElementById('editHint');
-    hint.textContent = 'ESC closes overview; drag slides to reorder.';
-    clearTimeout(flashHint.timer);
-    flashHint.timer = setTimeout(() => {
-      hint.textContent = 'ESC closes overview; drag slides to reorder.';
-    }, 1800);
-  }
-
   function debugNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;

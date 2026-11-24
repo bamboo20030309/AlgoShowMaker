@@ -2998,19 +2998,6 @@ body.custom-overview-open .reveal .controls {
   cursor: pointer;
 }
 
-.edit-hint {
-  position: fixed;
-  left: calc(var(--sidebar-w) + 16px);
-  bottom: 16px;
-  z-index: 35;
-  padding: 9px 12px;
-  border-radius: 6px;
-  background: rgba(21, 28, 31, 0.84);
-  color: #edf5f3;
-  font-size: 13px;
-}
-
-body:not(.asm-edit-mode) .edit-hint,
 body:not(.asm-edit-mode) .object-toolbar,
 body:not(.asm-edit-mode) .alignment-toolbar {
   display: none;
