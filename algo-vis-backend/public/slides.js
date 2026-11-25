@@ -4767,7 +4767,7 @@
     if (hitWidget) {
       selectWidget(widget.dataset.widgetId);
       const cell = structureCellFromEvent(event, widget);
-      if (cell && widget.classList.contains('structure-widget')) openStructureInlineEditor(widget, cell, event.clientX);
+      if (cell && widget.classList.contains('structure-widget')) openStructureInlineEditor(widget, cell, event);
       else if (getWidget(widget.dataset.widgetId).widget?.type === 'code') openCodeEditorModal();
     } else {
       canvas.setActiveObject(object);
@@ -7234,51 +7234,6 @@
 
   function positionStructureInlineEditor(editor, widgetEl, cell, widget) {
     const cellRectElement = cell.querySelector(':scope > rect') || cell.querySelector('rect') || cell;
-    if (widget.type === 'table') {
-      const text = cell.querySelector(':scope > text');
-      const style = text && getComputedStyle(text);
-      const host = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-      // Keep the editor in the cell's SVG coordinates so fitted font sizes,
-      // resizing and rotation match the rendered table instead of an enlarged
-      // HTML overlay measured from a screen-space bounding rectangle.
-      for (const name of ['x', 'y', 'width', 'height']) host.setAttribute(name, cellRectElement.getAttribute(name) || '0');
-      editor.classList.add('table-inline-value-input');
-      if (style) Object.assign(editor.style, {
-        fontFamily: style.fontFamily, fontSize: style.fontSize,
-        fontWeight: style.fontWeight, fontStyle: style.fontStyle,
-        letterSpacing: style.letterSpacing, color: style.fill,
-        textAlign: style.textAnchor === 'start' ? 'left' : style.textAnchor === 'end' ? 'right' : 'center'
-      });
-      host.appendChild(editor); cell.appendChild(host);
-      if (text) {
-        // Resolve SVG's middle baseline to an alphabetic baseline using the
-        // actual font (including CJK fallbacks). A native input exposes its
-        // baseline through an adjacent zero-height inline marker.
-        const svgProbe = text.cloneNode(true);
-        svgProbe.textContent ||= 'Mg';
-        svgProbe.style.visibility = 'hidden';
-        cell.appendChild(svgProbe);
-        const middleY = svgProbe.getBBox().y;
-        svgProbe.style.dominantBaseline = 'alphabetic';
-        const baseline = Number(text.getAttribute('y')) + middleY - svgProbe.getBBox().y;
-        svgProbe.remove();
-        const probe = document.createElement('div');
-        probe.style.cssText = 'position:fixed;left:-10000px;top:0;white-space:nowrap;visibility:hidden';
-        const native = editor.cloneNode(false);
-        native.value = editor.value || 'Mg';
-        Object.assign(native.style, { display: 'inline-block', verticalAlign: 'baseline',
-          width: `${Number(host.getAttribute('width'))}px`, height: `${Number(host.getAttribute('height'))}px` });
-        const marker = document.createElement('span');
-        marker.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
-        probe.append(native, marker); document.body.appendChild(probe);
-        const nativeBaseline = marker.getBoundingClientRect().top - native.getBoundingClientRect().top;
-        probe.remove();
-        host.setAttribute('y', String(baseline - nativeBaseline));
-      }
-      const visibility = text?.style.visibility || '';
-      if (text) text.style.visibility = 'hidden';
-      return { host, text, visibility };
-    }
     const cellRect = cellRectElement.getBoundingClientRect();
     const hostRect = editor.parentElement.getBoundingClientRect();
     const scaleX = widget.w / Math.max(1, hostRect.width);
@@ -7316,8 +7271,9 @@
     if (!editor || editor.closing) return;
     editor.closing = true;
     activeStructureInlineEditor = null;
-    const value = editor.input.value;
-    editor.input.remove();
+    const value = editor.value ? editor.value() : editor.input.value;
+    if (editor.dispose) editor.dispose(commit);
+    else editor.input.remove();
     if (editor.appearance) {
       editor.appearance.host.remove();
       if (editor.appearance.text) editor.appearance.text.style.visibility = editor.appearance.visibility;
@@ -7328,7 +7284,8 @@
     cellInteractions.commit({ context: editor.context, widget: found.widget }, value);
   }
 
-  function openStructureInlineEditor(widgetEl, cell, caretClientX = null) {
+  function openStructureInlineEditor(widgetEl, cell, caretEvent = null) {
+    const caretClientX = typeof caretEvent === 'number' ? caretEvent : caretEvent?.clientX;
     if (!document.body.classList.contains('asm-edit-mode')) return false;
     hideStructureContextMenu();
     const details = structureCellContext(widgetEl, cell);
@@ -7339,6 +7296,17 @@
     selectWidget(details.widget.id);
     if (details.widget.type === 'table') clearStructureCellSelection();
     const selected = details.widget.type === 'table' ? details : selectStructureCell(widgetEl, cell) || details;
+    if (selected.widget.type === 'table') {
+      hideStructureCellSelectionOverlay();
+      window.getSelection()?.removeAllRanges();
+      activeStructureInlineEditor = { ...window.ASMSlideTableTextEditor.create({
+        cell: selected.cell, value: selected.context.value,
+        event: typeof caretEvent === 'object' ? caretEvent : null,
+        placeCaret: placeTextCaret, refreshCaret: refreshEditingTextCursor,
+        commit: () => closeStructureInlineEditor(true)
+      }), context: selected.context, key: selected.key, closing: false };
+      return true;
+    }
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'structure-inline-value-input';
@@ -7348,10 +7316,6 @@
     const appearance = positionStructureInlineEditor(input, widgetEl, selected.cell, selected.widget);
     const editor = { input, appearance, context: selected.context, key: selected.key, closing: false };
     activeStructureInlineEditor = editor;
-    if (selected.widget.type === 'table') {
-      hideStructureCellSelectionOverlay();
-      window.getSelection()?.removeAllRanges();
-    }
     ['mousedown', 'pointerdown', 'click', 'dblclick'].forEach(type => {
       input.addEventListener(type, event => event.stopPropagation());
     });
@@ -7363,8 +7327,7 @@
     });
     input.addEventListener('blur', () => closeStructureInlineEditor(true));
     input.focus();
-    if (selected.widget.type === 'table') input.setSelectionRange(input.value.length, input.value.length);
-    else input.select();
+    input.select();
     const placeCaret = clientX => {
       if (!Number.isFinite(clientX)) return;
       const rect = input.getBoundingClientRect();
@@ -7386,16 +7349,6 @@
       input.setSelectionRange(position, position);
     };
     placeCaret(caretClientX);
-    if (selected.widget.type === 'table') {
-      // Repeated double-clicks also mean "place the caret", not the browser's
-      // default select-word action. Ordinary drag-selection remains available.
-      const caretOnly = event => {
-        if (event.type === 'mousedown' && event.detail < 2) return;
-        event.preventDefault(); placeCaret(event.clientX);
-      };
-      input.addEventListener('mousedown', caretOnly);
-      input.addEventListener('dblclick', caretOnly);
-    }
     return true;
   }
 
@@ -8842,7 +8795,7 @@
     });
     let switchedCellClickUntil = 0;
     document.addEventListener('pointerdown', event => {
-      if (event.button !== 0 || event.target.closest?.('.structure-inline-value-input')) return;
+      if (event.button !== 0 || event.target.closest?.('.structure-inline-value-input, .table-text-editor, .table-text-input')) return;
       const widgetEl = widgetAtEvent(event);
       const cell = widgetEl && structureCellFromEvent(event, widgetEl);
       const details = cell && structureCellContext(widgetEl, cell);
@@ -9139,7 +9092,7 @@
         configure: configureSelectionControls,
         items: () => selectedAlignmentItems().items,
         allow: event => !isOverviewEditing() && !isTypingInFabric(canvas)
-          && !event.target.closest?.('input,textarea,[contenteditable="true"],#editorChrome,#controlChrome,#alignmentToolbar,#structureContextMenu'),
+          && !event.target.closest?.('input,textarea,[contenteditable="true"],.table-text-editor,#editorChrome,#controlChrome,#alignmentToolbar,#structureContextMenu'),
         bodyHit: event => {
           const currentItems = selectedAlignmentItems().items;
           if (currentItems.length===1 && currentItems[0].kind==='widget' && isCellGridWidget(currentItems[0].widget)) return false;
@@ -9261,6 +9214,9 @@
     const beginWidgetDrag = event => {
       if (event.type==='pointerdown' && nativeSelectionControls?.down(event)) return;
       if (!document.body.classList.contains('asm-edit-mode')) return;
+      // Fabric owns caret placement and drag-selection inside the transient
+      // table editor. Do not reinterpret that gesture as a widget move.
+      if (event.target.closest?.('.table-text-editor, .table-text-input')) return;
       additiveCanvasSelectionGesture = !!(event.shiftKey || event.ctrlKey || event.metaKey);
       const modifierCell = structureCellFromEvent(event, widgetAtEvent(event));
       if (additiveCanvasSelectionGesture && selectedStructureCell && !modifierCell) clearStructureCellSelection();
@@ -9553,7 +9509,7 @@
         event.preventDefault();
         event.stopPropagation();
         if (event.shiftKey || event.ctrlKey || event.metaKey) return;
-        openStructureInlineEditor(widgetEl, structureCell, event.clientX);
+        openStructureInlineEditor(widgetEl, structureCell, event);
         return;
       }
       event.preventDefault();
@@ -9577,6 +9533,16 @@
       const pointerSelection = widgetPointerSelection;
       widgetPointerSelection = null;
       const structureCell = structureCellFromEvent(event, widgetEl);
+      const activeCell = structureCell && activeStructureInlineEditor
+        ? structureCellContext(widgetEl, structureCell) : null;
+      if (activeCell && activeCell.widget.type === 'table'
+        && activeStructureInlineEditor.context.widgetId === activeCell.context.widgetId
+        && activeStructureInlineEditor.key === activeCell.key) {
+        // A Fabric text-selection gesture can synthesize its click on the SVG
+        // glyph beneath the transparent editing canvas. Keep editing the same
+        // cell instead of treating that click as a new table selection.
+        return;
+      }
       if (structureCell && getWidget(widgetEl.dataset.widgetId).widget?.type !== 'table'
         && widgetEl.classList.contains('structure-widget') && isAdditiveCellSelection(widgetEl)
         && (event.shiftKey || event.ctrlKey || event.metaKey)) {
