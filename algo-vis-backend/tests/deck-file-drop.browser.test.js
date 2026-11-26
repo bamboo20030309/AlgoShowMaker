@@ -42,6 +42,9 @@ test('external deck files drop onto import and add controls, workspace creates a
       }, { selector, name, deck, mode, archive });
     }
     await page.goto(base + '/slides.html'); await page.waitForFunction(() => document.body.dataset.slideCount);
+    assert.equal(await page.evaluate(() => document.body.dataset.slideCount), '1');
+    assert.equal(await page.locator('.reveal .slides section').count(), 1);
+    assert.equal(await page.evaluate(() => document.body.dataset.fabricObjectCount), '0');
     await drop('#importDeckBtn', 'import.json', fixture('import'));
     await page.waitForSelector('[data-slide-id="import-2"]'); assert.equal(await page.evaluate(() => document.body.dataset.slideCount), '2');
     assert.equal(await page.evaluate(() => window.dropHighlight), true);
@@ -85,15 +88,23 @@ test('external deck files drop onto import and add controls, workspace creates a
     // Wait for its rendered fixture so it cannot clear the drop error message.
     await page.waitForFunction(() => document.getElementById('deckCount').textContent === '共 0 份'
       && !document.getElementById('libraryMessage').textContent);
+    await page.click('#createDeckBtn');
+    await page.waitForURL('**/slides.html?deck=dropped-deck');
+    await page.waitForFunction(() => document.body.dataset.slideCount === '1');
+    assert.equal(await page.locator('.reveal .slides section').count(), 1);
+    assert.equal(await page.evaluate(() => document.body.dataset.fabricObjectCount), '0');
+    await page.goto(base); await page.waitForSelector('#dashboardView:not([hidden])');
+    await page.waitForFunction(() => document.getElementById('deckCount').textContent === '共 0 份'
+      && !document.getElementById('libraryMessage').textContent);
     await drop('#emptyCreateBtn', 'invalid.json', '{}');
-    await page.waitForFunction(() => document.getElementById('libraryMessage').textContent.includes('不是有效')); assert.equal(created, 0);
+    await page.waitForFunction(() => document.getElementById('libraryMessage').textContent.includes('不是有效')); assert.equal(created, 1);
     await page.evaluate(() => {
       const transfer = new DataTransfer();
       transfer.items.add(new File(['{}'], 'one.json')); transfer.items.add(new File(['{}'], 'two.json'));
       document.getElementById('emptyCreateBtn').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
     });
     await page.waitForFunction(() => document.getElementById('libraryMessage').textContent.includes('每次請拖入一份'));
-    assert.equal(created, 0);
+    assert.equal(created, 1);
     await page.evaluate(() => { ASMDeck.decode = async () => { throw new Error('workspace must read only the header'); }; });
     const workspaceFixture = fixture('workspace');
     // Match a real teaching deck closely enough to exercise the cross-page
@@ -103,7 +114,7 @@ test('external deck files drop onto import and add controls, workspace creates a
     await page.waitForURL('**/slides.html?deck=dropped-deck&importFile=*');
     await page.waitForSelector('[data-slide-id="workspace-2"]');
     await page.waitForURL('**/slides.html?deck=dropped-deck', { timeout: 30000 });
-    assert.equal(created, 1); assert.equal(saved.groups[0].slides.length, 2);
+    assert.equal(created, 2); assert.equal(saved.groups[0].slides.length, 2);
     await page.reload(); await page.waitForSelector('[data-slide-id="workspace-2"]');
     assert.equal(await page.evaluate(() => document.body.dataset.slideCount), '2');
     assert.deepEqual(errors, []);
