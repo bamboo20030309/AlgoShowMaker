@@ -66,7 +66,7 @@
   // 跨頁待匯入暫存
   // 首頁把檔案寫入短期儲存並以 key 導向 slides；目的頁讀取一次後立即清除。
   // -----------------------------------------------------------------------------
-  async function pending(action, key, file) {
+  async function pending(action, key, file, fileBytes = null) {
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open('asm-pending-deck-import-v1', 1);
       request.onupgradeneeded = () => request.result.createObjectStore('files');
@@ -77,16 +77,36 @@
       return await new Promise((resolve, reject) => {
         const tx = db.transaction('files', action === 'get' ? 'readonly' : 'readwrite');
         const store = tx.objectStore('files');
-        const request = action === 'put' ? store.put({ file, createdAt: Date.now() }, key)
+        // Persist bytes instead of relying on IndexedDB's browser-specific File
+        // structured clone. Some browsers keep the record but lose the File
+        // payload after navigation, which leaves a newly-created cloud deck empty.
+        const record = action === 'put' ? {
+          bytes: fileBytes,
+          name: file.name,
+          type: file.type,
+          lastModified: file.lastModified,
+          createdAt: Date.now()
+        } : null;
+        const request = action === 'put' ? store.put(record, key)
           : action === 'get' ? store.get(key) : store.delete(key);
         let result;
         request.onsuccess = () => { result = request.result; };
-        tx.oncomplete = () => resolve(result?.file || null);
+        tx.oncomplete = () => {
+          if (action !== 'get') { resolve(null); return; }
+          if (result?.bytes) {
+            resolve(new File([result.bytes], result.name || 'import.asmdeck', {
+              type: result.type || '', lastModified: Number(result.lastModified) || Date.now()
+            }));
+            return;
+          }
+          // Backward compatibility for pending records written before this fix.
+          resolve(result?.file || null);
+        };
         tx.onabort = tx.onerror = () => reject(tx.error || new Error('匯入檔案暫存失敗'));
       });
     } finally { db.close(); }
   }
   window.ASMDeckFileDrop = { bind, validate,
-    put: (key, file) => pending('put', key, file),
+    put: async (key, file) => pending('put', key, file, await file.arrayBuffer()),
     get: key => pending('get', key), remove: key => pending('delete', key) };
 })();

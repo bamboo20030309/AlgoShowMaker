@@ -502,6 +502,10 @@
     try {
       const cover = /\.asmdeck$/i.test(file.name) ? await window.ASMDeck.readCover(file) : null;
       await window.ASMDeckFileDrop.put(importId, file);
+      const stagedFile = await window.ASMDeckFileDrop.get(importId);
+      if (!stagedFile || stagedFile.size !== file.size || stagedFile.name !== file.name) {
+        throw new Error('投影片檔案無法交接到編輯器，尚未建立雲端投影片');
+      }
       const data = await api('/api/slides', {
         method: 'POST', body: JSON.stringify({ title: cover?.title || file.name.replace(/\.(asmdeck|json)$/i, ''),
           ...(cover?.thumbnail ? { cover_thumbnail: cover.thumbnail } : {}) })

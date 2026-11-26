@@ -95,7 +95,11 @@ test('external deck files drop onto import and add controls, workspace creates a
     await page.waitForFunction(() => document.getElementById('libraryMessage').textContent.includes('每次請拖入一份'));
     assert.equal(created, 0);
     await page.evaluate(() => { ASMDeck.decode = async () => { throw new Error('workspace must read only the header'); }; });
-    await drop('#createDeckBtn', 'workspace.asmdeck', fixture('workspace'), 'asmdeck');
+    const workspaceFixture = fixture('workspace');
+    // Match a real teaching deck closely enough to exercise the cross-page
+    // IndexedDB handoff instead of only proving that tiny File objects survive.
+    workspaceFixture.transferPadding = 'x'.repeat(2 * 1024 * 1024);
+    await drop('#createDeckBtn', 'workspace.asmdeck', workspaceFixture, 'asmdeck');
     await page.waitForURL('**/slides.html?deck=dropped-deck&importFile=*');
     await page.waitForSelector('[data-slide-id="workspace-2"]');
     await page.waitForURL('**/slides.html?deck=dropped-deck', { timeout: 30000 });
