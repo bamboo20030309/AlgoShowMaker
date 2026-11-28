@@ -1069,6 +1069,20 @@ function countDeckSlides(deck) {
   }, 0);
 }
 
+function createBlankDeck() {
+  return {
+    ttsSettings: { rate: 1.2, volume: 0.3 },
+    groups: [{
+      id: uuidv4(),
+      slides: [{
+        id: uuidv4(),
+        canvas: { objects: [] },
+        widgets: []
+      }]
+    }]
+  };
+}
+
 function cleanDeckTitle(title) {
   const value = String(title || '').trim();
   return value.slice(0, 120) || '未命名投影片';
@@ -1110,7 +1124,7 @@ app.post('/api/slides', authenticateToken, async (req, res) => {
   const body = req.body || {};
   const deck = body.deck && typeof body.deck === 'object'
     ? body.deck
-    : { groups: [] };
+    : createBlankDeck();
 
   try {
     const slideDeck = await SlideDeck.create({

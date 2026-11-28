@@ -17,6 +17,24 @@ function response() {
   return { statusCode: 200, headers: {}, status(code) { this.statusCode = code; return this; },
     set(key, value) { this.headers[key] = value; return this; }, json(data) { this.body = data; return this; } };
 }
+function createRoute(model) {
+  let callback;
+  let nextId = 0;
+  const helpers = source.slice(source.indexOf('function countDeckSlides('), source.indexOf('// List metadata only.'));
+  const create = source.slice(source.indexOf("app.post('/api/slides',"), source.indexOf('function shareResponse('));
+  vm.runInNewContext(`${helpers}\n${create}`, {
+    app: { post: (path, auth, handler) => {
+      assert.equal(path, '/api/slides');
+      assert.equal(typeof auth, 'function');
+      callback = handler;
+    } },
+    authenticateToken() {},
+    SlideDeck: model,
+    uuidv4: () => `generated-${++nextId}`,
+    console
+  });
+  return callback;
+}
 test('card list includes thumbnail, categories and layout without reading full decks', async () => {
   const handler = route("app.get('/api/slides',", "app.post('/api/slides',", {
     find(query) {
@@ -32,6 +50,24 @@ test('card list includes thumbnail, categories and layout without reading full d
   assert.equal(lazy.body.layout.folders[0].id,'sort');
   const legacy = response(); await handler({ user: { id: 'owner' }, get: () => undefined }, legacy);
   assert.equal(legacy.body.slides[0].cover_thumbnail, 'image');
+});
+test('creating a deck without content stores one blank slide and reports one page', async () => {
+  let stored;
+  const handler = createRoute({
+    async create(value) {
+      stored = value;
+      return { ...value, created_at: 'created', updated_at: 'updated' };
+    }
+  });
+  const res = response();
+  await handler({ user: { id: 'owner' }, body: { title: '未命名投影片' } }, res);
+  assert.equal(res.statusCode, 201);
+  assert.equal(stored.slide_count, 1);
+  assert.equal(res.body.slide.slide_count, 1);
+  assert.equal(stored.deck.groups.length, 1);
+  assert.equal(stored.deck.groups[0].slides.length, 1);
+  assert.equal(JSON.stringify(stored.deck.groups[0].slides[0].canvas), '{"objects":[]}');
+  assert.equal(JSON.stringify(stored.deck.groups[0].slides[0].widgets), '[]');
 });
 test('thumbnail endpoint restricts lookup to authenticated owner and returns revision without full deck', async () => {
   let found = true;
